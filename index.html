@@ -933,7 +933,7 @@ async function analyzeFood(extraContext='') {
   ];
 
   try {
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
+    const res = await fetch('https://kindee.ojo0308.workers.dev/', {
       method:'POST',
       headers:{ 'Content-Type':'application/json', 'x-api-key': key, 'anthropic-version':'2023-06-01' },
       body: JSON.stringify({
@@ -1087,7 +1087,7 @@ ${isMulti ? `รูปแบบ JSON สำหรับหลายเมนู 
   if(extraContext) userText += `\nข้อมูลเพิ่มเติม: ${extraContext}`;
 
   try {
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
+    const res = await fetch('https://kindee.ojo0308.workers.dev/', {
       method:'POST',
       headers:{ 'Content-Type':'application/json', 'x-api-key': key, 'anthropic-version':'2023-06-01' },
       body: JSON.stringify({
