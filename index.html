@@ -2893,61 +2893,175 @@ function renderTargetDashboard() {
   }
   html += '<div class="target-summary-grid">'+cards.join('')+'</div>';
 
-  // ── 1.5 Timeline Progress ──
+  // ── 1.5 Timeline Progress + Trend Analysis ──
   if (target.startDate && target.duration) {
-    var startD   = new Date(target.startDate);
+    var startD    = new Date(target.startDate);
     var totalDays = target.duration * 7;
-    var endD     = new Date(startD.getTime() + totalDays * 86400000);
-    var today    = new Date();
-    var elapsed  = Math.max(0, Math.floor((today - startD) / 86400000));
+    var endD      = new Date(startD.getTime() + totalDays * 86400000);
+    var todayD    = new Date();
+    var elapsed   = Math.max(0, Math.floor((todayD - startD) / 86400000));
     var remaining = Math.max(0, totalDays - elapsed);
-    var pct      = Math.min(100, Math.round(elapsed / totalDays * 100));
+    var pct       = Math.min(100, Math.round(elapsed / totalDays * 100));
     var weeksElapsed = Math.floor(elapsed / 7);
-    var daysRem  = remaining % 7;
-    var weeksRem = Math.floor(remaining / 7);
-    var endStr   = endD.toLocaleDateString('th-TH', {day:'numeric', month:'short', year:'numeric'});
-    var isOver   = elapsed >= totalDays;
+    var weeksRem  = Math.floor(remaining / 7);
+    var daysRem   = remaining % 7;
+    var endStr    = endD.toLocaleDateString('th-TH', {day:'numeric', month:'short', year:'numeric'});
+    var isOver    = elapsed >= totalDays;
+    var startStr  = startD.toLocaleDateString('th-TH', {day:'numeric', month:'short'});
 
-    // Weight progress from actual log
-    var latestW  = (WT && WT.log && WT.log.length) ? WT.log[WT.log.length-1].weight : null;
-    var wDiff    = (latestW && tgtWeight) ? (latestW - tgtWeight).toFixed(1) : null;
-    var wStart   = target.currWeight || null; // may be null for old targets
+    // Pull weight log entries from startDate onwards (sorted asc)
+    var wtSince = (WT && WT.log ? WT.log : [])
+      .filter(function(e){ return e.date >= target.startDate; })
+      .sort(function(a,b){ return a.date > b.date ? 1 : -1; });
+    var wtAll   = (WT && WT.log ? WT.log : []).sort(function(a,b){ return a.date > b.date ? 1 : -1; });
+
+    var startW   = target.currWeight || (wtAll.length ? wtAll[0].weight : null);
+    var latestW  = wtAll.length ? wtAll[wtAll.length-1].weight : null;
+    var totalChange = (startW && latestW) ? parseFloat((latestW - startW).toFixed(1)) : null;
+    var changeInPeriod = (wtSince.length >= 1 && startW) ? parseFloat((wtSince[wtSince.length-1].weight - startW).toFixed(1)) : null;
+
+    // Linear trend: weekly rate from log since startDate
+    var weeklyRate = null;
+    if (wtSince.length >= 2) {
+      var firstEntry = wtSince[0];
+      var lastEntry  = wtSince[wtSince.length-1];
+      var daySpan = Math.max(1, Math.floor((new Date(lastEntry.date) - new Date(firstEntry.date)) / 86400000));
+      weeklyRate = parseFloat(((lastEntry.weight - firstEntry.weight) / daySpan * 7).toFixed(2));
+    }
+
+    // Project: at current trend, when reach target?
+    var projWeeksLeft = null;
+    var projReachDate = null;
+    if (weeklyRate !== null && tgtWeight && latestW && weeklyRate !== 0) {
+      var wRemaining = tgtWeight - latestW;
+      if ((wRemaining < 0 && weeklyRate < 0) || (wRemaining > 0 && weeklyRate > 0)) {
+        projWeeksLeft = Math.ceil(wRemaining / weeklyRate);
+        var projDate  = new Date(todayD.getTime() + projWeeksLeft * 7 * 86400000);
+        projReachDate = projDate.toLocaleDateString('th-TH', {day:'numeric', month:'short', year:'numeric'});
+      }
+    }
 
     var barColor = isOver ? 'var(--green)' : pct >= 75 ? '#eab308' : 'var(--accent)';
-    html += '<div class="target-metric-card" style="margin-bottom:14px;background:rgba(249,115,22,0.04);border-color:rgba(249,115,22,0.25);">';
-    html += '<div class="target-metric-header"><span class="target-metric-title">⏱️ ความคืบหน้า Timeline</span>';
+
+    html += '<div class="target-metric-card" style="background:rgba(249,115,22,0.04);border-color:rgba(249,115,22,0.25);">';
+    html += '<div class="target-metric-header"><span class="target-metric-title">⏱️ Timeline & Trend</span>';
     html += '<span class="target-metric-badge" style="background:rgba(249,115,22,0.12);color:var(--accent);">'+target.duration+' สัปดาห์</span></div>';
 
-    // Progress bar
-    html += '<div style="height:10px;background:var(--surface2);border-radius:5px;overflow:hidden;margin-bottom:8px;">';
-    html += '<div style="height:100%;width:'+pct+'%;background:'+barColor+';border-radius:5px;transition:width 0.5s;"></div></div>';
-
-    // Stats row
-    html += '<div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text3);margin-bottom:10px;">';
-    html += '<span>เริ่ม '+new Date(target.startDate).toLocaleDateString('th-TH',{day:'numeric',month:'short'})+'</span>';
-    html += '<span style="color:'+barColor+';font-weight:700;">'+pct+'% ('+weeksElapsed+' สัปดาห์แล้ว)</span>';
+    // ── A: Progress bar ──
+    html += '<div style="height:10px;background:var(--surface2);border-radius:5px;overflow:hidden;margin-bottom:6px;">';
+    html += '<div style="height:100%;width:'+pct+'%;background:'+barColor+';border-radius:5px;"></div></div>';
+    html += '<div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text3);margin-bottom:12px;">';
+    html += '<span>เริ่ม '+startStr+'</span>';
+    html += '<span style="color:'+barColor+';font-weight:700;">สัปดาห์ที่ '+weeksElapsed+' / '+target.duration+'&nbsp;('+pct+'%)</span>';
     html += '<span>สิ้นสุด '+endStr+'</span></div>';
 
     if (isOver) {
-      html += '<div style="text-align:center;font-size:13px;color:var(--green);font-weight:700;margin-bottom:8px;">🎉 ครบกำหนดแล้ว! ตั้งเป้าหมายใหม่ได้เลย</div>';
+      html += '<div style="text-align:center;padding:10px;background:rgba(34,197,94,0.1);border-radius:10px;margin-bottom:10px;">';
+      html += '<div style="font-size:14px;font-weight:700;color:var(--green);">🎉 ครบ '+target.duration+' สัปดาห์แล้ว!</div>';
+      html += '<div style="font-size:11px;color:var(--text3);margin-top:4px;">ดู Result ด้านล่าง แล้วตั้งเป้าหมายรอบใหม่ได้เลย</div></div>';
     } else {
-      html += '<div style="font-size:12px;color:var(--text2);margin-bottom:8px;">⏳ เหลืออีก <b>'+weeksRem+' สัปดาห์ '+(daysRem>0?daysRem+' วัน':'')+'</b></div>';
+      html += '<div style="font-size:12px;color:var(--text2);margin-bottom:10px;">⏳ เหลืออีก <b>'+weeksRem+' สัปดาห์'+(daysRem>0?' '+daysRem+' วัน':'')+'</b></div>';
     }
 
-    // Weight tracking vs target
-    if (latestW && tgtWeight) {
-      var wColor = parseFloat(wDiff) <= 0 ? 'var(--green)' : 'var(--accent)';
-      var wStatus = parseFloat(wDiff) <= 0 ? '✅ ถึงเป้าแล้ว!' : 'ห่างเป้า '+wDiff+' กก.';
-      html += '<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;background:var(--surface2);border-radius:10px;">';
-      html += '<div><div style="font-size:11px;color:var(--text3);">⚖️ น้ำหนักล่าสุด</div><div style="font-size:16px;font-weight:700;color:var(--blue);">'+latestW+' กก.</div></div>';
-      html += '<div style="font-size:20px;color:var(--border);">→</div>';
-      html += '<div style="text-align:right;"><div style="font-size:11px;color:var(--text3);">🎯 เป้าหมาย</div><div style="font-size:16px;font-weight:700;color:var(--green);">'+tgtWeight+' กก.</div></div>';
-      html += '<div style="text-align:right;padding-left:8px;border-left:1px solid var(--border);margin-left:4px;"><div style="font-size:10px;color:var(--text3);">สถานะ</div><div style="font-size:12px;font-weight:700;color:'+wColor+';">'+wStatus+'</div></div>';
+    // ── B: Weight status row ──
+    if (startW || latestW || tgtWeight) {
+      html += '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:12px;">';
+
+      // Start weight
+      html += '<div style="text-align:center;padding:8px;background:var(--surface2);border-radius:10px;">';
+      html += '<div style="font-size:10px;color:var(--text3);">🏁 ตอนเริ่ม</div>';
+      html += '<div style="font-size:18px;font-weight:700;color:var(--text);">'+(startW ? startW+' กก.' : '—')+'</div></div>';
+
+      // Current weight
+      html += '<div style="text-align:center;padding:8px;background:var(--surface2);border-radius:10px;">';
+      html += '<div style="font-size:10px;color:var(--text3);">📍 ตอนนี้</div>';
+      html += '<div style="font-size:18px;font-weight:700;color:var(--blue);">'+(latestW ? latestW+' กก.' : '—')+'</div>';
+      if (changeInPeriod !== null) {
+        var cColor = changeInPeriod < 0 ? 'var(--green)' : changeInPeriod > 0 ? 'var(--accent)' : 'var(--text3)';
+        var cSign  = changeInPeriod > 0 ? '+' : '';
+        html += '<div style="font-size:11px;color:'+cColor+';font-weight:600;">'+cSign+changeInPeriod+' กก.</div>';
+      }
+      html += '</div>';
+
+      // Target weight
+      html += '<div style="text-align:center;padding:8px;background:var(--surface2);border-radius:10px;">';
+      html += '<div style="font-size:10px;color:var(--text3);">🎯 เป้าหมาย</div>';
+      html += '<div style="font-size:18px;font-weight:700;color:var(--green);">'+(tgtWeight ? tgtWeight+' กก.' : '—')+'</div>';
+      if (latestW && tgtWeight) {
+        var gap = parseFloat((latestW - tgtWeight).toFixed(1));
+        if (gap <= 0) { html += '<div style="font-size:11px;color:var(--green);font-weight:600;">✅ ถึงเป้าแล้ว!</div>'; }
+        else { html += '<div style="font-size:11px;color:var(--text3);">เหลืออีก '+gap+' กก.</div>'; }
+      }
+      html += '</div>';
+      html += '</div>';
+    }
+
+    // ── C: Trend analysis ──
+    if (wtSince.length >= 2 && weeklyRate !== null) {
+      var trendDir  = weeklyRate < 0 ? 'ลด' : weeklyRate > 0 ? 'เพิ่ม' : 'คงที่';
+      var trendColor= weeklyRate < 0 ? 'var(--green)' : weeklyRate > 0 ? 'var(--accent)' : 'var(--text3)';
+      var needDir   = (tgtWeight && startW) ? (tgtWeight < startW ? 'ลด' : 'เพิ่ม') : null;
+
+      html += '<div style="padding:10px 12px;background:var(--surface2);border-radius:10px;margin-bottom:10px;">';
+      html += '<div style="font-size:12px;font-weight:700;color:var(--text);margin-bottom:6px;">📈 Trend จากข้อมูลจริง ('+wtSince.length+' records)</div>';
+
+      // Weekly rate
+      html += '<div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px;">';
+      html += '<span style="color:var(--text3);">อัตราเปลี่ยนแปลง</span>';
+      html += '<span style="font-weight:700;color:'+trendColor+';">'+(weeklyRate > 0 ? '+' : '')+weeklyRate+' กก./สัปดาห์</span></div>';
+
+      // On-track check
+      if (needDir) {
+        var onTrack = (needDir === 'ลด' && weeklyRate < -0.1) || (needDir === 'เพิ่ม' && weeklyRate > 0.1);
+        var stagnant = Math.abs(weeklyRate) < 0.1;
+        html += '<div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px;">';
+        html += '<span style="color:var(--text3);">On-track?</span>';
+        if (stagnant)  html += '<span style="font-weight:700;color:#eab308;">⚠️ น้ำหนักไม่เปลี่ยน</span>';
+        else if (onTrack) html += '<span style="font-weight:700;color:var(--green);">✅ ไปในทิศทางที่ถูก</span>';
+        else           html += '<span style="font-weight:700;color:var(--accent);">❌ ทิศทางผิด — ต้อง'+needDir+'</span>';
+        html += '</div>';
+      }
+
+      // Projected ETA
+      if (projWeeksLeft !== null && projReachDate) {
+        var etaColor = projWeeksLeft <= (weeksRem) ? 'var(--green)' : '#eab308';
+        html += '<div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px;">';
+        html += '<span style="color:var(--text3);">คาดถึงเป้าใน</span>';
+        html += '<span style="font-weight:700;color:'+etaColor+';">'+projWeeksLeft+' สัปดาห์ ('+projReachDate+')</span></div>';
+        if (projWeeksLeft > weeksRem) {
+          html += '<div style="font-size:11px;color:var(--accent);margin-top:4px;">⚠️ trend ปัจจุบันอาจไม่ทันครบ '+target.duration+' สัปดาห์</div>';
+        }
+      } else if (weeklyRate !== null && Math.abs(weeklyRate) < 0.1 && tgtWeight && latestW && Math.abs(latestW - tgtWeight) > 0.5) {
+        html += '<div style="font-size:11px;color:#eab308;margin-top:4px;">⚠️ น้ำหนักนิ่ง — ลองปรับแคลอรี่หรือเพิ่ม workout</div>';
+      }
+      html += '</div>';
+    } else if (wtSince.length === 1) {
+      html += '<div style="font-size:12px;color:var(--text3);text-align:center;padding:8px;margin-bottom:10px;">📊 บันทึกน้ำหนักอย่างน้อย 2 ครั้งเพื่อดู trend</div>';
+    } else if (wtSince.length === 0) {
+      html += '<div style="font-size:12px;color:var(--text3);text-align:center;padding:8px;background:var(--surface2);border-radius:10px;margin-bottom:10px;">⚖️ ยังไม่มีข้อมูลน้ำหนักตั้งแต่เริ่ม tracking — ไปบันทึกที่แท็บ ⚖️ น้ำหนัก</div>';
+    }
+
+    // ── D: Final result (when over) ──
+    if (isOver && (changeInPeriod !== null || tgtWeight)) {
+      html += '<div style="padding:12px;background:rgba(34,197,94,0.08);border:1px solid rgba(34,197,94,0.25);border-radius:12px;margin-bottom:10px;">';
+      html += '<div style="font-size:13px;font-weight:700;color:var(--green);margin-bottom:8px;">🏁 Result — ครบ '+target.duration+' สัปดาห์</div>';
+      if (changeInPeriod !== null) {
+        var sign = changeInPeriod > 0 ? '+' : '';
+        html += '<div style="font-size:12px;color:var(--text2);margin-bottom:4px;">น้ำหนักเปลี่ยน: <b>'+sign+changeInPeriod+' กก.</b></div>';
+      }
+      if (latestW && tgtWeight) {
+        var finalGap = parseFloat((latestW - tgtWeight).toFixed(1));
+        if (finalGap <= 0) {
+          html += '<div style="font-size:13px;font-weight:700;color:var(--green);">🎯 ✅ ถึงเป้าหมายแล้ว!</div>';
+        } else {
+          html += '<div style="font-size:12px;color:var(--accent);">ยังห่างเป้า '+finalGap+' กก. — แนะนำตั้งเป้ารอบใหม่</div>';
+        }
+      }
       html += '</div>';
     }
 
     // Reset button
-    html += '<button onclick="resetTargetStartDate()" style="margin-top:10px;width:100%;padding:6px;background:none;border:1px solid var(--border);border-radius:8px;color:var(--text3);font-family:inherit;font-size:11px;cursor:pointer;">🔄 รีเซ็ตวันเริ่มต้นใหม่</button>';
+    html += '<button onclick="resetTargetStartDate()" style="width:100%;padding:6px;background:none;border:1px solid var(--border);border-radius:8px;color:var(--text3);font-family:inherit;font-size:11px;cursor:pointer;">🔄 รีเซ็ตวันเริ่มต้นใหม่</button>';
     html += '</div>';
   }
 
@@ -3020,23 +3134,7 @@ function renderTargetDashboard() {
       '<div style="font-size:10px;color:var(--text3);margin-top:6px;">ปกติ 1-9 | เสี่ยงปานกลาง 10-14 | สูง 15+ (ความเสี่ยงโรคเมตาบอลิก/เบาหวาน/หัวใจ)</div></div>';
   }
 
-  // ── 6. Timeline ──
-  if (currWeight && tgtWeight && currWeight !== tgtWeight) {
-    var diff = Math.abs(currWeight-tgtWeight);
-    var dir  = currWeight>tgtWeight?'ลด':'เพิ่ม';
-    var estWeeks = Math.ceil(diff/0.5);
-    var defCal   = dir==='ลด'?500:300;
-    html += '<div class="target-metric-card">'+
-      '<div class="target-metric-header"><span class="target-metric-title">⏳ Timeline ประมาณการ</span></div>'+
-      '<div class="timeline-card"><div class="timeline-dot" style="background:var(--accent)"></div>'+
-      '<div class="timeline-text">ต้อง<b>'+dir+'น้ำหนัก '+diff.toFixed(1)+' กก.</b> ภายใน <b style="color:var(--accent)">'+target.duration+' สัปดาห์</b><br>'+
-      '<span style="color:var(--text3)">อัตราที่แนะนำ 0.5 กก./สัปดาห์ → ใช้เวลา ~<b style="color:var(--green)">'+estWeeks+' สัปดาห์</b></span></div></div>'+
-      '<div class="timeline-card"><div class="timeline-dot" style="background:var(--blue)"></div>'+
-      '<div class="timeline-text">ขาดดุลแคลที่แนะนำ: <b style="color:var(--blue)">~'+defCal+' kcal/วัน</b><br>'+
-      '<span style="color:var(--text3)">TDEE (maintenance) ~'+(S.goals.cal+(dir==='ลด'?defCal:-defCal))+' kcal → เป้าที่ควรกิน: <b style="color:var(--green)">'+S.goals.cal+' kcal/วัน</b> ✅</span></div></div></div>';
-  }
-
-  // ── 7. Summary call-to-action ──
+  // ── 6. Summary call-to-action ──
   var levelMap2 = {beginner:'มือใหม่',intermediate:'ปานกลาง',advanced:'ขั้นสูง'};
   html += '<div class="card" style="background:rgba(249,115,22,0.06);border-color:rgba(249,115,22,0.2);">'+
     '<div style="font-size:12px;color:var(--text2);line-height:1.9;">'+
