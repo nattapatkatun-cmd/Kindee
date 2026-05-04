@@ -3855,7 +3855,7 @@ function syncWeightNow() {
 function runWeightAnalysis() {
   var resultEl = document.getElementById('wt-analysis-result');
   var today = new Date().toISOString().split('T')[0];
-  var CACHE_VER = 'v5'; // bumped: classification, consistency gate, data quality gate, forecast physio-only
+  var CACHE_VER = 'v5b'; // bumped: classification, consistency gate, data quality gate, forecast physio-only
 
   // Restore from cache only if same day AND same version
   var cached = JSON.parse(localStorage.getItem('gd_wt_analysis') || 'null');
@@ -3898,7 +3898,8 @@ function buildAnalysisHTML(recent) {
   var n = recent.length;
   var lastW = recent[n-1].weight;
   var firstW = recent[0].weight;
-  var daySpan = Math.max(1, Math.round((new Date(recent[n-1].date)-new Date(recent[0].date))/86400000));
+  // daySpan = today - firstWeightDate (inclusive of today, matches calDays which goes to todayStr)
+  var daySpan = Math.max(1, Math.round((new Date(todayStr)-new Date(recent[0].date))/86400000) + 1);
   var isLimited = n < 7;
 
   // Trend via linear regression (last 7 or all if fewer)
