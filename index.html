@@ -3898,8 +3898,10 @@ function buildAnalysisHTML(recent) {
   var n = recent.length;
   var lastW = recent[n-1].weight;
   var firstW = recent[0].weight;
-  // daySpan = today - firstWeightDate (inclusive of today, matches calDays which goes to todayStr)
-  var daySpan = Math.max(1, Math.round((new Date(todayStr)-new Date(recent[0].date))/86400000) + 1);
+  var cutoffStr = recent[0].date;
+  var todayStr  = new Date().toISOString().split('T')[0];
+  // daySpan = today - firstWeightDate + 1 (inclusive, matches calDays range)
+  var daySpan = Math.max(1, Math.round((new Date(todayStr)-new Date(cutoffStr))/86400000) + 1);
   var isLimited = n < 7;
 
   // Trend via linear regression (last 7 or all if fewer)
@@ -3907,8 +3909,6 @@ function buildAnalysisHTML(recent) {
   var trendPerWeek = _linReg(trendSrc);
 
   // Net cal data — cutoff = first weight date, today = todayStr
-  var cutoffStr = recent[0].date;
-  var todayStr  = new Date().toISOString().split('T')[0];
   var netByDate = {};
   (S.meals||[]).forEach(function(m){
     if(m.date>=cutoffStr&&m.date<=todayStr){
