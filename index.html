@@ -3855,7 +3855,7 @@ function syncWeightNow() {
 function runWeightAnalysis() {
   var resultEl = document.getElementById('wt-analysis-result');
   var today = new Date().toISOString().split('T')[0];
-  var CACHE_VER = 'v5d'; // bumped: safer inconsistent forecast + wording fixes
+  var CACHE_VER = 'v6_conflict_reconcile'; // bumped: complete-data conflict reconciliation + no false missing-data messaging
 
   // Restore from cache only if same day AND same version
   var cached = JSON.parse(localStorage.getItem('gd_wt_analysis') || 'null');
@@ -4007,6 +4007,14 @@ function buildAnalysisHTML(recent) {
     }
   }
 
+  // Reconciliation metrics: compare scale trend vs calorie-model expectation.
+  // expectedTrendFromCalories: negative = expected loss, positive = expected gain.
+  var expectedTrendFromCalories = actualDeficit!==null ? -(actualDeficit*7/7700) : null;
+  var trendMismatchKgWeek = (expectedTrendFromCalories!==null) ? (trendPerWeek - expectedTrendFromCalories) : null;
+  var trendMismatchKcalDay = (trendMismatchKgWeek!==null) ? Math.round(trendMismatchKgWeek*7700/7) : null;
+  var completeData = (n>=7 && calDays.length>=Math.min(daySpan,7) && logRate>=0.8 && !dataError);
+  var conflictIsComplete = false;
+
   // [1] CLASSIFICATION (trend-based, not status vs target)
   var trendClass, trendClassColor;
   if(trendPerWeek>0.25)       { trendClass='Gaining ⬆️';   trendClassColor='#ef4444'; }
@@ -4035,8 +4043,9 @@ function buildAnalysisHTML(recent) {
     statusNote='Log rate '+Math.round(rawLogRate*100)+'% — อาจมี duplicate logs';
     suppressRecommend=true;
   } else if(inconsistent){
-    statusLabel='Inconsistent Data ⚠️'; statusColor='#f59e0b';
-    statusNote='Trend กับ Deficit สวนทางกัน — แก้ tracking ก่อน';
+    conflictIsComplete = completeData;
+    statusLabel=completeData ? 'Signal Conflict ⚠️' : 'Inconsistent Data ⚠️'; statusColor='#f59e0b';
+    statusNote=completeData ? 'ข้อมูลครบ แต่ Scale trend กับ Calorie model ไม่ align' : 'Trend กับ Deficit สวนทางกัน — ตรวจความครบ/ความแม่นของข้อมูล';
     suppressRecommend=true;
   } else if(isLimited){
     statusLabel='Limited Data 📊'; statusColor='#8b5cf6';
@@ -4102,6 +4111,10 @@ function buildAnalysisHTML(recent) {
     targetW:targetW, durationWks:durationWks, isOnTrack:isOnTrack,
     forecast7d:forecast7d, aiEligible:aiEligible,
     confidencePct:confidencePct, // [6] fix: was missing
+    completeData:completeData, conflictIsComplete:conflictIsComplete,
+    expectedTrendFromCalories: expectedTrendFromCalories,
+    trendMismatchKgWeek: trendMismatchKgWeek,
+    trendMismatchKcalDay: trendMismatchKcalDay,
     statusLabel:statusLabel, inconsistent:inconsistent, dataError:dataError,
     suppressRecommend:suppressRecommend, recent:recent
   };
@@ -4123,26 +4136,29 @@ function buildAnalysisHTML(recent) {
   html+='<div style="font-size:9px;color:var(--text3);">'+n+' pts, '+Math.round(logRate*100)+'% log</div>';
   html+='</div></div></div>';
 
-  // [4] ACTION SUPPRESSION: show fix-tracking banner instead of metrics
+  // [4] ACTION SUPPRESSION: distinguish missing/error vs complete-data signal conflict.
   if(dataError||inconsistent){
     html+='<div style="padding:13px;background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.25);border-radius:14px;margin-bottom:12px;">';
-    html+='<div style="font-size:13px;font-weight:700;color:#ef4444;margin-bottom:8px;">'+(dataError?'🔴 Data Error Detected':'⚠️ Inconsistent Data Detected')+'</div>';
+    html+='<div style="font-size:13px;font-weight:700;color:#ef4444;margin-bottom:8px;">'+(dataError?'🔴 Data Error Detected':(completeData?'⚠️ Signal Conflict — Data Complete':'⚠️ Inconsistent Data Detected'))+'</div>';
     html+='<div style="font-size:12px;color:var(--text2);line-height:1.8;">';
     if(dataError){
       html+='Log rate '+Math.round(rawLogRate*100)+'% — สูงกว่า 100% = มี duplicate หรือ double-count<br>';
       html+='• ตรวจสอบว่ามีบันทึกซ้ำในวันเดียวกันไหม<br>';
       html+='• ลบ/แก้รายการที่ซ้ำก่อน แล้ว วิเคราะห์ใหม่';
     } else {
-      html+='Trend: '+(trendPerWeek>=0?'+':'')+trendPerWeek.toFixed(2)+' กก./สัปดาห์ ↑<br>';
-      html+='Deficit คาด: '+Math.round(actualDeficit)+' kcal/วัน (ควรลดน้ำหนัก แต่น้ำหนักขึ้น)<br><br>';
+      html+='ข้อมูลครบ: น้ำหนัก '+n+' จุด / calorie log '+Math.round(logRate*100)+'%<br>';
+      html+='Scale trend: '+(trendPerWeek>=0?'+':'')+trendPerWeek.toFixed(2)+' กก./สัปดาห์<br>';
+      html+='Calorie model คาด: '+(expectedTrendFromCalories>=0?'+':'')+expectedTrendFromCalories.toFixed(2)+' กก./สัปดาห์ จาก deficit ~'+Math.round(actualDeficit)+' kcal/วัน<br>';
+      html+='Mismatch: '+(trendMismatchKgWeek>=0?'+':'')+trendMismatchKgWeek.toFixed(2)+' กก./สัปดาห์ (~'+(trendMismatchKcalDay>=0?'+':'')+trendMismatchKcalDay+' kcal/วัน)<br><br>';
+      html+='<strong>ตีความ:</strong> ข้อมูลไม่ได้ขาด แต่ผลลัพธ์สองชุดไม่สอดคล้องกัน จึงยังไม่ควรให้ calorie action อัตโนมัติ<br><br>';
       html+='<strong>สาเหตุที่เป็นไปได้:</strong><br>';
-      html+='1. Intake underestimate — กินจริงมากกว่าที่บันทึก<br>';
-      html+='2. TDEE overestimate — '+trueTDEE+' kcal อาจสูงเกินจริง<br>';
-      html+='3. Logging inconsistency (log rate '+Math.round(rawLogRate*100)+'%)<br><br>';
+      html+='1. Water/glycogen retention — น้ำหนักขึ้นชั่วคราวจากเค็ม คาร์บ เวทหนัก นอนน้อย<br>';
+      html+='2. Intake underestimate — hidden kcal จากน้ำมัน ซอส ของจุกจิก หรือ portion<br>';
+      html+='3. Burn/TDEE overestimate — workout burn หรือ TRUE TDEE สูงเกินจริง<br><br>';
       html+='<strong>สิ่งที่ต้องทำ:</strong><br>';
-      html+='• ❌ อย่าปรับ calorie target ตอนนี้<br>';
-      html+='• ✅ Track อาหารให้ครบ + แม่นยำ 5-7 วัน<br>';
-      html+='• ✅ Recalculate หลังจากนั้น';
+      html+='• ❌ อย่าปรับ calorie target จากผลนี้ทันที<br>';
+      html+='• ✅ คง target เดิม และ verify hidden kcal / burn / sodium 5-7 วัน<br>';
+      html+='• ✅ Recalculate เมื่อ scale trend กับ calorie model เริ่ม align';
     }
     html+='</div></div>';
   }
@@ -4175,7 +4191,8 @@ function buildAnalysisHTML(recent) {
   html+='• Avg intake: <strong>'+(calDays.length>0?Math.round(avgIntake)+' kcal':'—')+'</strong><br>';
   html+='• Avg burn (workout): <strong>'+(calDays.length>0?Math.round(avgBurn)+' kcal':'0 kcal (assumed)')+'</strong><br>';
   html+='• Net Cal: <strong>'+Math.round(avgNetCal)+' kcal</strong><br>';
-  html+='• Estimated Deficit: <strong>'+(actualDeficit!==null?Math.round(actualDeficit)+(inconsistent?' ⚠️ (ขัดกับ trend)':'')+' kcal/วัน':'—')+'</strong><br>';
+  html+='• Estimated Deficit: <strong>'+(actualDeficit!==null?Math.round(actualDeficit)+(inconsistent?' ⚠️ (ขัดกับ scale trend)':'')+' kcal/วัน':'—')+'</strong><br>';
+  if(expectedTrendFromCalories!==null)html+='• Expected trend from calories: <strong>'+(expectedTrendFromCalories>=0?'+':'')+expectedTrendFromCalories.toFixed(2)+' กก./สัปดาห์</strong><br>';
   if(requiredDeficit!==null)html+='• Deficit ที่ต้องการ: <strong>'+requiredDeficit+' kcal/วัน</strong>';
   html+='</div>';
 
@@ -4188,10 +4205,10 @@ function buildAnalysisHTML(recent) {
     html+='<div style="background:'+(forecastSuppressed?'rgba(234,179,8,0.08)':'rgba(59,130,246,0.08)')+';border:1px solid '+(forecastSuppressed?'rgba(234,179,8,0.28)':'rgba(59,130,246,0.25)')+';border-radius:12px;padding:10px 12px;margin-bottom:10px;">';
     html+='<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;">';
     html+='<div><div style="font-size:12px;color:var(--text2);">📅 FORECAST (7d)</div>';
-    html+='<div style="font-size:10px;color:var(--text3);">'+(forecastSuppressed?'not reliable — fix tracking first':'physiology-based estimate')+'</div></div>';
+    html+='<div style="font-size:10px;color:var(--text3);">'+(forecastSuppressed?'not action-ready — signal conflict':'physiology-based estimate')+'</div></div>';
     if(forecastSuppressed){
       html+='<span style="font-size:15px;font-weight:800;color:var(--yellow);white-space:nowrap;">Not reliable</span></div>';
-      html+='<div style="margin-top:8px;font-size:11px;color:var(--text3);">Calorie-only estimate: <strong style="color:var(--text2);">'+fSign+forecast7d+' กก./7d</strong> — ไม่ควรใช้ตัดสินใจจนกว่า trend กับ tracking จะ align</div>';
+      html+='<div style="margin-top:8px;font-size:11px;color:var(--text3);">Calorie-only estimate: <strong style="color:var(--text2);">'+fSign+forecast7d+' กก./7d</strong> — ใช้เป็นข้อมูลประกอบเท่านั้น จนกว่า scale trend กับ calorie model จะ align</div>';
     } else {
       html+='<span style="font-size:16px;font-weight:800;color:'+(fv<0?'var(--green)':'var(--red)')+';">'+fSign+forecast7d+' กก.</span></div>';
     }
@@ -4300,7 +4317,7 @@ function runAIWeightDeepDive() {
   var ft=window._fitnessTarget||{};
   var profile=S.profile||{};
   var wtSummary=(d.recent||[]).map(function(e){return e.date+': '+e.weight+'kg';}).join('\n');
-  var statusDesc=d.dataError?'Data Error':d.inconsistent?'Inconsistent Data':d.statusLabel||'Unknown';
+  var statusDesc=d.dataError?'Data Error':(d.inconsistent?(d.completeData?'Signal Conflict (Data Complete)':'Inconsistent Data'):d.statusLabel||'Unknown');
 
   var prompt='You are a weight loss coach. Use ONLY the numbers below. Do NOT recalculate.\n\n'
     +'User: '+(profile.age||'?')+'y '+(profile.gender||'?')+' '+(profile.weight||'?')+'kg '+(profile.height||'?')+'cm\n'
@@ -4321,13 +4338,13 @@ function runAIWeightDeepDive() {
     +'Weight data:\n'+wtSummary+'\n\n'
     +'IMPORTANT RULES:\n'
     +'1. Forecast ('+d.forecast7d+') = calorie-only model. If status is Inconsistent/Data Error, treat forecast as NOT reliable for action. Scale trend ('+( d.trendPerWeek!==undefined?(d.trendPerWeek>=0?'+':'')+d.trendPerWeek.toFixed(2):'' )+') is separate context.\n'
-    +'2. If status is Inconsistent Data or Data Error: do NOT recommend changing calorie target. Tell user to fix tracking first.\n'
+    +'2. If status is Signal Conflict/Data Complete: explicitly say data is complete, but scale trend and calorie model conflict. Do NOT say insufficient data. Do NOT recommend changing calorie target yet; recommend verifying hidden calories, workout burn, sodium/carbs/water retention. If Data Error, mention duplicate logs.\n'
     +'3. Use exact confidence: '+(d.confidencePct||'?')+'%\n\n'
     +'Respond in Thai. Structure:\n\n'
     +'**สถานะ:** '+statusDesc+' (Confidence '+(d.confidencePct||'?')+'%)\n\n'
     +'**TREND CONTEXT:**\n- Scale: '+(d.trendPerWeek!==undefined?(d.trendPerWeek>=0?'+':'')+d.trendPerWeek.toFixed(2):'')+' kg/week\n- Calorie-only forecast: '+(d.forecast7d||'?')+' kg/7d'+(d.suppressRecommend?' (not reliable for action)':'')+'\n\n'
     +(d.suppressRecommend
-      ? '**ISSUE:**\n1. [สาเหตุหลัก]\n2. [สาเหตุรอง]\n\n**NEXT STEP:**\n- '+(d.dataError?'ตรวจสอบ duplicate logs':'Track ให้ครบ 5-7 วัน แล้ว recalculate')+'\n- อย่าเปลี่ยน calorie target ก่อนจนกว่า data จะถูกต้อง\n\n'
+      ? '**ISSUE:**\n1. [สาเหตุหลัก]\n2. [สาเหตุรอง]\n\n**NEXT STEP:**\n- '+(d.dataError?'ตรวจสอบ duplicate logs':'ข้อมูลครบแล้ว — verify hidden kcal/burn/sodium 5-7 วัน แล้ว recalculate')+'\n- อย่าเปลี่ยน calorie target ก่อนจนกว่า data จะถูกต้อง\n\n'
       : '**CAUSE (ถ้ามีปัญหา):**\n1. ...\n\n**ACTION:**\n- Calories: '+(d.recommendedIntake?'ตั้งเป้า '+d.recommendedIntake+' kcal/วัน':'รักษา intake ปัจจุบัน')+'\n- พฤติกรรม: ...\n\n'
     )
     +'**EXPECTED:** '+(d.suppressRecommend?'ไม่ควร forecast จนกว่า data จะ consistent':'Forecast '+(d.forecast7d||'?')+' กก./สัปดาห์ (calorie-only)');
