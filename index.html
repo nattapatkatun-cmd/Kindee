@@ -3855,7 +3855,7 @@ function syncWeightNow() {
 function runWeightAnalysis() {
   var resultEl = document.getElementById('wt-analysis-result');
   var today = new Date().toISOString().split('T')[0];
-  var CACHE_VER = 'v5b'; // bumped: classification, consistency gate, data quality gate, forecast physio-only
+  var CACHE_VER = 'v5c'; // bumped: classification, consistency gate, data quality gate, forecast physio-only
 
   // Restore from cache only if same day AND same version
   var cached = JSON.parse(localStorage.getItem('gd_wt_analysis') || 'null');
@@ -3894,6 +3894,13 @@ function _linReg(entries) {
   return den===0 ? 0 : (num/den)*7;
 }
 
+// safeNum: prevent NaN from propagating into display/calculations
+function safeNum(v, fallback) {
+  if(fallback===undefined) fallback=0;
+  var n=Number(v);
+  return Number.isFinite(n)?n:fallback;
+}
+
 function buildAnalysisHTML(recent) {
   var n = recent.length;
   var lastW = recent[n-1].weight;
@@ -3916,18 +3923,18 @@ function buildAnalysisHTML(recent) {
       netByDate[m.date].intake+=(m.calories||0);
     }
   });
-  (S.workouts||[]).forEach(function(w){
+  (FT.workouts||[]).forEach(function(w){
     if(w.date>=cutoffStr&&w.date<=todayStr){
       netByDate[w.date]=netByDate[w.date]||{intake:0,burn:0};
-      netByDate[w.date].burn+=(w.calories_burned||0);
+      netByDate[w.date].burn+=(+w.calories_burned||0);
     }
   });
   var calDays = Object.keys(netByDate);
 
-  // [B3 DATA QUALITY] logRate: cap at 100% to catch duplicate logs
-  var rawLogRate = calDays.length / Math.max(daySpan, 1);
+  // [B3 DATA QUALITY] logRate: cap at 100%. safeNum guards against NaN if daySpan somehow 0.
+  var rawLogRate = safeNum(calDays.length / Math.max(daySpan, 1), 0);
   var logRate    = Math.min(rawLogRate, 1.0);
-  var dataError  = rawLogRate > 1.05; // >105% = likely duplicate logs
+  var dataError  = rawLogRate > 1.05;
 
   var avgIntake=0, avgBurn=0;
   if(calDays.length>0){
@@ -3947,10 +3954,10 @@ function buildAnalysisHTML(recent) {
     calVariance=Math.sqrt(netVals.reduce(function(s,x){return s+Math.pow(x-avgNet,2);},0)/netVals.length);
   }
 
-  // Weight variance
+  // Weight variance — safeNum guards NaN if weights array issues
   var weights=recent.map(function(e){return e.weight;});
-  var avgW=weights.reduce(function(s,x){return s+x;},0)/weights.length;
-  var wVariance=Math.sqrt(weights.reduce(function(s,x){return s+Math.pow(x-avgW,2);},0)/weights.length);
+  var avgW=safeNum(weights.reduce(function(s,x){return s+x;},0)/weights.length, 0);
+  var wVariance=safeNum(Math.sqrt(weights.reduce(function(s,x){return s+Math.pow(x-avgW,2);},0)/weights.length), 0);
 
   // Reverse TDEE
   var trueTDEE=null, tdeeIsEstimate=false;
@@ -4048,19 +4055,21 @@ function buildAnalysisHTML(recent) {
   var isOnTrack = !suppressRecommend && statusLabel.indexOf('On Track')>=0;
 
   // [6] CONFIDENCE — penalize inconsistency + data error + low log
-  var confBase=50+Math.min(n,14)*2+Math.round(logRate*15)-Math.round(wVariance*8);
+  var confBase=50+Math.min(n,14)*2+Math.round(safeNum(logRate,0)*15)-Math.round(safeNum(wVariance,0)*8);
   if(calDays.length<3) confBase-=20;
   if(isLimited)        confBase=Math.min(confBase,55);
   if(tdeeIsEstimate)   confBase=Math.min(confBase,60);
+  if(trueTDEE===null)  confBase=Math.min(confBase,50); // no TDEE = low confidence
   if(inconsistent)     confBase-=20;
   if(dataError)        confBase=Math.min(confBase,40);
-  var confidencePct=Math.max(20,Math.min(85,confBase));
+  var confidencePct=Math.max(20,Math.min(85,safeNum(confBase,30)));
 
-  // Intake reliability
+  // Intake reliability — cap ≤50 when TDEE missing (data core is incomplete)
   var intakeReliability=100;
   if(calVariance>600)intakeReliability-=40;else if(calVariance>300)intakeReliability-=20;
   if(logRate<0.5)intakeReliability-=30;else if(logRate<0.7)intakeReliability-=15;
   if(dataError)intakeReliability=Math.min(intakeReliability,30);
+  if(trueTDEE===null)intakeReliability=Math.min(intakeReliability,50);
   intakeReliability=Math.max(0,intakeReliability);
 
   // Causes / Optimizations — only when not suppressed
