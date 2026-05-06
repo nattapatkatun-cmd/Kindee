@@ -3931,157 +3931,538 @@ function buildAnalysisHTML(recent) {
   });
   var calDays = Object.keys(netByDate);
 
-  // [B3 DATA QUALITY] logRate: cap at 100%. safeNum guards against NaN if daySpan somehow 0.
-  var rawLogRate = safeNum(calDays.length / Math.max(daySpan, 1), 0);
-  var logRate    = Math.min(rawLogRate, 1.0);
-  var dataError  = rawLogRate > 1.05;
+// =========================
+// [B3] DATA QUALITY
+// =========================
 
-  var avgIntake=0, avgBurn=0;
-  if(calDays.length>0){
-    avgIntake=calDays.reduce(function(s,d){return s+netByDate[d].intake;},0)/calDays.length;
-    avgBurn  =calDays.reduce(function(s,d){return s+netByDate[d].burn;},0)/calDays.length;
+var rawLogRate = calDays.length / Math.max(daySpan, 1);
+var logRate = Math.min(rawLogRate, 1.0);
+var dataError = rawLogRate > 1.05;
+
+// =========================
+// Average Intake / Burn
+// =========================
+
+var avgIntake = 0;
+var avgBurn = 0;
+
+if(calDays.length > 0){
+
+  avgIntake =
+    calDays.reduce(function(s,d){
+      return s + netByDate[d].intake;
+    },0) / calDays.length;
+
+  avgBurn =
+    calDays.reduce(function(s,d){
+      return s + netByDate[d].burn;
+    },0) / calDays.length;
+
+} else {
+
+  avgIntake =
+    S.goals && S.goals.cal
+      ? S.goals.cal
+      : 0;
+
+  avgBurn = 0;
+}
+
+var avgNetCal = avgIntake - avgBurn;
+
+// =========================
+// Intake Variance
+// =========================
+
+var calVariance = 0;
+
+if(calDays.length > 1){
+
+  var netVals = calDays.map(function(d){
+    return netByDate[d].intake - netByDate[d].burn;
+  });
+
+  var avgNet =
+    netVals.reduce(function(s,x){
+      return s + x;
+    },0) / netVals.length;
+
+  calVariance = Math.sqrt(
+    netVals.reduce(function(s,x){
+      return s + Math.pow(x - avgNet, 2);
+    },0) / netVals.length
+  );
+}
+
+// =========================
+// Weight Variance
+// =========================
+
+var weights = recent.map(function(e){
+  return e.weight;
+});
+
+var avgW =
+  weights.length
+    ? weights.reduce(function(s,x){
+        return s + x;
+      },0) / weights.length
+    : 0;
+
+var wVariance =
+  weights.length
+    ? Math.sqrt(
+        weights.reduce(function(s,x){
+          return s + Math.pow(x - avgW, 2);
+        },0) / weights.length
+      )
+    : 0;
+
+// =========================
+// Water Noise Detection
+// =========================
+
+var likelyWaterNoise = false;
+
+if(
+  wVariance > 0.7 &&
+  Math.abs(trendPerWeek) < 0.3
+){
+  likelyWaterNoise = true;
+}
+
+// =========================
+// TRUE TDEE
+// =========================
+
+var trueTDEE = null;
+var tdeeIsEstimate = false;
+
+if(calDays.length >= 3 && daySpan >= 5){
+
+  // weight trend
+  var rawTrendKgPerDay =
+    (lastW - firstW) / daySpan;
+
+  // ignore tiny fluctuations
+  if(Math.abs(rawTrendKgPerDay) < 0.03){
+    rawTrendKgPerDay = 0;
+  }
+
+  // cap unrealistic trend
+  rawTrendKgPerDay =
+    Math.max(-0.18,
+    Math.min(0.18, rawTrendKgPerDay));
+
+  // wearable overestimation protection
+  var effectiveBurn = avgBurn * 0.5;
+
+  var estimatedTDEE =
+    avgIntake +
+    effectiveBurn -
+    (rawTrendKgPerDay * 7700);
+
+  // physiological clamp
+  var p = S.profile || {};
+
+  if(
+    p.weight &&
+    p.height &&
+    p.age &&
+    p.gender
+  ){
+
+    var bmr =
+      p.gender === 'male'
+        ? 10 * parseFloat(p.weight)
+          + 6.25 * parseFloat(p.height)
+          - 5 * parseFloat(p.age)
+          + 5
+        : 10 * parseFloat(p.weight)
+          + 6.25 * parseFloat(p.height)
+          - 5 * parseFloat(p.age)
+          - 161;
+
+    var minTDEE = bmr * 1.2;
+    var maxTDEE = bmr * 1.7;
+
+    estimatedTDEE =
+      Math.max(minTDEE,
+      Math.min(maxTDEE, estimatedTDEE));
+  }
+
+  trueTDEE = Math.round(estimatedTDEE);
+
+  tdeeIsEstimate =
+    calDays.length < 5 ||
+    daySpan < 10 ||
+    wVariance > 0.8;
+
+} else if(daySpan >= 5){
+
+  var ft0 = window._fitnessTarget || {};
+
+  var actMult = {
+    sedentary:1.2,
+    light:1.375,
+    moderate:1.55,
+    active:1.725,
+    very_active:1.9
+  };
+
+  var mult =
+    actMult[ft0.level] || 1.375;
+
+  var p = S.profile || {};
+
+  if(
+    p.weight &&
+    p.height &&
+    p.age &&
+    p.gender
+  ){
+
+    var bmr =
+      p.gender === 'male'
+        ? 10 * parseFloat(p.weight)
+          + 6.25 * parseFloat(p.height)
+          - 5 * parseFloat(p.age)
+          + 5
+        : 10 * parseFloat(p.weight)
+          + 6.25 * parseFloat(p.height)
+          - 5 * parseFloat(p.age)
+          - 161;
+
+    trueTDEE = Math.round(bmr * mult);
+
+    tdeeIsEstimate = true;
+  }
+}
+
+// =========================
+// Actual Deficit
+// =========================
+
+var actualDeficit =
+  trueTDEE !== null
+    ? Math.round(trueTDEE - avgNetCal)
+    : null;
+
+// prevent absurd values
+if(actualDeficit !== null){
+
+  actualDeficit =
+    Math.max(-1200,
+    Math.min(1200, actualDeficit));
+}
+
+// =========================
+// Fitness Target
+// =========================
+
+var ft = window._fitnessTarget || {};
+
+var targetW =
+  ft.weight
+    ? parseFloat(ft.weight)
+    : null;
+
+var durationWks =
+  ft.duration
+    ? parseFloat(ft.duration)
+    : null;
+
+var requiredWeeklyLoss =
+  (
+    targetW !== null &&
+    durationWks > 0 &&
+    lastW > targetW
+  )
+    ? (targetW - lastW) / durationWks
+    : null;
+
+var requiredDeficit =
+  requiredWeeklyLoss !== null
+    ? Math.round(
+        Math.abs(requiredWeeklyLoss)
+        * 7700 / 7
+      )
+    : null;
+
+var recommendedIntake =
+  (
+    trueTDEE !== null &&
+    requiredDeficit !== null
+  )
+    ? Math.round(
+        trueTDEE - requiredDeficit
+      )
+    : null;
+
+// safety floor
+if(recommendedIntake !== null){
+
+  recommendedIntake =
+    Math.max(
+      S.profile &&
+      S.profile.gender === 'male'
+        ? 1500
+        : 1200,
+      recommendedIntake
+    );
+}
+
+// =========================
+// Forecast
+// =========================
+
+var forecast7d = null;
+
+if(actualDeficit !== null){
+
+  var projected =
+    -(actualDeficit * 7 / 7700);
+
+  // realistic clamp
+  projected =
+    Math.max(-1.0,
+    Math.min(1.0, projected));
+
+  forecast7d =
+    projected.toFixed(2);
+}
+
+var forecastLabel =
+  'physiology-based forecast';
+
+// =========================
+// Trend Context
+// =========================
+
+var trendContextNote = '';
+
+if(forecast7d !== null){
+
+  var fv = parseFloat(forecast7d);
+  var tv = trendPerWeek;
+
+  if(Math.abs(tv - fv) > 0.2){
+
+    trendContextNote =
+      tv > 0.1
+        ? 'น้ำหนักขึ้นจาก water retention / sodium / glycogen'
+        : 'น้ำหนักลงเร็วจาก water drop หรือ glycogen depletion';
+  }
+}
+
+// =========================
+// Trend Classification
+// =========================
+
+var trendClass;
+var trendClassColor;
+
+if(trendPerWeek > 0.25){
+
+  trendClass = 'Gaining ⬆️';
+  trendClassColor = '#ef4444';
+
+} else if(trendPerWeek >= -0.25){
+
+  trendClass = 'Plateau ➡️';
+  trendClassColor = '#f59e0b';
+
+} else {
+
+  trendClass = 'Losing ⬇️';
+  trendClassColor = '#22c55e';
+}
+
+// =========================
+// Consistency Gate
+// =========================
+
+var inconsistent = false;
+
+if(actualDeficit !== null && !dataError){
+
+  var trendGaining =
+    trendPerWeek > 0.25;
+
+  var trendLosing =
+    trendPerWeek < -0.25;
+
+  var deficitPositive =
+    actualDeficit > 400;
+
+  var deficitNegative =
+    actualDeficit < -400;
+
+  if(
+    (trendGaining && deficitPositive) ||
+    (trendLosing && deficitNegative)
+  ){
+    inconsistent = true;
+  }
+}
+
+// =========================
+// Status Logic
+// =========================
+
+var statusLabel;
+var statusColor;
+var statusNote = '';
+
+var suppressRecommend = false;
+
+if(dataError){
+
+  statusLabel = 'Data Error 🔴';
+  statusColor = '#ef4444';
+
+  statusNote =
+    'Log rate '
+    + Math.round(rawLogRate * 100)
+    + '% — duplicate logs detected';
+
+  suppressRecommend = true;
+
+} else if(likelyWaterNoise){
+
+  statusLabel = 'Water Fluctuation 💧';
+  statusColor = '#38bdf8';
+
+  statusNote =
+    'น้ำหนักแกว่งจากน้ำ/glycogen มากกว่า fat trend';
+
+  suppressRecommend = true;
+
+} else if(inconsistent){
+
+  statusLabel = 'Signal Conflict ⚠️';
+  statusColor = '#f59e0b';
+
+  statusNote =
+    'Scale trend และ calorie model ไม่ align';
+
+  suppressRecommend = true;
+
+} else if(isLimited){
+
+  statusLabel = 'Limited Data 📊';
+  statusColor = '#8b5cf6';
+
+  statusNote =
+    'ข้อมูลยังไม่เพียงพอ';
+
+} else {
+
+  var isOnTrack = false;
+
+  var threshold =
+    requiredWeeklyLoss !== null
+      ? requiredWeeklyLoss * 0.7
+      : -0.25;
+
+  isOnTrack =
+    trendPerWeek <= threshold;
+
+  if(isOnTrack){
+
+    statusLabel = 'On Track ✅';
+    statusColor = '#22c55e';
+
+  } else if(trendPerWeek < -0.25){
+
+    statusLabel = 'Slow Progress ⚠️';
+    statusColor = '#f59e0b';
+
+  } else if(trendPerWeek <= 0.25){
+
+    statusLabel = 'Plateau ➡️';
+    statusColor = '#f59e0b';
+
   } else {
-    avgIntake=S.goals&&S.goals.cal?S.goals.cal:0;
-    avgBurn=0;
+
+    statusLabel = 'Gaining ⬆️';
+    statusColor = '#ef4444';
   }
-  var avgNetCal=avgIntake-avgBurn;
+}
 
-  // Intake variance
-  var calVariance=0;
-  if(calDays.length>1){
-    var netVals=calDays.map(function(d){return netByDate[d].intake-netByDate[d].burn;});
-    var avgNet=netVals.reduce(function(s,x){return s+x;},0)/netVals.length;
-    calVariance=Math.sqrt(netVals.reduce(function(s,x){return s+Math.pow(x-avgNet,2);},0)/netVals.length);
-  }
+// =========================
+// Final Flags
+// =========================
 
-  // Weight variance — safeNum guards NaN if weights array issues
-  var weights=recent.map(function(e){return e.weight;});
-  var avgW=safeNum(weights.reduce(function(s,x){return s+x;},0)/weights.length, 0);
-  var wVariance=safeNum(Math.sqrt(weights.reduce(function(s,x){return s+Math.pow(x-avgW,2);},0)/weights.length), 0);
+var isOnTrack =
+  !suppressRecommend &&
+  statusLabel.indexOf('On Track') >= 0;
 
-  // Reverse TDEE
-  var trueTDEE=null, tdeeIsEstimate=false;
-  if(calDays.length>=3&&daySpan>=5){
-    trueTDEE=Math.round(avgIntake-(lastW-firstW)*7700/daySpan);
-    tdeeIsEstimate=calDays.length<5||daySpan<10;
-  } else if(daySpan>=5){
-    var ft0=window._fitnessTarget||{};
-    var actMult={sedentary:1.2,light:1.375,moderate:1.55,active:1.725,very_active:1.9};
-    var mult=actMult[ft0.level]||1.375;
-    var p=S.profile||{};
-    if(p.weight&&p.height&&p.age&&p.gender){
-      var bmr=p.gender==='male'
-        ?10*parseFloat(p.weight)+6.25*parseFloat(p.height)-5*parseFloat(p.age)+5
-        :10*parseFloat(p.weight)+6.25*parseFloat(p.height)-5*parseFloat(p.age)-161;
-      trueTDEE=Math.round(bmr*mult); tdeeIsEstimate=true;
-    }
-  }
+// =========================
+// Confidence
+// =========================
 
-  // actualDeficit = TDEE - avgNetCal (positive = losing, negative = gaining)
-  var actualDeficit=trueTDEE!==null?trueTDEE-avgNetCal:null;
+var confBase =
+  50 +
+  Math.min(n,14) * 2 +
+  Math.round(logRate * 15) -
+  Math.round(wVariance * 6);
 
-  // Fitness target
-  var ft=window._fitnessTarget||{};
-  var targetW    =ft.weight?parseFloat(ft.weight):null;
-  var durationWks=ft.duration?parseFloat(ft.duration):null;
-  var requiredWeeklyLoss=(targetW!==null&&durationWks>0&&lastW>targetW)
-    ?(targetW-lastW)/durationWks:null;
-  var requiredDeficit=requiredWeeklyLoss!==null
-    ?Math.round(Math.abs(requiredWeeklyLoss)*7700/7):null;
-  var recommendedIntake=(trueTDEE!==null&&requiredDeficit!==null)
-    ?Math.round(trueTDEE-requiredDeficit):null;
+if(calDays.length < 3)
+  confBase -= 20;
 
-  // [5] FORECAST = physio only, always. trend = context card only.
-  // forecast = -(deficit * 7 / 7700); negative = weight loss
-  var forecast7d=null;
-  var forecastLabel='calorie-based forecast';
-  if(actualDeficit!==null){
-    forecast7d=(-(actualDeficit*7/7700)).toFixed(2);
-  }
-  // trend context card label
-  var trendContextNote='';
-  if(forecast7d!==null){
-    var fv=parseFloat(forecast7d), tv=trendPerWeek;
-    if(Math.abs(tv-fv)>0.15){
-      trendContextNote=tv>0.1?'น้ำหนักขึ้น — อาจมี water retention หรือ logging ผิด':'น้ำหนักลงเร็วกว่าที่คาด — อาจมี water drop หรือ glycogen';
-    }
-  }
+if(isLimited)
+  confBase = Math.min(confBase,55);
 
-  // Reconciliation metrics: compare scale trend vs calorie-model expectation.
-  // expectedTrendFromCalories: negative = expected loss, positive = expected gain.
-  var expectedTrendFromCalories = actualDeficit!==null ? -(actualDeficit*7/7700) : null;
-  var trendMismatchKgWeek = (expectedTrendFromCalories!==null) ? (trendPerWeek - expectedTrendFromCalories) : null;
-  var trendMismatchKcalDay = (trendMismatchKgWeek!==null) ? Math.round(trendMismatchKgWeek*7700/7) : null;
-  var completeData = (n>=7 && calDays.length>=Math.min(daySpan,7) && logRate>=0.8 && !dataError);
-  var conflictIsComplete = false;
+if(tdeeIsEstimate)
+  confBase = Math.min(confBase,65);
 
-  // [1] CLASSIFICATION (trend-based, not status vs target)
-  var trendClass, trendClassColor;
-  if(trendPerWeek>0.25)       { trendClass='Gaining ⬆️';   trendClassColor='#ef4444'; }
-  else if(trendPerWeek>=-0.25){ trendClass='Plateau ➡️';   trendClassColor='#f59e0b'; }
-  else                         { trendClass='Losing ⬇️';   trendClassColor='#22c55e'; }
+if(trueTDEE === null)
+  confBase = Math.min(confBase,50);
 
-  // [2] CONSISTENCY GATE
-  // sign(trend) vs sign(expected from deficit):
-  // expectedSign: deficit>0 → expect trend<0 (losing). deficit<0 → expect trend>0 (gaining)
-  var inconsistent=false;
-  if(actualDeficit!==null&&!dataError){
-    var trendGaining=trendPerWeek>0.25;
-    var trendLosing =trendPerWeek<-0.25;
-    var deficitPositive=actualDeficit>250;   // model says losing
-    var deficitNegative=actualDeficit<-250;  // model says gaining
-    if((trendGaining&&deficitPositive)||(trendLosing&&deficitNegative)){
-      inconsistent=true;
-    }
-  }
+if(inconsistent)
+  confBase -= 15;
 
-  // STATUS priority: DataError > Inconsistent > Limited > Classification-based
-  var statusLabel, statusColor, statusNote='';
-  var suppressRecommend=false;
-  if(dataError){
-    statusLabel='Data Error 🔴'; statusColor='#ef4444';
-    statusNote='Log rate '+Math.round(rawLogRate*100)+'% — อาจมี duplicate logs';
-    suppressRecommend=true;
-  } else if(inconsistent){
-    conflictIsComplete = completeData;
-    statusLabel=completeData ? 'Signal Conflict ⚠️' : 'Inconsistent Data ⚠️'; statusColor='#f59e0b';
-    statusNote=completeData ? 'ข้อมูลครบ แต่ Scale trend กับ Calorie model ไม่ align' : 'Trend กับ Deficit สวนทางกัน — ตรวจความครบ/ความแม่นของข้อมูล';
-    suppressRecommend=true;
-  } else if(isLimited){
-    statusLabel='Limited Data 📊'; statusColor='#8b5cf6';
-    statusNote='ข้อมูล '+n+' วัน — บันทึกต่อเนื่องเพื่อ accuracy สูงขึ้น';
-    suppressRecommend=false;
-  } else {
-    // Normal: compare trend vs target
-    var isOnTrack=false;
-    var threshold=requiredWeeklyLoss!==null?requiredWeeklyLoss*0.7:-0.25;
-    isOnTrack=trendPerWeek<=threshold;
-    if(isOnTrack){ statusLabel='On Track ✅'; statusColor='#22c55e'; }
-    else if(trendPerWeek<-0.25){ statusLabel='ลดช้า ⚠️'; statusColor='#f59e0b'; }
-    else if(trendPerWeek<=0.25){ statusLabel='Plateau ➡️'; statusColor='#f59e0b'; }
-    else { statusLabel='Gaining ⬆️'; statusColor='#ef4444'; }
-  }
-  var isOnTrack = !suppressRecommend && statusLabel.indexOf('On Track')>=0;
+if(dataError)
+  confBase = Math.min(confBase,40);
 
-  // [6] CONFIDENCE — penalize inconsistency + data error + low log
-  var confBase=50+Math.min(n,14)*2+Math.round(safeNum(logRate,0)*15)-Math.round(safeNum(wVariance,0)*8);
-  if(calDays.length<3) confBase-=20;
-  if(isLimited)        confBase=Math.min(confBase,55);
-  if(tdeeIsEstimate)   confBase=Math.min(confBase,60);
-  if(trueTDEE===null)  confBase=Math.min(confBase,50); // no TDEE = low confidence
-  if(inconsistent)     confBase-=20;
-  if(dataError)        confBase=Math.min(confBase,40);
-  var confidencePct=Math.max(20,Math.min(85,safeNum(confBase,30)));
+if(likelyWaterNoise)
+  confBase = Math.min(confBase,60);
 
-  // Intake reliability — cap ≤50 when TDEE missing (data core is incomplete)
-  var intakeReliability=100;
-  if(calVariance>600)intakeReliability-=40;else if(calVariance>300)intakeReliability-=20;
-  if(logRate<0.5)intakeReliability-=30;else if(logRate<0.7)intakeReliability-=15;
-  if(dataError)intakeReliability=Math.min(intakeReliability,30);
-  if(inconsistent)intakeReliability=Math.min(intakeReliability,60);
-  if(trueTDEE===null)intakeReliability=Math.min(intakeReliability,50);
-  intakeReliability=Math.max(0,intakeReliability);
+var confidencePct =
+  Math.max(20,
+  Math.min(90, confBase));
 
+// =========================
+// Intake Reliability
+// =========================
+
+var intakeReliability = 100;
+
+if(calVariance > 600)
+  intakeReliability -= 40;
+else if(calVariance > 300)
+  intakeReliability -= 20;
+
+if(logRate < 0.5)
+  intakeReliability -= 30;
+else if(logRate < 0.7)
+  intakeReliability -= 15;
+
+if(dataError)
+  intakeReliability =
+    Math.min(intakeReliability,30);
+
+if(trueTDEE === null)
+  intakeReliability =
+    Math.min(intakeReliability,50);
+
+if(likelyWaterNoise)
+  intakeReliability =
+    Math.min(intakeReliability,70);
+
+intakeReliability =
+  Math.max(0, intakeReliability);
   // Causes / Optimizations — only when not suppressed
   var causes=[], optimizations=[];
   if(!suppressRecommend){
