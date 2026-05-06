@@ -3947,39 +3947,19 @@ function buildAnalysisHTML(recent) {
     calVariance=Math.sqrt(netVals.reduce(function(s,x){return s+Math.pow(x-avgNet,2);},0)/netVals.length);
   }
 
-  // Weight variance — safeNum guards NaN if weights array issues
+  // Weight variance
   var weights=recent.map(function(e){return e.weight;});
-  var avgW=safeNum(weights.reduce(function(s,x){return s+x;},0)/weights.length, 0);
-  var wVariance=safeNum(Math.sqrt(weights.reduce(function(s,x){return s+Math.pow(x-avgW,2);},0)/weights.length), 0);
+  var avgW=weights.reduce(function(s,x){return s+x;},0)/weights.length;
+  var wVariance=Math.sqrt(weights.reduce(function(s,x){return s+Math.pow(x-avgW,2);},0)/weights.length);
 
-  // Water / glycogen noise detector — suppress action when scale noise is high but trend is flat
-  var likelyWaterNoise = (wVariance > 0.7 && Math.abs(trendPerWeek) < 0.3);
-
-  // TRUE TDEE — improved: discount workout burn, ignore tiny scale noise, clamp to physiological range
+  // Reverse TDEE
   var trueTDEE=null, tdeeIsEstimate=false;
   if(calDays.length>=3&&daySpan>=5){
-    var rawTrendKgPerDay=(lastW-firstW)/daySpan;
-    if(Math.abs(rawTrendKgPerDay)<0.03) rawTrendKgPerDay=0;
-    rawTrendKgPerDay=Math.max(-0.18,Math.min(0.18,rawTrendKgPerDay));
-
-    var effectiveBurn=avgBurn*0.5; // wearable/app burn is often overestimated
-    var estimatedTDEE=avgIntake+effectiveBurn-(rawTrendKgPerDay*7700);
-
-    var p=S.profile||{};
-    if(p.weight&&p.height&&p.age&&p.gender){
-      var bmr=p.gender==='male'
-        ?10*parseFloat(p.weight)+6.25*parseFloat(p.height)-5*parseFloat(p.age)+5
-        :10*parseFloat(p.weight)+6.25*parseFloat(p.height)-5*parseFloat(p.age)-161;
-      var minTDEE=bmr*1.2;
-      var maxTDEE=bmr*1.7;
-      estimatedTDEE=Math.max(minTDEE,Math.min(maxTDEE,estimatedTDEE));
-    }
-
-    trueTDEE=Math.round(estimatedTDEE);
-    tdeeIsEstimate=calDays.length<5||daySpan<10||wVariance>0.8;
+    trueTDEE=Math.round(avgIntake-(lastW-firstW)*7700/daySpan);
+    tdeeIsEstimate=calDays.length<5||daySpan<10;
   } else if(daySpan>=5){
     var ft0=window._fitnessTarget||{};
-    var actMult={sedentary:1.2,light:1.375,moderate:1.55,active:1.725,very_active:1.9,beginner:1.375,intermediate:1.55,advanced:1.725};
+    var actMult={sedentary:1.2,light:1.375,moderate:1.55,active:1.725,very_active:1.9};
     var mult=actMult[ft0.level]||1.375;
     var p=S.profile||{};
     if(p.weight&&p.height&&p.age&&p.gender){
@@ -3991,10 +3971,7 @@ function buildAnalysisHTML(recent) {
   }
 
   // actualDeficit = TDEE - avgNetCal (positive = losing, negative = gaining)
-  var actualDeficit=trueTDEE!==null?Math.round(trueTDEE-avgNetCal):null;
-  if(actualDeficit!==null){
-    actualDeficit=Math.max(-1200,Math.min(1200,actualDeficit));
-  }
+  var actualDeficit=trueTDEE!==null?trueTDEE-avgNetCal:null;
 
   // Fitness target
   var ft=window._fitnessTarget||{};
@@ -4006,25 +3983,20 @@ function buildAnalysisHTML(recent) {
     ?Math.round(Math.abs(requiredWeeklyLoss)*7700/7):null;
   var recommendedIntake=(trueTDEE!==null&&requiredDeficit!==null)
     ?Math.round(trueTDEE-requiredDeficit):null;
-  if(recommendedIntake!==null){
-    var floorCal=(S.profile&&S.profile.gender==='male')?1500:1200;
-    recommendedIntake=Math.max(floorCal,recommendedIntake);
-  }
 
-  // [5] FORECAST = physio only. Clamp to realistic weekly range.
+  // [5] FORECAST = physio only, always. trend = context card only.
+  // forecast = -(deficit * 7 / 7700); negative = weight loss
   var forecast7d=null;
-  var forecastLabel='physiology-based forecast';
+  var forecastLabel='calorie-based forecast';
   if(actualDeficit!==null){
-    var projected=-(actualDeficit*7/7700);
-    projected=Math.max(-1.0,Math.min(1.0,projected));
-    forecast7d=projected.toFixed(2);
+    forecast7d=(-(actualDeficit*7/7700)).toFixed(2);
   }
   // trend context card label
   var trendContextNote='';
   if(forecast7d!==null){
     var fv=parseFloat(forecast7d), tv=trendPerWeek;
     if(Math.abs(tv-fv)>0.15){
-      trendContextNote=tv>0.1?'น้ำหนักขึ้นจาก water retention / sodium / glycogen หรือ logging ผิด':'น้ำหนักลงเร็วจาก water drop หรือ glycogen depletion';
+      trendContextNote=tv>0.1?'น้ำหนักขึ้น — อาจมี water retention หรือ logging ผิด':'น้ำหนักลงเร็วกว่าที่คาด — อาจมี water drop หรือ glycogen';
     }
   }
 
@@ -4041,8 +4013,8 @@ function buildAnalysisHTML(recent) {
   if(actualDeficit!==null&&!dataError){
     var trendGaining=trendPerWeek>0.25;
     var trendLosing =trendPerWeek<-0.25;
-    var deficitPositive=actualDeficit>400;   // model says losing
-    var deficitNegative=actualDeficit<-400;  // model says gaining
+    var deficitPositive=actualDeficit>250;   // model says losing
+    var deficitNegative=actualDeficit<-250;  // model says gaining
     if((trendGaining&&deficitPositive)||(trendLosing&&deficitNegative)){
       inconsistent=true;
     }
@@ -4055,13 +4027,9 @@ function buildAnalysisHTML(recent) {
     statusLabel='Data Error 🔴'; statusColor='#ef4444';
     statusNote='Log rate '+Math.round(rawLogRate*100)+'% — อาจมี duplicate logs';
     suppressRecommend=true;
-  } else if(likelyWaterNoise){
-    statusLabel='Water Fluctuation 💧'; statusColor='#38bdf8';
-    statusNote='น้ำหนักแกว่งจากน้ำ/glycogen มากกว่า fat trend';
-    suppressRecommend=true;
   } else if(inconsistent){
-    statusLabel='Signal Conflict ⚠️'; statusColor='#f59e0b';
-    statusNote='Scale trend และ calorie model ไม่ align';
+    statusLabel='Inconsistent Data ⚠️'; statusColor='#f59e0b';
+    statusNote='Trend กับ Deficit สวนทางกัน — แก้ tracking ก่อน';
     suppressRecommend=true;
   } else if(isLimited){
     statusLabel='Limited Data 📊'; statusColor='#8b5cf6';
@@ -4086,7 +4054,6 @@ function buildAnalysisHTML(recent) {
   if(tdeeIsEstimate)   confBase=Math.min(confBase,60);
   if(inconsistent)     confBase-=20;
   if(dataError)        confBase=Math.min(confBase,40);
-  if(likelyWaterNoise) confBase=Math.min(confBase,60);
   var confidencePct=Math.max(20,Math.min(85,confBase));
 
   // Intake reliability
@@ -4147,9 +4114,9 @@ function buildAnalysisHTML(recent) {
   html+='</div></div></div>';
 
   // [4] ACTION SUPPRESSION: show fix-tracking banner instead of metrics
-  if(dataError||inconsistent||likelyWaterNoise){
+  if(dataError||inconsistent){
     html+='<div style="padding:13px;background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.25);border-radius:14px;margin-bottom:12px;">';
-    html+='<div style="font-size:13px;font-weight:700;color:#ef4444;margin-bottom:8px;">'+(dataError?'🔴 Data Error Detected':(likelyWaterNoise?'💧 Water Fluctuation Detected':'⚠️ Signal Conflict Detected'))+'</div>';
+    html+='<div style="font-size:13px;font-weight:700;color:#ef4444;margin-bottom:8px;">'+(dataError?'🔴 Data Error Detected':'⚠️ Inconsistent Data Detected')+'</div>';
     html+='<div style="font-size:12px;color:var(--text2);line-height:1.8;">';
     if(dataError){
       html+='Log rate '+Math.round(rawLogRate*100)+'% — สูงกว่า 100% = มี duplicate หรือ double-count<br>';
