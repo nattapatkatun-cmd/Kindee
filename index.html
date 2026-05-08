@@ -365,74 +365,23 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
     </div><!-- end fold-grid -->
 
     <!-- SLEEP TRACKER CARD -->
-    <div class="card" id="sleep-card">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+    <!-- Recovery Summary Card (Dashboard) -->
+    <div class="card" id="dash-recovery-card">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
         <div style="display:flex;align-items:center;gap:8px;">
-          <div style="width:28px;height:28px;border-radius:8px;background:linear-gradient(135deg,#3b82f6,#6366f1);display:flex;align-items:center;justify-content:center;font-size:14px;">😴</div>
+          <div style="width:28px;height:28px;border-radius:8px;background:linear-gradient(135deg,#22c55e,#16a34a);display:flex;align-items:center;justify-content:center;font-size:14px;">🌅</div>
           <div>
-            <div style="font-size:13px;font-weight:700;color:var(--text);">Sleep Tracker</div>
-            <div style="font-size:10px;color:var(--text3);">อ้างอิง Polar — ใช้วิเคราะห์ Recovery</div>
-          </div>
-        </div>
-        <div id="sleep-saved-badge" style="display:none;font-size:11px;color:var(--green);font-weight:600;background:rgba(34,197,94,0.1);border:1px solid rgba(34,197,94,0.3);border-radius:20px;padding:3px 10px;">✓ บันทึกแล้ว</div>
-        <button onclick="toggleSleepCard()" id="sleep-toggle-btn" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:18px;padding:2px 4px;line-height:1;" title="ย่อ/ขยาย">⌃</button>
-      </div>
-      <div id="sleep-card-body">
-      <!-- Row 1: Hours + Minutes (sleep duration together) -->
-      <div style="margin-bottom:10px;">
-        <label class="input-label">⏱️ ระยะเวลานอน</label>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
-          <div style="position:relative;">
-            <input class="input-field" type="number" id="sleep-hours" min="0" max="14" step="1" placeholder="7" style="padding-right:36px;"/>
-            <span style="position:absolute;right:12px;top:50%;transform:translateY(-50%);font-size:12px;color:var(--text3);pointer-events:none;">ชม.</span>
-          </div>
-          <div style="position:relative;">
-            <input class="input-field" type="number" id="sleep-minutes" min="0" max="59" step="1" placeholder="10" style="padding-right:36px;"/>
-            <span style="position:absolute;right:12px;top:50%;transform:translateY(-50%);font-size:12px;color:var(--text3);pointer-events:none;">นาที</span>
+            <div style="font-size:13px;font-weight:700;color:var(--text);">Recovery วันนี้</div>
+            <div style="font-size:10px;color:var(--text3);">กรอก sleep ที่ Fitness → 😴 Sleep</div>
           </div>
         </div>
       </div>
-      <!-- Row 2: RHR + HRV + HRV Baseline -->
-      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:12px;">
-        <div>
-          <label class="input-label">❤️ Resting HR</label>
-          <div style="position:relative;">
-            <input class="input-field" type="number" id="sleep-rhr" min="30" max="120" placeholder="58" style="padding-right:36px;"/>
-            <span style="position:absolute;right:8px;top:50%;transform:translateY(-50%);font-size:11px;color:var(--text3);pointer-events:none;">bpm</span>
-          </div>
-        </div>
-        <div>
-          <label class="input-label">💫 HRV</label>
-          <div style="position:relative;">
-            <input class="input-field" type="number" id="sleep-hrv" min="10" max="200" placeholder="39" style="padding-right:28px;"/>
-            <span style="position:absolute;right:8px;top:50%;transform:translateY(-50%);font-size:11px;color:var(--text3);pointer-events:none;">ms</span>
-          </div>
-        </div>
-        <div>
-          <label class="input-label">📊 Baseline</label>
-          <div style="position:relative;">
-            <input class="input-field" type="number" id="sleep-hrv-baseline" min="10" max="200" placeholder="36" style="padding-right:28px;"/>
-            <span style="position:absolute;right:8px;top:50%;transform:translateY(-50%);font-size:11px;color:var(--text3);pointer-events:none;">ms</span>
-          </div>
+      <div id="dash-recovery-result">
+        <div style="text-align:center;padding:12px 0;color:var(--text3);font-size:12px;">
+          ยังไม่มี Recovery Score วันนี้<br>
+          <button onclick="showPage('fitness');showFitnessTab('sleep');" style="margin-top:8px;background:none;border:1px solid var(--border);border-radius:20px;padding:4px 14px;font-size:11px;color:var(--text2);cursor:pointer;">😴 กรอก Sleep Data</button>
         </div>
       </div>
-      <!-- Quality -->
-      <div class="input-group" style="margin-bottom:12px;">
-        <label class="input-label">⭐ Sleep Quality</label>
-        <div style="display:flex;gap:8px;flex-wrap:wrap;" id="sleep-quality-btns">
-          <button class="label-btn" onclick="selSleepQuality(this,'Poor')">😫 Poor</button>
-          <button class="label-btn" onclick="selSleepQuality(this,'OK')">😐 OK</button>
-          <button class="label-btn" onclick="selSleepQuality(this,'Good')">😊 Good</button>
-          <button class="label-btn" onclick="selSleepQuality(this,'Excellent')">🤩 Excellent</button>
-        </div>
-      </div>
-      <button class="btn-primary" onclick="saveSleep()">💾 บันทึก Sleep Data</button>
-      <button id="morning-recovery-btn" onclick="generateMorningRecovery()" style="margin-top:10px;width:100%;padding:10px;background:linear-gradient(135deg,#22c55e,#16a34a);border:none;border-radius:12px;color:white;font-family:inherit;font-size:13px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;transition:all 0.2s;" onmouseover="this.style.opacity='0.85'" onmouseout="this.style.opacity='1'">
-        <span>🌅</span><span>วิเคราะห์ Recovery วันนี้</span>
-      </button>
-      <!-- Morning Recovery Result -->
-      <div id="morning-recovery-result" style="display:none;margin-top:12px;background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:12px;"></div>
-      </div><!-- end sleep-card-body -->
     </div>
 
     <!-- AI DAILY SUMMARY CARD -->
@@ -558,6 +507,7 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
       <button class="tab-pill" id="ftab-chart" onclick="showFitnessTab('chart')">📊 กราฟ</button>
       <button class="tab-pill" id="ftab-target" onclick="showFitnessTab('target')">🎯 เป้าหมาย</button>
       <button class="tab-pill" id="ftab-plan" onclick="showFitnessTab('plan')">🤖 แผน</button>
+      <button class="tab-pill" id="ftab-sleep" onclick="showFitnessTab('sleep')">😴 Sleep</button>
     </div>
 
     <!-- TAB: TODAY -->
@@ -674,6 +624,88 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
       <div id="planResult"></div>
     </div>
   </div>
+
+    <!-- TAB: SLEEP -->
+    <div id="ftab-content-sleep" style="display:none;">
+      <div class="card" id="sleep-card">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+          <div style="display:flex;align-items:center;gap:8px;">
+            <div style="width:28px;height:28px;border-radius:8px;background:linear-gradient(135deg,#3b82f6,#6366f1);display:flex;align-items:center;justify-content:center;font-size:14px;">😴</div>
+            <div>
+              <div style="font-size:13px;font-weight:700;color:var(--text);">Sleep Tracker</div>
+              <div style="font-size:10px;color:var(--text3);">Polar Loop / Huawei Watch 5 Pro / Galaxy Ring</div>
+            </div>
+          </div>
+          <div id="sleep-saved-badge" style="display:none;font-size:11px;color:var(--green);font-weight:600;background:rgba(34,197,94,0.1);border:1px solid rgba(34,197,94,0.3);border-radius:20px;padding:3px 10px;">✓ บันทึกแล้ว</div>
+        </div>
+
+        <!-- GROUP 1: Sleep Duration -->
+        <div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px;">⏱️ ระยะเวลาการนอน</div>
+
+        <div style="margin-bottom:8px;">
+          <label class="input-label">🛏️ Time in Bed <span style="font-size:10px;color:var(--text3);font-weight:400;">(เวลาอยู่บนเตียงทั้งหมด)</span></label>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+            <div style="position:relative;"><input class="input-field" type="number" id="sleep-tib-h" min="0" max="16" step="1" placeholder="8"/><span style="position:absolute;right:10px;top:50%;transform:translateY(-50%);font-size:11px;color:var(--text3);pointer-events:none;">ชม.</span></div>
+            <div style="position:relative;"><input class="input-field" type="number" id="sleep-tib-m" min="0" max="59" step="1" placeholder="0"/><span style="position:absolute;right:10px;top:50%;transform:translateY(-50%);font-size:11px;color:var(--text3);pointer-events:none;">นาที</span></div>
+          </div>
+        </div>
+
+        <div style="margin-bottom:8px;">
+          <label class="input-label">😴 Sleep Duration <span style="font-size:10px;color:var(--text3);font-weight:400;">(เวลาหลับจริง)</span></label>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+            <div style="position:relative;"><input class="input-field" type="number" id="sleep-hours" min="0" max="14" step="1" placeholder="7"/><span style="position:absolute;right:10px;top:50%;transform:translateY(-50%);font-size:11px;color:var(--text3);pointer-events:none;">ชม.</span></div>
+            <div style="position:relative;"><input class="input-field" type="number" id="sleep-minutes" min="0" max="59" step="1" placeholder="10"/><span style="position:absolute;right:10px;top:50%;transform:translateY(-50%);font-size:11px;color:var(--text3);pointer-events:none;">นาที</span></div>
+          </div>
+        </div>
+
+        <div style="margin-bottom:8px;">
+          <label class="input-label">🌊 Deep Sleep</label>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+            <div style="position:relative;"><input class="input-field" type="number" id="sleep-deep-h" min="0" max="5" step="1" placeholder="1"/><span style="position:absolute;right:10px;top:50%;transform:translateY(-50%);font-size:11px;color:var(--text3);pointer-events:none;">ชม.</span></div>
+            <div style="position:relative;"><input class="input-field" type="number" id="sleep-deep-m" min="0" max="59" step="1" placeholder="30"/><span style="position:absolute;right:10px;top:50%;transform:translateY(-50%);font-size:11px;color:var(--text3);pointer-events:none;">นาที</span></div>
+          </div>
+        </div>
+
+        <div style="margin-bottom:16px;">
+          <label class="input-label">💭 REM Sleep</label>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+            <div style="position:relative;"><input class="input-field" type="number" id="sleep-rem-h" min="0" max="5" step="1" placeholder="1"/><span style="position:absolute;right:10px;top:50%;transform:translateY(-50%);font-size:11px;color:var(--text3);pointer-events:none;">ชม.</span></div>
+            <div style="position:relative;"><input class="input-field" type="number" id="sleep-rem-m" min="0" max="59" step="1" placeholder="40"/><span style="position:absolute;right:10px;top:50%;transform:translateY(-50%);font-size:11px;color:var(--text3);pointer-events:none;">นาที</span></div>
+          </div>
+        </div>
+
+        <!-- GROUP 2: Physiological Performance -->
+        <div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px;">📊 Physiological Performance</div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;">
+          <div>
+            <label class="input-label">❤️ Resting HR</label>
+            <div style="position:relative;"><input class="input-field" type="number" id="sleep-rhr" min="30" max="120" placeholder="58"/><span style="position:absolute;right:8px;top:50%;transform:translateY(-50%);font-size:11px;color:var(--text3);pointer-events:none;">bpm</span></div>
+          </div>
+          <div>
+            <label class="input-label">🫁 Respiratory Rate</label>
+            <div style="position:relative;"><input class="input-field" type="number" id="sleep-resp-rate" min="8" max="30" step="0.1" placeholder="15.2"/><span style="position:absolute;right:8px;top:50%;transform:translateY(-50%);font-size:10px;color:var(--text3);pointer-events:none;">br/m</span></div>
+          </div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:16px;">
+          <div>
+            <label class="input-label">💫 HRV</label>
+            <div style="position:relative;"><input class="input-field" type="number" id="sleep-hrv" min="10" max="200" placeholder="39"/><span style="position:absolute;right:8px;top:50%;transform:translateY(-50%);font-size:11px;color:var(--text3);pointer-events:none;">ms</span></div>
+          </div>
+          <div>
+            <label class="input-label">📊 HRV Baseline</label>
+            <div style="position:relative;"><input class="input-field" type="number" id="sleep-hrv-baseline" min="10" max="200" placeholder="36"/><span style="position:absolute;right:8px;top:50%;transform:translateY(-50%);font-size:11px;color:var(--text3);pointer-events:none;">ms</span></div>
+          </div>
+        </div>
+
+        <button class="btn-primary" onclick="saveSleep()">💾 บันทึก Sleep Data</button>
+        <button id="morning-recovery-btn" onclick="generateMorningRecovery()" style="margin-top:10px;width:100%;padding:10px;background:linear-gradient(135deg,#22c55e,#16a34a);border:none;border-radius:12px;color:white;font-family:inherit;font-size:13px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;transition:all 0.2s;" onmouseover="this.style.opacity='0.85'" onmouseout="this.style.opacity='1'">
+          <span>🌅</span><span>วิเคราะห์ Recovery วันนี้</span>
+        </button>
+        <div id="morning-recovery-result" style="display:none;margin-top:12px;background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:12px;"></div>
+      </div>
+    </div>
 
   <!-- WEIGHT LOG -->
   <div class="page" id="page-weight">
@@ -1207,7 +1239,10 @@ function init() {
     S.meals = JSON.parse(localStorage.getItem('gd_meals')||'[]');
     loadGoalInputs(); render();
   }
-  loadSleepUI();
+  // Restore Dashboard recovery card if score exists from today
+  if (S.sleepData && S.sleepData.date === new Date().toISOString().split("T")[0] && S.sleepData.recoveryScore) {
+    updateDashRecoveryCard(S.sleepData);
+  }
 }
 
 function render() { updateDash(); renderWeightCalChart(); renderLog(); renderHistory(); renderFavorites(); updateSyncDot(); restoreDailySummary(); }
@@ -1661,43 +1696,49 @@ function generateMorningRecovery() {
   btn.innerHTML = '<span>⏳</span><span>กำลังวิเคราะห์...</span>';
   resultEl.style.display = 'none';
 
-  // Build HRV context
+  // Build WHOOP-style sleep context for prompt
+  var sleepDurH     = sd.hours || 0;
+  var totalSleepMin = Math.round(sleepDurH * 60);
+  var efficiencyLine = '';
+  if (sd.timeInBed && sleepDurH) {
+    var eff = Math.round((sleepDurH / sd.timeInBed) * 100);
+    efficiencyLine = '- Sleep Efficiency: ' + eff + '% (' + sleepDurH.toFixed(1) + 'h / ' + sd.timeInBed.toFixed(1) + 'h in bed)' + (eff >= 85 ? ' (optimal)' : eff >= 75 ? ' (below optimal)' : ' (poor)') + '\n';
+  }
+  var stagesLine = '';
+  if (sd.deepSleep || sd.remSleep) {
+    var light = (sd.deepSleep && sd.remSleep) ? Math.max(0, totalSleepMin - sd.deepSleep - sd.remSleep) : null;
+    stagesLine = '- Sleep Stages: ' +
+      (sd.deepSleep ? 'Deep ' + sd.deepSleep + 'min (' + Math.round(sd.deepSleep / totalSleepMin * 100) + '%)' : '') +
+      (sd.remSleep  ? (sd.deepSleep ? ' | ' : '') + 'REM ' + sd.remSleep + 'min (' + Math.round(sd.remSleep / totalSleepMin * 100) + '%)' : '') +
+      (light !== null ? ' | Light ' + light + 'min' : '') + '\n';
+  }
   var hrvLine = '';
   if (sd.hrv) {
-    hrvLine = '- HRV: ' + sd.hrv + ' ms';
-    if (sd.hrvBaseline) {
-      var pct = ((sd.hrv - sd.hrvBaseline) / sd.hrvBaseline * 100).toFixed(1);
-      hrvLine += ' (Baseline: ' + sd.hrvBaseline + ' ms | ' + (pct >= 0 ? '+' : '') + pct + '% vs baseline';
-      if      (pct >= 5)  hrvLine += ' — recovery strong ✅)';
-      else if (pct >= -5) hrvLine += ' — normal range)';
-      else                hrvLine += ' — suppressed ⚠️)';
-    }
+    var pctHrv = sd.hrvBaseline ? ((sd.hrv - sd.hrvBaseline) / sd.hrvBaseline * 100).toFixed(1) : null;
+    hrvLine = '- HRV: ' + sd.hrv + 'ms' + (sd.hrvBaseline ? ' (Baseline: ' + sd.hrvBaseline + 'ms | ' + (pctHrv >= 0 ? '+' : '') + pctHrv + '% - ' + (pctHrv >= 5 ? 'strong' : pctHrv >= -5 ? 'normal' : 'suppressed') + ')' : '') + '\n';
   }
 
   var prompt =
-    'You are a professional fitness coach specializing in recovery science.\n' +
-    'Based ONLY on the sleep data below, assess today\'s readiness and recovery status.\n' +
-    'Do NOT factor in workouts or nutrition — this is a morning assessment only.\n\n' +
-    'Sleep Data (Polar — last night for TODAY\'s readiness):\n' +
-    '- Duration: ' + (sd.displayStr || sd.hours + 'h') + (sd.hours < 6 ? ' ⚠️ critically low' : sd.hours < 7 ? ' ⚠️ below optimal' : sd.hours <= 9 ? ' ✅ optimal' : ' above 9h') + '\n' +
-    '- Quality: ' + sd.quality + '\n' +
-    (sd.rhr ? '- Resting HR: ' + sd.rhr + ' bpm\n' : '') +
-    (hrvLine ? hrvLine + '\n' : '') +
-    '\nRespond ONLY with a valid JSON object — no markdown, no backticks, no preamble.\n' +
-    'JSON format:\n' +
-    '{\n' +
-    '  "score": "Optimal"|"Moderate"|"Poor",\n' +
-    '  "emoji": "🟢"|"🟡"|"🔴",\n' +
-    '  "headline": "one-line readiness summary in Thai",\n' +
-    '  "detail": "2-3 sentences in Thai explaining the recovery state based on the sleep metrics",\n' +
-    '  "recommendation": "Push"|"Maintain"|"Rest",\n' +
-    '  "recommendation_reason": "one sentence in Thai justifying the Push/Maintain/Rest call"\n' +
-    '}';
+    'You are a sleep scientist and recovery coach. Analyze the sleep data and compute a WHOOP-style Sleep Score.\n' +
+    'SCORING RUBRIC (combine weighted pillars 0-100):\n' +
+    '  Duration (30%): <6h->0-40, 6-6.9h->41-65, 7-7.9h->66-80, 8-9h->81-100, >9h->cap 90\n' +
+    '  Efficiency (20%): <75%->0-50, 75-84%->51-75, >=85%->76-100. If no timeInBed: estimate from duration.\n' +
+    '  Stages (25%): Deep>=20%->25, 15-19%->18, <15%->8. REM>=20%->25, 15-19%->18, <15%->8. No stage data: infer.\n' +
+    '  Physio HRV (25%): >=+5% vs baseline->25, 0 to +4%->20, -5 to -1%->14, <-5%->8. No HRV: use RHR as proxy.\n' +
+    'LABEL: 85-100=Peak, 66-84=Good, 34-65=Fair, 0-33=Poor. Recovery: >=70=Optimal, 40-69=Moderate, <40=Poor\n\n' +
+    'Sleep Data (Device: Polar Loop / Huawei Watch 5 Pro / Galaxy Ring):\n' +
+    '- Duration: ' + (sd.displayStr || sleepDurH + 'h') + (sleepDurH < 6 ? ' (critically low)' : sleepDurH < 7 ? ' (below optimal)' : sleepDurH <= 9 ? ' (optimal)' : ' (>9h)') + '\n' +
+    efficiencyLine + stagesLine +
+    (sd.rhr ? '- RHR: ' + sd.rhr + ' bpm\n' : '') +
+    hrvLine +
+    (sd.respRate ? '- Respiratory Rate: ' + sd.respRate + ' br/min' + (sd.respRate > 18 ? ' (elevated)' : ' (normal)') + '\n' : '') +
+    '\nRespond ONLY with valid JSON, no markdown, no backticks:\n' +
+    '{ "sleepScore": <0-100>, "scoreLabel": "Peak"|"Good"|"Fair"|"Poor", "score": "Optimal"|"Moderate"|"Poor", "emoji": "green_circle"|"yellow_circle"|"red_circle", "pillars": { "duration": <0-100>, "efficiency": <0-100>, "stages": <0-100>, "physio": <0-100> }, "headline": "one-line Thai", "detail": "2-3 sentences Thai", "recommendation": "Push"|"Maintain"|"Rest", "recommendation_reason": "one sentence Thai" }';
 
   geminiCall(key, {
     contents: [{ parts: [{ text: prompt }] }],
     generationConfig: { temperature: 0.3, responseMimeType: 'application/json' }
-  }, 30000, null)
+  }, 45000, null)
   .then(function(data) {
     btn.disabled = false;
     btn.innerHTML = '<span>🌅</span><span>วิเคราะห์ Recovery วันนี้</span>';
@@ -1706,28 +1747,56 @@ function generateMorningRecovery() {
     var parts = candidates[0].content && candidates[0].content.parts;
     var text = parts && parts[0] ? parts[0].text : '';
     if (!text) throw new Error('Response ว่าง');
-    var clean = text.replace(/```json|```/g, '').trim();
-    var r = JSON.parse(clean);
+    var r = JSON.parse(text.replace(/```json|```/g, '').trim());
 
-    // Save recovery score to sleepData + Firebase
-    S.sleepData.recoveryScore = r.score;
-    S.sleepData.recoveryEmoji = r.emoji;
+    // Map emoji strings to actual emoji
+    var emojiMap = { 'green_circle': '🟢', 'yellow_circle': '🟡', 'red_circle': '🔴' };
+    var emojiDisplay = emojiMap[r.emoji] || r.emoji || '🟡';
+
+    // Save to sleepData + Firebase
+    S.sleepData.recoveryScore    = r.score;
+    S.sleepData.recoveryEmoji    = emojiDisplay;
+    S.sleepData.sleepScore       = r.sleepScore;
+    S.sleepData.scoreLabel       = r.scoreLabel;
+    S.sleepData.recoveryHeadline = r.headline;
+    S.sleepData.recoveryRec      = r.recommendation;
     localStorage.setItem('gd_sleep', JSON.stringify(S.sleepData));
     if (window.db) {
       window.db.collection('users').doc('nattapat').collection('settings').doc('sleep')
-        .update({ recoveryScore: r.score, recoveryEmoji: r.emoji }).catch(function(){});
+        .update({ recoveryScore: r.score, recoveryEmoji: emojiDisplay, sleepScore: r.sleepScore, scoreLabel: r.scoreLabel }).catch(function(){});
     }
 
+    // Render in Sleep tab
     var recColors  = { 'Optimal': 'var(--green)', 'Moderate': '#eab308', 'Poor': 'var(--red)' };
     var recBg      = { 'Optimal': 'rgba(34,197,94,0.1)', 'Moderate': 'rgba(234,179,8,0.1)', 'Poor': 'rgba(239,68,68,0.1)' };
     var recBorder  = { 'Optimal': 'rgba(34,197,94,0.3)', 'Moderate': 'rgba(234,179,8,0.3)', 'Poor': 'rgba(239,68,68,0.3)' };
     var pushColor  = { 'Push': 'var(--green)', 'Maintain': '#eab308', 'Rest': 'var(--blue)' };
+    var labelColor = { 'Peak': '#22c55e', 'Good': '#3b82f6', 'Fair': '#eab308', 'Poor': '#ef4444' };
+    var labelBg    = { 'Peak': 'rgba(34,197,94,0.12)', 'Good': 'rgba(59,130,246,0.12)', 'Fair': 'rgba(234,179,8,0.12)', 'Poor': 'rgba(239,68,68,0.12)' };
+    var sl  = r.scoreLabel || 'Fair';
+    var pil = r.pillars || {};
+
+    function pillarBar(label, val) {
+      var v = Math.min(100, Math.max(0, val || 0));
+      var c = v >= 75 ? '#22c55e' : v >= 50 ? '#eab308' : '#ef4444';
+      return '<div style="margin-bottom:5px;"><div style="display:flex;justify-content:space-between;margin-bottom:2px;"><span style="font-size:10px;color:var(--text3);">' + label + '</span><span style="font-size:10px;font-weight:700;color:' + c + ';">' + v + '</span></div><div style="height:5px;border-radius:3px;background:var(--surface);overflow:hidden;"><div style="height:100%;width:' + v + '%;background:' + c + ';border-radius:3px;transition:width 0.8s ease;"></div></div></div>';
+    }
 
     resultEl.style.display = 'block';
     resultEl.innerHTML =
-      '<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">' +
-        '<div style="background:' + (recBg[r.score]||recBg.Moderate) + ';border:1px solid ' + (recBorder[r.score]||recBorder.Moderate) + ';border-radius:20px;padding:4px 14px;font-size:13px;font-weight:700;color:' + (recColors[r.score]||'#eab308') + ';">' + (r.emoji||'🟡') + ' ' + r.score + '</div>' +
-        '<div style="font-size:12px;font-weight:600;color:var(--text);">' + r.headline + '</div>' +
+      '<div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;">' +
+        '<div style="text-align:center;min-width:60px;"><div style="font-size:32px;font-weight:800;color:' + (labelColor[sl]||'#eab308') + ';line-height:1;">' + (r.sleepScore||'—') + '</div><div style="font-size:9px;color:var(--text3);">/ 100</div></div>' +
+        '<div style="flex:1;">' +
+          '<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">' +
+            '<div style="background:' + (labelBg[sl]||labelBg.Fair) + ';border-radius:12px;padding:2px 10px;font-size:12px;font-weight:700;color:' + (labelColor[sl]||'#eab308') + ';">' + sl + '</div>' +
+            '<div style="background:' + (recBg[r.score]||recBg.Moderate) + ';border:1px solid ' + (recBorder[r.score]||recBorder.Moderate) + ';border-radius:12px;padding:2px 10px;font-size:11px;font-weight:600;color:' + (recColors[r.score]||'#eab308') + ';">' + emojiDisplay + ' ' + r.score + '</div>' +
+          '</div>' +
+          '<div style="font-size:12px;font-weight:600;color:var(--text);">' + r.headline + '</div>' +
+        '</div>' +
+      '</div>' +
+      '<div style="background:var(--surface);border-radius:10px;padding:10px 12px;margin-bottom:10px;border:1px solid var(--border);">' +
+        '<div style="font-size:10px;font-weight:700;color:var(--text3);margin-bottom:8px;text-transform:uppercase;letter-spacing:0.5px;">Score Breakdown</div>' +
+        pillarBar('Duration', pil.duration) + pillarBar('Efficiency', pil.efficiency) + pillarBar('Sleep Stages', pil.stages) + pillarBar('HRV / Physio', pil.physio) +
       '</div>' +
       '<div style="font-size:12px;color:var(--text2);line-height:1.6;margin-bottom:10px;">' + r.detail + '</div>' +
       '<div style="display:flex;align-items:center;gap:8px;padding:8px 12px;background:var(--surface);border-radius:10px;border:1px solid var(--border);">' +
@@ -1736,7 +1805,9 @@ function generateMorningRecovery() {
         '<div style="font-size:11px;color:var(--text2);flex:1;">' + r.recommendation_reason + '</div>' +
       '</div>';
 
-    showToast('✅ Recovery Score: ' + r.score, 'success');
+    // Sync result to Dashboard card
+    updateDashRecoveryCard(S.sleepData);
+    showToast('Sleep Score: ' + (r.sleepScore||'?') + ' (' + sl + ') — Recovery: ' + r.score, 'success');
   })
   .catch(function(e) {
     btn.disabled = false;
@@ -2535,13 +2606,14 @@ function updateFitnessUI() {
 // Fitness sub-tabs
 var ftCharts = {};
 function showFitnessTab(tab) {
-  ['today','chart','target','plan'].forEach(function(t){
+  ['today','chart','target','plan','sleep'].forEach(function(t){
     document.getElementById('ftab-content-'+t).style.display = t===tab?'block':'none';
     document.getElementById('ftab-'+t).classList.toggle('active', t===tab);
   });
   if (tab === 'chart') renderFitnessCharts();
   if (tab === 'target') renderTargetDashboard();
   if (tab === 'plan') loadSavedPlan();
+  if (tab === 'sleep') loadSleepUI();
 }
 
 function renderFitnessCharts() {
@@ -4401,46 +4473,42 @@ function runAIWeightDeepDive() {
 // ==================== END WEIGHT LOG MODULE ====================
 
 // ==================== SLEEP MODULE ====================
-var curSleepQuality = '';
-
-function toggleSleepCard() {
-  var body = document.getElementById('sleep-card-body');
-  var btn  = document.getElementById('sleep-toggle-btn');
-  var collapsed = body.style.display === 'none';
-  body.style.display = collapsed ? '' : 'none';
-  btn.style.transform = collapsed ? '' : 'rotate(180deg)';
-  btn.style.transition = 'transform 0.2s';
-}
-
-function selSleepQuality(btn, val) {
-  document.querySelectorAll('#sleep-quality-btns .label-btn').forEach(function(b){ b.classList.remove('active'); });
-  btn.classList.add('active');
-  curSleepQuality = val;
-}
 
 function saveSleep() {
-  var h = parseInt(document.getElementById('sleep-hours').value) || 0;
-  var m = parseInt(document.getElementById('sleep-minutes').value) || 0;
-  var rhr   = parseInt(document.getElementById('sleep-rhr').value) || null;
-  var hrv   = parseInt(document.getElementById('sleep-hrv').value) || null;
+  var h     = parseInt(document.getElementById('sleep-hours').value) || 0;
+  var m     = parseInt(document.getElementById('sleep-minutes').value) || 0;
+  var tibH  = parseInt(document.getElementById('sleep-tib-h').value) || 0;
+  var tibM  = parseInt(document.getElementById('sleep-tib-m').value) || 0;
+  var deepH = parseInt(document.getElementById('sleep-deep-h').value) || 0;
+  var deepM = parseInt(document.getElementById('sleep-deep-m').value) || 0;
+  var remH  = parseInt(document.getElementById('sleep-rem-h').value) || 0;
+  var remM  = parseInt(document.getElementById('sleep-rem-m').value) || 0;
+  var rhr         = parseInt(document.getElementById('sleep-rhr').value) || null;
+  var hrv         = parseInt(document.getElementById('sleep-hrv').value) || null;
   var hrvBaseline = parseInt(document.getElementById('sleep-hrv-baseline').value) || null;
+  var respRate    = parseFloat(document.getElementById('sleep-resp-rate').value) || null;
+
   var totalHours = h + m / 60;
-  if (totalHours < 1 || totalHours > 14) { showToast('กรุณากรอกชั่วโมงนอนให้ถูกต้อง (1–14h)','error'); return; }
-  if (!curSleepQuality) { showToast('กรุณาเลือก Sleep Quality ด้วย','error'); return; }
-  var today = new Date().toISOString().split('T')[0];
+  if (totalHours < 1 || totalHours > 14) { showToast('กรุณากรอกชั่วโมงนอนให้ถูกต้อง (1–14h)', 'error'); return; }
+
+  var today      = new Date().toISOString().split('T')[0];
   var displayStr = h + 'h' + (m > 0 ? ' ' + m + 'min' : '');
-  var data = { date: today, hours: Math.round(totalHours * 100) / 100, displayStr: displayStr, quality: curSleepQuality, rhr: rhr, hrv: hrv, hrvBaseline: hrvBaseline };
+  var timeInBed  = (tibH || tibM) ? Math.round((tibH + tibM / 60) * 100) / 100 : null;
+  var deepSleep  = (deepH || deepM) ? deepH * 60 + deepM : null;
+  var remSleep   = (remH  || remM)  ? remH  * 60 + remM  : null;
+
+  var data = { date: today, hours: Math.round(totalHours * 100) / 100, displayStr: displayStr,
+    rhr: rhr, hrv: hrv, hrvBaseline: hrvBaseline,
+    timeInBed: timeInBed, deepSleep: deepSleep, remSleep: remSleep, respRate: respRate };
   S.sleepData = data;
   localStorage.setItem('gd_sleep', JSON.stringify(data));
   if (window.FB_OK && window.db) {
     window.db.collection('users').doc('nattapat').collection('settings').doc('sleep').set(data).catch(function(){});
   }
   document.getElementById('sleep-saved-badge').style.display = 'block';
-  var msg = '✅ บันทึก Sleep ' + displayStr + ' — ' + curSleepQuality;
-  if (hrv && hrvBaseline) {
-    var diff = ((hrv - hrvBaseline) / hrvBaseline * 100).toFixed(1);
-    msg += ' | HRV ' + (diff >= 0 ? '+' : '') + diff + '% vs baseline';
-  }
+  var msg = '✅ บันทึก Sleep ' + displayStr;
+  if (timeInBed) msg += ' | In Bed ' + tibH + 'h' + (tibM ? ' ' + tibM + 'min' : '');
+  if (hrv && hrvBaseline) { var diff = ((hrv - hrvBaseline) / hrvBaseline * 100).toFixed(1); msg += ' | HRV ' + (diff >= 0 ? '+' : '') + diff + '% vs baseline'; }
   showToast(msg, 'success');
 }
 
@@ -4449,36 +4517,77 @@ function loadSleepUI() {
   var today = new Date().toISOString().split('T')[0];
   if (!d || d.date !== today) return;
   if (d.hours) {
-    var h = Math.floor(d.hours);
-    var m = Math.round((d.hours - h) * 60);
+    var h = Math.floor(d.hours), m2 = Math.round((d.hours - h) * 60);
     document.getElementById('sleep-hours').value = h;
-    document.getElementById('sleep-minutes').value = m > 0 ? m : '';
+    document.getElementById('sleep-minutes').value = m2 > 0 ? m2 : '';
   }
-  if (d.rhr)   document.getElementById('sleep-rhr').value = d.rhr;
-  if (d.hrv)   document.getElementById('sleep-hrv').value = d.hrv;
+  if (d.timeInBed) {
+    var tibH2 = Math.floor(d.timeInBed), tibM2 = Math.round((d.timeInBed - tibH2) * 60);
+    document.getElementById('sleep-tib-h').value = tibH2;
+    document.getElementById('sleep-tib-m').value = tibM2 > 0 ? tibM2 : '';
+  }
+  if (d.deepSleep) { document.getElementById('sleep-deep-h').value = Math.floor(d.deepSleep / 60); document.getElementById('sleep-deep-m').value = d.deepSleep % 60; }
+  if (d.remSleep)  { document.getElementById('sleep-rem-h').value  = Math.floor(d.remSleep  / 60); document.getElementById('sleep-rem-m').value  = d.remSleep  % 60; }
+  if (d.rhr)         document.getElementById('sleep-rhr').value = d.rhr;
+  if (d.hrv)         document.getElementById('sleep-hrv').value = d.hrv;
   if (d.hrvBaseline) document.getElementById('sleep-hrv-baseline').value = d.hrvBaseline;
-  if (d.quality) {
-    document.querySelectorAll('#sleep-quality-btns .label-btn').forEach(function(b){
-      if (b.textContent.indexOf(d.quality) !== -1) { b.classList.add('active'); curSleepQuality = d.quality; }
-    });
-    document.getElementById('sleep-saved-badge').style.display = 'block';
-  }
-  // Restore morning recovery result if already run today
+  if (d.respRate)    document.getElementById('sleep-resp-rate').value = d.respRate;
+  document.getElementById('sleep-saved-badge').style.display = 'block';
+
+  // Restore morning recovery result
   if (d.recoveryScore) {
-    var recColors = { 'Optimal': 'var(--green)', 'Moderate': '#eab308', 'Poor': 'var(--red)' };
-    var recBg = { 'Optimal': 'rgba(34,197,94,0.1)', 'Moderate': 'rgba(234,179,8,0.1)', 'Poor': 'rgba(239,68,68,0.1)' };
-    var recBorder = { 'Optimal': 'rgba(34,197,94,0.3)', 'Moderate': 'rgba(234,179,8,0.3)', 'Poor': 'rgba(239,68,68,0.3)' };
-    var resultEl = document.getElementById('morning-recovery-result');
-    if (resultEl) {
-      resultEl.style.display = 'block';
-      resultEl.innerHTML =
-        '<div style="display:flex;align-items:center;gap:8px;">' +
-          '<div style="background:' + (recBg[d.recoveryScore]||recBg.Moderate) + ';border:1px solid ' + (recBorder[d.recoveryScore]||recBorder.Moderate) + ';border-radius:20px;padding:3px 12px;font-size:12px;font-weight:700;color:' + (recColors[d.recoveryScore]||'var(--text)') + ';">' + (d.recoveryEmoji||'🟡') + ' ' + d.recoveryScore + '</div>' +
-          '<div style="font-size:11px;color:var(--text3);">Recovery score จากเช้านี้ (กด วิเคราะห์ใหม่ได้)</div>' +
+    var recColors  = { 'Optimal': 'var(--green)', 'Moderate': '#eab308', 'Poor': 'var(--red)' };
+    var recBg      = { 'Optimal': 'rgba(34,197,94,0.1)', 'Moderate': 'rgba(234,179,8,0.1)', 'Poor': 'rgba(239,68,68,0.1)' };
+    var recBorder  = { 'Optimal': 'rgba(34,197,94,0.3)', 'Moderate': 'rgba(234,179,8,0.3)', 'Poor': 'rgba(239,68,68,0.3)' };
+    var labelColor = { 'Peak': '#22c55e', 'Good': '#3b82f6', 'Fair': '#eab308', 'Poor': '#ef4444' };
+    var labelBg    = { 'Peak': 'rgba(34,197,94,0.12)', 'Good': 'rgba(59,130,246,0.12)', 'Fair': 'rgba(234,179,8,0.12)', 'Poor': 'rgba(239,68,68,0.12)' };
+    var sl2 = d.scoreLabel || '';
+    var restoreEl = document.getElementById('morning-recovery-result');
+    if (restoreEl) {
+      restoreEl.style.display = 'block';
+      restoreEl.innerHTML =
+        '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">' +
+          (d.sleepScore !== undefined ? '<div style="font-size:22px;font-weight:800;color:' + (labelColor[sl2]||'#eab308') + ';">' + d.sleepScore + '</div>' : '') +
+          (sl2 ? '<div style="background:' + (labelBg[sl2]||labelBg.Fair) + ';border-radius:12px;padding:2px 10px;font-size:11px;font-weight:700;color:' + (labelColor[sl2]||'#eab308') + ';">' + sl2 + '</div>' : '') +
+          '<div style="background:' + (recBg[d.recoveryScore]||recBg.Moderate) + ';border:1px solid ' + (recBorder[d.recoveryScore]||recBorder.Moderate) + ';border-radius:12px;padding:2px 10px;font-size:11px;font-weight:600;color:' + (recColors[d.recoveryScore]||'#eab308') + ';">' + (d.recoveryEmoji||'🟡') + ' ' + d.recoveryScore + '</div>' +
+          '<div style="font-size:10px;color:var(--text3);">จากเช้านี้ — กดวิเคราะห์ใหม่ได้</div>' +
         '</div>';
     }
+    // Sync to Dashboard card too
+    updateDashRecoveryCard(d);
   }
 }
+
+function updateDashRecoveryCard(d) {
+  var el = document.getElementById('dash-recovery-result');
+  if (!el || !d || !d.recoveryScore) return;
+  var recColors  = { 'Optimal': 'var(--green)', 'Moderate': '#eab308', 'Poor': 'var(--red)' };
+  var recBg      = { 'Optimal': 'rgba(34,197,94,0.1)', 'Moderate': 'rgba(234,179,8,0.1)', 'Poor': 'rgba(239,68,68,0.1)' };
+  var recBorder  = { 'Optimal': 'rgba(34,197,94,0.3)', 'Moderate': 'rgba(234,179,8,0.3)', 'Poor': 'rgba(239,68,68,0.3)' };
+  var labelColor = { 'Peak': '#22c55e', 'Good': '#3b82f6', 'Fair': '#eab308', 'Poor': '#ef4444' };
+  var labelBg    = { 'Peak': 'rgba(34,197,94,0.12)', 'Good': 'rgba(59,130,246,0.12)', 'Fair': 'rgba(234,179,8,0.12)', 'Poor': 'rgba(239,68,68,0.12)' };
+  var pushColor  = { 'Push': 'var(--green)', 'Maintain': '#eab308', 'Rest': 'var(--blue)' };
+  var sl = d.scoreLabel || '';
+  el.innerHTML =
+    '<div style="display:flex;align-items:center;gap:12px;margin-bottom:10px;">' +
+      '<div style="text-align:center;min-width:56px;">' +
+        '<div style="font-size:30px;font-weight:800;color:' + (labelColor[sl]||'#eab308') + ';line-height:1;">' + (d.sleepScore !== undefined ? d.sleepScore : '—') + '</div>' +
+        '<div style="font-size:9px;color:var(--text3);">/ 100</div>' +
+      '</div>' +
+      '<div style="flex:1;">' +
+        (sl ? '<div style="background:' + (labelBg[sl]||labelBg.Fair) + ';border-radius:12px;padding:2px 10px;font-size:12px;font-weight:700;color:' + (labelColor[sl]||'#eab308') + ';display:inline-block;margin-bottom:4px;">' + sl + '</div> ' : '') +
+        '<div style="background:' + (recBg[d.recoveryScore]||recBg.Moderate) + ';border:1px solid ' + (recBorder[d.recoveryScore]||recBorder.Moderate) + ';border-radius:12px;padding:2px 10px;font-size:11px;font-weight:600;color:' + (recColors[d.recoveryScore]||'#eab308') + ';display:inline-block;margin-bottom:6px;">' + (d.recoveryEmoji||'🟡') + ' ' + d.recoveryScore + '</div>' +
+        (d.recoveryHeadline ? '<div style="font-size:12px;color:var(--text2);">' + d.recoveryHeadline + '</div>' : '') +
+      '</div>' +
+    '</div>' +
+    (d.recoveryRec ? '<div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:var(--surface);border-radius:8px;border:1px solid var(--border);">' +
+      '<div style="font-size:11px;color:var(--text3);">วันนี้แนะนำ:</div>' +
+      '<div style="font-size:13px;font-weight:700;color:' + (pushColor[d.recoveryRec]||'var(--text)') + ';">⚡ ' + d.recoveryRec + '</div>' +
+    '</div>' : '');
+}
+
+function toggleSleepCard() {} // kept for backward compat (no-op)
+
 // ==================== END SLEEP MODULE ====================
 
 initFirebase();
