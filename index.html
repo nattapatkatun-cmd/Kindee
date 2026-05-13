@@ -802,8 +802,9 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
       <input type="file" id="vp-file" accept="image/*" style="display:none" onchange="handleProgressPhotoFile(event)"/>
       <button class="btn-secondary" onclick="document.getElementById('vp-file').click()">📸 เลือกรูป Progress</button>
       <img id="vp-preview" class="preview-img" style="display:none;margin-top:10px;max-height:260px;object-fit:cover;"/>
+      <button class="btn-secondary" style="margin-top:8px;" onclick="analyzeProgressPhotoAI()">🤖 วิเคราะห์ Visual Trend ด้วย AI (ไม่บังคับ)</button>
+      <div id="vp-ai-result" style="display:none;margin-top:8px;background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:10px;font-size:12px;color:var(--text2);line-height:1.6;"></div>
       <button class="btn-primary" style="margin-top:8px;" onclick="saveProgressPhotoLog()">💾 บันทึกรูป</button>
-      <button class="btn-secondary" onclick="analyzeProgressPhotoAI()">🤖 วิเคราะห์ Visual Trend ด้วย AI</button>
       <div id="vp-summary" style="margin-top:10px;"></div>
     </div>
 
@@ -4564,7 +4565,7 @@ function getSourceAwareStatusText(){
   var label = BODY_SOURCE_CONF[c.source] ? BODY_SOURCE_CONF[c.source].label : c.source;
   return label+' calibration · BF '+(c.bf||'—')+'% · SMM '+(c.smm||'—')+'kg · VF '+(c.visceral||'—');
 }
-var _vpImgB64=null, _vpImgType='image/jpeg';
+var _vpImgB64=null, _vpImgType='image/jpeg', _vpAnalysis=null;
 function handleProgressPhotoFile(e){
   if(!e.target.files || !e.target.files[0]) return;
   var file=e.target.files[0]; _vpImgType=file.type||'image/jpeg';
@@ -4572,15 +4573,20 @@ function handleProgressPhotoFile(e){
   reader.onload=function(ev){
     var dataUrl=ev.target.result; _vpImgB64=dataUrl.split(',')[1];
     var img=document.getElementById('vp-preview'); if(img){ img.src=dataUrl; img.style.display='block'; }
+    // Reset any previous analysis when new photo selected
+    _vpAnalysis=null; var ar=document.getElementById('vp-ai-result'); if(ar){ar.style.display='none';ar.innerHTML='';}
   };
   reader.readAsDataURL(file);
 }
-function saveProgressPhotoLog(analysis){
-  if(!_vpImgB64 && !analysis){ showToast('กรุณาเลือกรูปก่อน','error'); return; }
+function saveProgressPhotoLog(){
+  if(!_vpImgB64){ showToast('กรุณาเลือกรูปก่อน','error'); return; }
   var now=new Date();
-  var row={ id:Date.now(), date:now.toISOString().split('T')[0], time:now.toLocaleTimeString('th-TH',{hour:'2-digit',minute:'2-digit'}), angle:(document.getElementById('vp-angle')||{}).value||'front', note:(document.getElementById('vp-note')||{}).value||'', imageB64:_vpImgB64, imageType:_vpImgType, analysis:analysis||null };
+  var row={ id:Date.now(), date:now.toISOString().split('T')[0], time:now.toLocaleTimeString('th-TH',{hour:'2-digit',minute:'2-digit'}), angle:(document.getElementById('vp-angle')||{}).value||'front', note:(document.getElementById('vp-note')||{}).value||'', imageB64:_vpImgB64, imageType:_vpImgType, analysis:_vpAnalysis||null };
   var logs=getProgressPhotos(); logs.push(row); setProgressPhotos(logs);
-  _vpImgB64=null; var f=document.getElementById('vp-file'); if(f) f.value=''; var p=document.getElementById('vp-preview'); if(p){p.src='';p.style.display='none';}
+  _vpImgB64=null; _vpAnalysis=null;
+  var f=document.getElementById('vp-file'); if(f) f.value='';
+  var p=document.getElementById('vp-preview'); if(p){p.src='';p.style.display='none';}
+  var ar=document.getElementById('vp-ai-result'); if(ar){ar.style.display='none';ar.innerHTML='';}
   renderProgressPhotoSummary(); localStorage.removeItem('gd_wt_analysis'); localStorage.removeItem('gd_daily_summary');
   showToast('บันทึกรูป Progress แล้ว ✅','success');
 }
@@ -4600,15 +4606,24 @@ function analyzeProgressPhotoAI(){
   var key = S.apiKeys[S.currentKeyIndex] || S.apiKeys[0] || '';
   if(!S.apiKeys.length){ showToast('กรุณาตั้งค่า API Key ก่อน','error'); return; }
   if(!_vpImgB64){ showToast('กรุณาเลือกรูปก่อน','error'); return; }
+  var ar=document.getElementById('vp-ai-result');
+  if(ar){ ar.style.display='block'; ar.innerHTML='<div style="color:var(--text3);">⏳ กำลังวิเคราะห์...</div>'; }
   var prompt='คุณคือ fitness physique analyst วิเคราะห์รูป progress โดยไม่ตัดสินรูปลักษณ์ส่วนบุคคล ให้โฟกัส body composition trend เท่านั้น ตอบ JSON เท่านั้น: {"visualTrend":"leaner|same|softer|unclear","recompSignal":true|false,"retentionSignal":true|false,"waistVisual":"tighter|same|softer|unclear","muscleRetention":"good|fair|unclear","confidence":0,"summary":"สรุปสั้นภาษาไทย","recommendation":"คำแนะนำสั้นภาษาไทย"}';
-  showToast('กำลังวิเคราะห์รูป progress...','info');
   geminiCall(key,{contents:[{parts:[{text:prompt},{inline_data:{mime_type:_vpImgType,data:_vpImgB64}}]}],generationConfig:{temperature:0.2,responseMimeType:'application/json'}},45000,null)
   .then(function(data){
     var parts=data.candidates&&data.candidates[0]&&data.candidates[0].content&&data.candidates[0].content.parts;
     var text=parts&&parts[0]?parts[0].text:''; if(!text) throw new Error('AI ไม่ส่งผลลัพธ์');
     var r=JSON.parse(text.replace(/```json|```/g,'').trim());
-    saveProgressPhotoLog(r);
-  }).catch(function(e){ showToast('วิเคราะห์รูปไม่สำเร็จ: '+e.message,'error'); });
+    _vpAnalysis=r;
+    if(ar){ ar.style.display='block'; ar.innerHTML='<b style="color:var(--green);">✅ วิเคราะห์สำเร็จ</b><br>'+
+      'Visual: '+(r.summary||r.visualTrend||'—')+'<br>'+
+      'Recomp: '+(r.recompSignal?'🟢 มีสัญญาณ':'—')+' | Retention: '+(r.retentionSignal?'💧 มี':'—')+'<br>'+
+      '<span style="color:var(--text3);">กด 💾 บันทึกรูป เพื่อบันทึกพร้อมผลวิเคราะห์นี้</span>'; }
+    showToast('วิเคราะห์เสร็จแล้ว ✅','success');
+  }).catch(function(e){
+    if(ar){ ar.innerHTML='<span style="color:var(--red);">❌ '+e.message+'</span>'; }
+    showToast('วิเคราะห์รูปไม่สำเร็จ: '+e.message,'error');
+  });
 }
 
 // B3: forecast = f(TDEE - avgNetCal) NOT f(intake - target) — single source of truth
