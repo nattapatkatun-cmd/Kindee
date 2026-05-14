@@ -1,4 +1,5 @@
 <!DOCTYPE html>
+
 <html lang="th">
 <head>
 <meta charset="UTF-8">
@@ -28,114 +29,114 @@ body{font-family:'Sarabun',sans-serif;background:var(--bg);color:var(--text);min
 
 /* ── Foldable / tablet responsive (≥600px = unfolded inner screen) ── */
 @media (min-width:600px){
-  .app{max-width:860px;padding:0 0 80px;}
-  .fold-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;align-items:start;}
-  .fold-full{grid-column:1/-1;}
-  .header{padding:20px 28px 14px;}
-  .card{padding:20px;}
+.app{max-width:860px;padding:0 0 80px;}
+.fold-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;align-items:start;}
+.fold-full{grid-column:1/-1;}
+.header{padding:20px 28px 14px;}
+.card{padding:20px;}
 }
 @media (min-width:600px) and (max-width:900px){
-  .wt-chart-wrap{height:220px;}
+.wt-chart-wrap{height:220px;}
 }
 
 /* ── Sticky top ── */
 .sticky-top{position:sticky;top:0;z-index:100;background:rgba(11,13,20,0.92);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);}
 
 /* ── Header ── */
-.header{padding:16px 18px 14px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--border);}
+.header{padding:16px 18px 14px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(–border);}
 .logo{display:flex;align-items:center;gap:11px;}
-.logo-icon{width:38px;height:38px;border-radius:12px;background:linear-gradient(135deg,var(--accent),#c2410c);display:flex;align-items:center;justify-content:center;font-size:19px;box-shadow:0 4px 14px var(--accent-glow);}
+.logo-icon{width:38px;height:38px;border-radius:12px;background:linear-gradient(135deg,var(–accent),#c2410c);display:flex;align-items:center;justify-content:center;font-size:19px;box-shadow:0 4px 14px var(–accent-glow);}
 .logo-text{font-size:19px;font-weight:800;letter-spacing:-0.3px;}
-.logo-sub{font-size:10px;color:var(--text3);margin-top:1px;font-weight:500;}
-.date-badge{background:var(--surface2);border:1px solid var(--border-md);border-radius:20px;padding:5px 12px;font-size:11px;color:var(--text2);font-weight:500;}
+.logo-sub{font-size:10px;color:var(–text3);margin-top:1px;font-weight:500;}
+.date-badge{background:var(–surface2);border:1px solid var(–border-md);border-radius:20px;padding:5px 12px;font-size:11px;color:var(–text2);font-weight:500;}
 
 /* ── Nav (bottom fixed) ── */
-.nav{position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:100%;max-width:480px;display:flex;background:rgba(11,13,20,0.97);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border-top:1px solid var(--border);overflow-x:auto;scrollbar-width:none;padding:6px 8px env(safe-area-inset-bottom,6px);gap:2px;z-index:200;}
+.nav{position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:100%;max-width:480px;display:flex;background:rgba(11,13,20,0.97);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border-top:1px solid var(–border);overflow-x:auto;scrollbar-width:none;padding:6px 8px env(safe-area-inset-bottom,6px);gap:2px;z-index:200;}
 .nav::-webkit-scrollbar{display:none;}
-.nav-btn{flex:0 0 auto;min-width:60px;padding:7px 8px;background:transparent;border:none;color:var(--text3);font-family:inherit;font-size:10px;font-weight:600;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:3px;border-radius:14px;transition:all 0.18s;letter-spacing:0.2px;}
-.nav-btn.active{background:var(--accent-dim);color:var(--accent);}
+.nav-btn{flex:0 0 auto;min-width:60px;padding:7px 8px;background:transparent;border:none;color:var(–text3);font-family:inherit;font-size:10px;font-weight:600;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:3px;border-radius:14px;transition:all 0.18s;letter-spacing:0.2px;}
+.nav-btn.active{background:var(–accent-dim);color:var(–accent);}
 .nav-btn.active .nav-icon{transform:scale(1.1);}
 .nav-icon{font-size:17px;transition:transform 0.18s;}
 @media (min-width:600px){
-  .nav{max-width:860px;justify-content:center;padding:6px 20px env(safe-area-inset-bottom,6px);}
-  .nav-btn{min-width:80px;max-width:110px;font-size:12px;padding:8px 10px;}
-  .nav-icon{font-size:18px;}
+.nav{max-width:860px;justify-content:center;padding:6px 20px env(safe-area-inset-bottom,6px);}
+.nav-btn{min-width:80px;max-width:110px;font-size:12px;padding:8px 10px;}
+.nav-icon{font-size:18px;}
 }
 
 /* ── Pages ── */
 .page{display:none;padding:16px 16px 4px;}
 .fold-grid{display:contents;}
 @media (min-width:600px){
-  .page{padding:20px 24px;}
-  .fold-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start;}
-  .fold-full{grid-column:1/-1;}
+.page{padding:20px 24px;}
+.fold-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start;}
+.fold-full{grid-column:1/-1;}
 }
 .page.active{display:block;}
 .section-title{font-size:17px;font-weight:800;margin-bottom:14px;letter-spacing:-0.2px;}
 
 /* ── Cards ── */
-.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-card);padding:18px;margin-bottom:12px;position:relative;overflow:hidden;}
-.card::after{content:'';position:absolute;top:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent 0%,rgba(255,255,255,0.06) 40%,rgba(255,255,255,0.06) 60%,transparent 100%);}
-.card-title{font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:0.8px;margin-bottom:13px;}
+.card{background:var(–surface);border:1px solid var(–border);border-radius:var(–radius-card);padding:18px;margin-bottom:12px;position:relative;overflow:hidden;}
+.card::after{content:’’;position:absolute;top:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent 0%,rgba(255,255,255,0.06) 40%,rgba(255,255,255,0.06) 60%,transparent 100%);}
+.card-title{font-size:10px;font-weight:700;color:var(–text3);text-transform:uppercase;letter-spacing:0.8px;margin-bottom:13px;}
 
 /* ── Buttons ── */
-.btn-primary{width:100%;padding:14px;background:linear-gradient(135deg,var(--accent),#c2410c);border:none;border-radius:var(--radius-btn);color:white;font-family:inherit;font-size:15px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;transition:all 0.2s;box-shadow:0 4px 18px var(--accent-glow);}
+.btn-primary{width:100%;padding:14px;background:linear-gradient(135deg,var(–accent),#c2410c);border:none;border-radius:var(–radius-btn);color:white;font-family:inherit;font-size:15px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;transition:all 0.2s;box-shadow:0 4px 18px var(–accent-glow);}
 .btn-primary:hover{transform:translateY(-1px);box-shadow:0 6px 24px rgba(249,115,22,0.38);}
 .btn-primary:active{transform:translateY(0);}
 .btn-primary:disabled{opacity:0.45;cursor:not-allowed;transform:none;box-shadow:none;}
-.btn-secondary{width:100%;padding:12px;background:var(--surface2);border:1px solid var(--border-md);border-radius:var(--radius-input);color:var(--text2);font-family:inherit;font-size:13px;font-weight:600;cursor:pointer;margin-top:8px;transition:all 0.18s;}
-.btn-secondary:hover{background:var(--surface3);color:var(--text);}
+.btn-secondary{width:100%;padding:12px;background:var(–surface2);border:1px solid var(–border-md);border-radius:var(–radius-input);color:var(–text2);font-family:inherit;font-size:13px;font-weight:600;cursor:pointer;margin-top:8px;transition:all 0.18s;}
+.btn-secondary:hover{background:var(–surface3);color:var(–text);}
 
 /* ── Inputs ── */
 .input-group{margin-bottom:11px;}
-.input-label{font-size:11px;color:var(--text2);margin-bottom:5px;display:block;font-weight:600;letter-spacing:0.1px;}
-.input-field{width:100%;background:var(--surface2);border:1px solid var(--border-md);border-radius:var(--radius-input);padding:11px 14px;color:var(--text);font-family:inherit;font-size:14px;outline:none;transition:border-color 0.2s,box-shadow 0.2s;-webkit-appearance:none;appearance:none;}
-.input-field:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-dim);}
-select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' fill='none'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%236e7a90' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 14px center;padding-right:36px;}
+.input-label{font-size:11px;color:var(–text2);margin-bottom:5px;display:block;font-weight:600;letter-spacing:0.1px;}
+.input-field{width:100%;background:var(–surface2);border:1px solid var(–border-md);border-radius:var(–radius-input);padding:11px 14px;color:var(–text);font-family:inherit;font-size:14px;outline:none;transition:border-color 0.2s,box-shadow 0.2s;-webkit-appearance:none;appearance:none;}
+.input-field:focus{border-color:var(–accent);box-shadow:0 0 0 3px var(–accent-dim);}
+select.input-field{background-image:url(“data:image/svg+xml,%3Csvg xmlns=‘http://www.w3.org/2000/svg’ width=‘10’ height=‘6’ fill=‘none’%3E%3Cpath d=‘M1 1l4 4 4-4’ stroke=’%236e7a90’ stroke-width=‘1.5’ stroke-linecap=‘round’ stroke-linejoin=‘round’/%3E%3C/svg%3E”);background-repeat:no-repeat;background-position:right 14px center;padding-right:36px;}
 .input-row{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
 
 /* ── Label chips & Mode buttons ── */
 .label-row{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:12px;}
-.label-btn{padding:6px 13px;border-radius:20px;border:1px solid var(--border-md);background:var(--surface2);color:var(--text2);font-family:inherit;font-size:12px;font-weight:500;cursor:pointer;transition:all 0.18s;}
-.label-btn.active{background:var(--accent);border-color:var(--accent);color:white;font-weight:700;}
-.mode-btn{flex:1;padding:10px 8px;background:var(--surface2);border:1px solid var(--border-md);border-radius:var(--radius-input);color:var(--text2);font-family:inherit;font-size:13px;font-weight:600;cursor:pointer;transition:all 0.2s;}
-.mode-btn.active{background:var(--accent-dim);border-color:var(--accent);color:var(--accent);}
+.label-btn{padding:6px 13px;border-radius:20px;border:1px solid var(–border-md);background:var(–surface2);color:var(–text2);font-family:inherit;font-size:12px;font-weight:500;cursor:pointer;transition:all 0.18s;}
+.label-btn.active{background:var(–accent);border-color:var(–accent);color:white;font-weight:700;}
+.mode-btn{flex:1;padding:10px 8px;background:var(–surface2);border:1px solid var(–border-md);border-radius:var(–radius-input);color:var(–text2);font-family:inherit;font-size:13px;font-weight:600;cursor:pointer;transition:all 0.2s;}
+.mode-btn.active{background:var(–accent-dim);border-color:var(–accent);color:var(–accent);}
 
 /* ── Upload ── */
-.upload-area{border:2px dashed var(--border-md);border-radius:16px;padding:28px 20px;text-align:center;cursor:pointer;background:var(--surface2);transition:border-color 0.2s,background 0.2s;}
-.upload-area:hover{border-color:var(--accent);background:var(--accent-dim);}
+.upload-area{border:2px dashed var(–border-md);border-radius:16px;padding:28px 20px;text-align:center;cursor:pointer;background:var(–surface2);transition:border-color 0.2s,background 0.2s;}
+.upload-area:hover{border-color:var(–accent);background:var(–accent-dim);}
 .preview-img{width:100%;border-radius:14px;margin-bottom:12px;max-height:220px;object-fit:cover;display:none;}
 
 /* ── Loading ── */
 .loading{display:none;text-align:center;padding:24px;}
-.spinner{width:34px;height:34px;border-radius:50%;border:3px solid var(--surface3);border-top-color:var(--accent);animation:spin 0.75s linear infinite;margin:0 auto 10px;}
+.spinner{width:34px;height:34px;border-radius:50%;border:3px solid var(–surface3);border-top-color:var(–accent);animation:spin 0.75s linear infinite;margin:0 auto 10px;}
 @keyframes spin{to{transform:rotate(360deg)}}
 
 /* ── Result card ── */
-.result-card{background:var(--surface2);border:1px solid var(--border-md);border-radius:16px;padding:16px;margin-top:12px;display:none;}
+.result-card{background:var(–surface2);border:1px solid var(–border-md);border-radius:16px;padding:16px;margin-top:12px;display:none;}
 .result-macros{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:12px 0;}
-.result-macro{background:var(--surface);border-radius:var(--radius-sm);padding:11px 8px;text-align:center;border:1px solid var(--border);}
+.result-macro{background:var(–surface);border-radius:var(–radius-sm);padding:11px 8px;text-align:center;border:1px solid var(–border);}
 .result-macro-val{font-size:16px;font-weight:800;}
-.result-macro-name{font-size:10px;color:var(--text3);margin-top:2px;font-weight:600;}
+.result-macro-name{font-size:10px;color:var(–text3);margin-top:2px;font-weight:600;}
 
 /* ── Clarify ── */
 .clarify-box{background:rgba(249,115,22,0.07);border:1px solid rgba(249,115,22,0.25);border-radius:14px;padding:14px;margin-top:12px;display:none;}
-.clarify-input{width:100%;background:var(--surface);border:1px solid var(--border-md);border-radius:var(--radius-sm);padding:10px 14px;color:var(--text);font-family:inherit;font-size:13px;resize:none;outline:none;}
-.clarify-input:focus{border-color:var(--accent);}
+.clarify-input{width:100%;background:var(–surface);border:1px solid var(–border-md);border-radius:var(–radius-sm);padding:10px 14px;color:var(–text);font-family:inherit;font-size:13px;resize:none;outline:none;}
+.clarify-input:focus{border-color:var(–accent);}
 
 /* ── Ring (Dashboard) ── */
 .ring-container{display:flex;align-items:center;gap:18px;padding:6px 0;}
 .ring-wrap{position:relative;width:124px;height:124px;flex-shrink:0;}
 .ring-svg{transform:rotate(-90deg);}
-.ring-bg{fill:none;stroke:var(--surface3);stroke-width:11;}
+.ring-bg{fill:none;stroke:var(–surface3);stroke-width:11;}
 .ring-fill{fill:none;stroke-width:11;stroke-linecap:round;transition:stroke-dashoffset 0.9s cubic-bezier(.4,0,.2,1),stroke 0.4s;}
 .ring-text{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;}
 
 /* ── Macro grid (Dashboard) ── */
 .macro-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;flex:1;}
-.macro-name{font-size:11px;color:var(--text2);margin-bottom:2px;}
+.macro-name{font-size:11px;color:var(–text2);margin-bottom:2px;}
 .macro-val{font-size:15px;font-weight:700;}
-.macro-bar{height:5px;border-radius:3px;margin-top:4px;background:var(--surface3);overflow:hidden;}
+.macro-bar{height:5px;border-radius:3px;margin-top:4px;background:var(–surface3);overflow:hidden;}
 .macro-bar-fill{height:100%;border-radius:3px;transition:width 0.9s cubic-bezier(.4,0,.2,1);}
 
 /* ── Goal bars ── */
@@ -143,162 +144,163 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
 .goal-bar-wrap:last-child{margin-bottom:0;}
 .goal-bar-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:5px;}
 .goal-bar-name{font-size:13px;font-weight:600;}
-.goal-bar-vals{font-size:11px;color:var(--text2);}
-.goal-bar-track{height:7px;background:var(--surface3);border-radius:4px;overflow:hidden;}
+.goal-bar-vals{font-size:11px;color:var(–text2);}
+.goal-bar-track{height:7px;background:var(–surface3);border-radius:4px;overflow:hidden;}
 .goal-bar-fill{height:100%;border-radius:4px;transition:width 0.9s cubic-bezier(.4,0,.2,1);}
 
 /* ── Meal items ── */
-.meal-item{background:var(--surface2);border:1px solid var(--border);border-radius:14px;padding:13px;margin-bottom:9px;display:flex;gap:11px;align-items:flex-start;}
+.meal-item{background:var(–surface2);border:1px solid var(–border);border-radius:14px;padding:13px;margin-bottom:9px;display:flex;gap:11px;align-items:flex-start;}
 .meal-thumb{width:48px;height:48px;border-radius:12px;object-fit:cover;flex-shrink:0;}
-.meal-thumb-ph{width:48px;height:48px;border-radius:12px;background:var(--surface3);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0;}
+.meal-thumb-ph{width:48px;height:48px;border-radius:12px;background:var(–surface3);border:1px solid var(–border);display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0;}
 .meal-info{flex:1;min-width:0;}
 .meal-name{font-size:14px;font-weight:600;margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-.meal-time{font-size:11px;color:var(--text3);margin-bottom:5px;}
+.meal-time{font-size:11px;color:var(–text3);margin-bottom:5px;}
 .meal-macros{display:flex;gap:6px;flex-wrap:wrap;}
-.meal-tag{font-size:11px;padding:2px 8px;border-radius:6px;background:var(--surface);border:1px solid var(--border);}
-.meal-cal{font-size:13px;font-weight:700;color:var(--accent);text-align:right;white-space:nowrap;}
-.meal-del{background:none;border:none;color:var(--text3);cursor:pointer;font-size:16px;padding:2px;transition:color 0.2s;}
-.meal-del:hover{color:var(--red);}
+.meal-tag{font-size:11px;padding:2px 8px;border-radius:6px;background:var(–surface);border:1px solid var(–border);}
+.meal-cal{font-size:13px;font-weight:700;color:var(–accent);text-align:right;white-space:nowrap;}
+.meal-del{background:none;border:none;color:var(–text3);cursor:pointer;font-size:16px;padding:2px;transition:color 0.2s;}
+.meal-del:hover{color:var(–red);}
 .meal-info{flex:1;min-width:0;}
 .meal-name{font-size:14px;font-weight:700;margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-.meal-time{font-size:11px;color:var(--text3);margin-bottom:6px;}
+.meal-time{font-size:11px;color:var(–text3);margin-bottom:6px;}
 .meal-macros{display:flex;gap:5px;flex-wrap:wrap;}
-.meal-tag{font-size:10px;padding:2px 7px;border-radius:6px;background:var(--surface3);border:1px solid var(--border);font-weight:600;}
+.meal-tag{font-size:10px;padding:2px 7px;border-radius:6px;background:var(–surface3);border:1px solid var(–border);font-weight:600;}
 .meal-cal-col{display:flex;flex-direction:column;align-items:flex-end;gap:6px;}
-.meal-cal{font-size:14px;font-weight:800;color:var(--accent);white-space:nowrap;}
-.meal-cal-unit{font-size:9px;color:var(--text3);font-weight:600;}
-.meal-del{background:none;border:none;color:var(--text3);cursor:pointer;font-size:15px;padding:2px;transition:color 0.2s;line-height:1;}
-.meal-del:hover{color:var(--red);}
+.meal-cal{font-size:14px;font-weight:800;color:var(–accent);white-space:nowrap;}
+.meal-cal-unit{font-size:9px;color:var(–text3);font-weight:600;}
+.meal-del{background:none;border:none;color:var(–text3);cursor:pointer;font-size:15px;padding:2px;transition:color 0.2s;line-height:1;}
+.meal-del:hover{color:var(–red);}
 
 /* ── Empty state ── */
 .empty-state{text-align:center;padding:32px 20px;}
 .empty-icon{font-size:42px;margin-bottom:10px;}
-.empty-text{font-size:14px;font-weight:700;color:var(--text2);}
-.empty-sub{font-size:12px;color:var(--text3);margin-top:4px;}
+.empty-text{font-size:14px;font-weight:700;color:var(–text2);}
+.empty-sub{font-size:12px;color:var(–text3);margin-top:4px;}
 
 /* ── History ── */
-.history-date-hdr{font-size:10px;color:var(--text3);font-weight:700;text-transform:uppercase;letter-spacing:0.8px;margin:16px 0 8px;padding-bottom:6px;border-bottom:1px solid var(--border);}
+.history-date-hdr{font-size:10px;color:var(–text3);font-weight:700;text-transform:uppercase;letter-spacing:0.8px;margin:16px 0 8px;padding-bottom:6px;border-bottom:1px solid var(–border);}
 
 /* ── Sync dot ── */
-.sync-dot{width:8px;height:8px;border-radius:50%;background:var(--surface3);flex-shrink:0;transition:all 0.3s;}
-.sync-dot.on{background:var(--green);box-shadow:0 0 7px var(--green);}
+.sync-dot{width:8px;height:8px;border-radius:50%;background:var(–surface3);flex-shrink:0;transition:all 0.3s;}
+.sync-dot.on{background:var(–green);box-shadow:0 0 7px var(–green);}
 
 /* ── Menu items (text mode) ── */
-.menu-item-row{background:var(--surface2);border:1px solid var(--border);border-radius:14px;padding:13px;margin-bottom:10px;position:relative;}
-.menu-item-num{font-size:11px;font-weight:700;color:var(--accent);margin-bottom:8px;}
-.menu-item-del{position:absolute;top:10px;right:10px;background:none;border:none;color:var(--text3);font-size:15px;cursor:pointer;padding:2px 6px;}
-.menu-item-del:hover{color:var(--red);}
+.menu-item-row{background:var(–surface2);border:1px solid var(–border);border-radius:14px;padding:13px;margin-bottom:10px;position:relative;}
+.menu-item-num{font-size:11px;font-weight:700;color:var(–accent);margin-bottom:8px;}
+.menu-item-del{position:absolute;top:10px;right:10px;background:none;border:none;color:var(–text3);font-size:15px;cursor:pointer;padding:2px 6px;}
+.menu-item-del:hover{color:var(–red);}
 
 /* ── Toast ── */
-.toast{position:fixed;bottom:calc(var(--nav-h) + 12px);left:50%;transform:translateX(-50%) translateY(12px);background:var(--surface);border:1px solid var(--border-md);border-radius:14px;padding:10px 18px;font-size:13px;font-weight:600;opacity:0;transition:all 0.28s cubic-bezier(.4,0,.2,1);z-index:999;white-space:nowrap;max-width:calc(100% - 40px);}
+.toast{position:fixed;bottom:calc(var(–nav-h) + 12px);left:50%;transform:translateX(-50%) translateY(12px);background:var(–surface);border:1px solid var(–border-md);border-radius:14px;padding:10px 18px;font-size:13px;font-weight:600;opacity:0;transition:all 0.28s cubic-bezier(.4,0,.2,1);z-index:999;white-space:nowrap;max-width:calc(100% - 40px);}
 .toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
-.toast.success{border-color:rgba(34,197,94,0.4);color:var(--green);}
-.toast.error{border-color:rgba(239,68,68,0.4);color:var(--red);}
-.toast.info{border-color:rgba(249,115,22,0.4);color:var(--accent);}
+.toast.success{border-color:rgba(34,197,94,0.4);color:var(–green);}
+.toast.error{border-color:rgba(239,68,68,0.4);color:var(–red);}
+.toast.info{border-color:rgba(249,115,22,0.4);color:var(–accent);}
 
 /* ── Alert popup ── */
 .alert-popup{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.72);z-index:998;align-items:center;justify-content:center;padding:20px;}
-.alert-box{background:var(--surface);border:1px solid var(--border-md);border-radius:22px;padding:26px;max-width:340px;width:100%;text-align:center;}
-.input-field-sm{width:100%;background:var(--surface2);border:1px solid var(--border-md);border-radius:var(--radius-sm);padding:9px 12px;color:var(--text);font-family:inherit;font-size:13px;outline:none;margin-bottom:8px;-webkit-appearance:none;}
-.input-field-sm:focus{border-color:var(--accent);}
+.alert-box{background:var(–surface);border:1px solid var(–border-md);border-radius:22px;padding:26px;max-width:340px;width:100%;text-align:center;}
+.input-field-sm{width:100%;background:var(–surface2);border:1px solid var(–border-md);border-radius:var(–radius-sm);padding:9px 12px;color:var(–text);font-family:inherit;font-size:13px;outline:none;margin-bottom:8px;-webkit-appearance:none;}
+.input-field-sm:focus{border-color:var(–accent);}
 
 /* ── AI DAILY SUMMARY ── */
 @keyframes aiPulse{0%,100%{opacity:1;transform:scale(1);}50%{opacity:0.5;transform:scale(0.85);}}
 @keyframes skeletonShimmer{0%{background-position:200% 0;}100%{background-position:-200% 0;}}
 @keyframes fadeInUp{from{opacity:0;transform:translateY(12px);}to{opacity:1;transform:translateY(0);}}
-.ai-pulse-dot{width:10px;height:10px;border-radius:50%;background:var(--purple);animation:aiPulse 1.2s ease-in-out infinite;flex-shrink:0;}
-.ai-skeleton{background:linear-gradient(90deg,var(--surface2) 25%,var(--surface3) 50%,var(--surface2) 75%);background-size:200% 100%;animation:skeletonShimmer 1.5s infinite;border-radius:6px;}
+.ai-pulse-dot{width:10px;height:10px;border-radius:50%;background:var(–purple);animation:aiPulse 1.2s ease-in-out infinite;flex-shrink:0;}
+.ai-skeleton{background:linear-gradient(90deg,var(–surface2) 25%,var(–surface3) 50%,var(–surface2) 75%);background-size:200% 100%;animation:skeletonShimmer 1.5s infinite;border-radius:6px;}
 .ai-section{animation:fadeInUp 0.4s ease both;}
 .ai-section+.ai-section{margin-top:14px;}
 .ai-section-hdr{display:flex;align-items:center;gap:7px;margin-bottom:8px;}
 .ai-section-icon{width:24px;height:24px;border-radius:7px;display:flex;align-items:center;justify-content:center;font-size:12px;flex-shrink:0;}
-.ai-section-title{font-size:12px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:0.5px;}
-.ai-section-body{font-size:13px;color:var(--text);line-height:1.75;}
+.ai-section-title{font-size:12px;font-weight:700;color:var(–text2);text-transform:uppercase;letter-spacing:0.5px;}
+.ai-section-body{font-size:13px;color:var(–text);line-height:1.75;}
 .ai-score-badge{display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:20px;font-size:12px;font-weight:700;margin-bottom:8px;}
-.ai-score-optimal{background:var(--green-dim);color:var(--green);border:1px solid rgba(34,197,94,0.3);}
-.ai-score-moderate{background:rgba(234,179,8,0.15);color:var(--yellow);border:1px solid rgba(234,179,8,0.3);}
-.ai-score-poor{background:rgba(239,68,68,0.15);color:var(--red);border:1px solid rgba(239,68,68,0.3);}
-.ai-divider{height:1px;background:var(--border);margin:12px 0;}
+.ai-score-optimal{background:var(–green-dim);color:var(–green);border:1px solid rgba(34,197,94,0.3);}
+.ai-score-moderate{background:rgba(234,179,8,0.15);color:var(–yellow);border:1px solid rgba(234,179,8,0.3);}
+.ai-score-poor{background:rgba(239,68,68,0.15);color:var(–red);border:1px solid rgba(239,68,68,0.3);}
+.ai-divider{height:1px;background:var(–border);margin:12px 0;}
 .ai-playbook-item{display:flex;align-items:flex-start;gap:8px;padding:7px 0;border-bottom:1px solid rgba(255,255,255,0.04);}
 .ai-playbook-item:last-child{border-bottom:none;}
-.ai-playbook-bullet{width:6px;height:6px;border-radius:50%;background:var(--purple);margin-top:6px;flex-shrink:0;}
+.ai-playbook-bullet{width:6px;height:6px;border-radius:50%;background:var(–purple);margin-top:6px;flex-shrink:0;}
 
 /* ── FITNESS STYLES ── */
 .ft-stat-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:9px;margin-bottom:12px;}
-.ft-stat{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:13px 8px;text-align:center;}
+.ft-stat{background:var(–surface);border:1px solid var(–border);border-radius:16px;padding:13px 8px;text-align:center;}
 .ft-stat-val{font-size:19px;font-weight:800;}
-.ft-stat-name{font-size:10px;color:var(--text3);margin-top:3px;font-weight:600;}
-.ft-net-card{background:linear-gradient(135deg,rgba(249,115,22,0.10),rgba(168,85,247,0.07));border:1px solid rgba(249,115,22,0.2);border-radius:var(--radius-card);padding:18px;margin-bottom:12px;text-align:center;}
+.ft-stat-name{font-size:10px;color:var(–text3);margin-top:3px;font-weight:600;}
+.ft-net-card{background:linear-gradient(135deg,rgba(249,115,22,0.10),rgba(168,85,247,0.07));border:1px solid rgba(249,115,22,0.2);border-radius:var(–radius-card);padding:18px;margin-bottom:12px;text-align:center;}
 .ft-net-val{font-size:34px;font-weight:800;line-height:1;}
-.ft-net-sub{font-size:11px;color:var(--text2);margin-top:5px;font-weight:600;}
-.ft-net-row{display:flex;justify-content:center;align-items:center;gap:8px;font-size:12px;color:var(--text2);margin-top:10px;flex-wrap:wrap;}
-.workout-item{background:var(--surface2);border:1px solid var(--border);border-radius:14px;padding:12px;margin-bottom:9px;display:flex;gap:10px;align-items:center;}
-.workout-icon{width:44px;height:44px;border-radius:13px;background:var(--accent-dim);display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0;}
+.ft-net-sub{font-size:11px;color:var(–text2);margin-top:5px;font-weight:600;}
+.ft-net-row{display:flex;justify-content:center;align-items:center;gap:8px;font-size:12px;color:var(–text2);margin-top:10px;flex-wrap:wrap;}
+.workout-item{background:var(–surface2);border:1px solid var(–border);border-radius:14px;padding:12px;margin-bottom:9px;display:flex;gap:10px;align-items:center;}
+.workout-icon{width:44px;height:44px;border-radius:13px;background:var(–accent-dim);display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0;}
 .workout-info{flex:1;min-width:0;}
 .workout-name{font-size:14px;font-weight:700;margin-bottom:2px;}
-.workout-meta{font-size:11px;color:var(--text3);}
-.workout-cal{font-size:14px;font-weight:800;color:var(--accent);text-align:right;white-space:nowrap;}
-.workout-del{background:none;border:none;color:var(--text3);cursor:pointer;font-size:15px;padding:2px;transition:color 0.2s;margin-left:6px;}
-.workout-del:hover{color:var(--red);}
+.workout-meta{font-size:11px;color:var(–text3);}
+.workout-cal{font-size:14px;font-weight:800;color:var(–accent);text-align:right;white-space:nowrap;}
+.workout-del{background:none;border:none;color:var(–text3);cursor:pointer;font-size:15px;padding:2px;transition:color 0.2s;margin-left:6px;}
+.workout-del:hover{color:var(–red);}
 .preset-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:7px;margin-bottom:12px;}
-.preset-btn{padding:9px 8px;background:var(--surface2);border:1px solid var(--border);border-radius:12px;color:var(--text2);font-family:inherit;font-size:12px;font-weight:500;cursor:pointer;text-align:center;transition:all 0.18s;}
-.preset-btn:hover,.preset-btn.selected{background:var(--accent-dim);border-color:var(--accent);color:var(--accent);font-weight:700;}
+.preset-btn{padding:9px 8px;background:var(–surface2);border:1px solid var(–border);border-radius:12px;color:var(–text2);font-family:inherit;font-size:12px;font-weight:500;cursor:pointer;text-align:center;transition:all 0.18s;}
+.preset-btn:hover,.preset-btn.selected{background:var(–accent-dim);border-color:var(–accent);color:var(–accent);font-weight:700;}
 .ft-chart-wrap{position:relative;width:100%;height:160px;}
-.plan-day{background:var(--surface2);border:1px solid var(--border);border-radius:14px;padding:13px;margin-bottom:10px;}
+.plan-day{background:var(–surface2);border:1px solid var(–border);border-radius:14px;padding:13px;margin-bottom:10px;}
 .plan-day-hdr{display:flex;align-items:center;gap:8px;margin-bottom:8px;}
-.plan-day-badge{background:var(--accent-dim);color:var(--accent);border-radius:8px;padding:2px 10px;font-size:12px;font-weight:700;}
+.plan-day-badge{background:var(–accent-dim);color:var(–accent);border-radius:8px;padding:2px 10px;font-size:12px;font-weight:700;}
 .plan-exercises{display:flex;flex-direction:column;gap:6px;}
-.plan-ex{display:flex;justify-content:space-between;font-size:13px;padding:6px 10px;background:var(--surface);border-radius:8px;}
+.plan-ex{display:flex;justify-content:space-between;font-size:13px;padding:6px 10px;background:var(–surface);border-radius:8px;}
 .plan-ex-name{font-weight:600;}
-.plan-ex-detail{color:var(--text3);font-size:12px;}
+.plan-ex-detail{color:var(–text3);font-size:12px;}
 
 /* ── Tab pills ── */
-.tab-row{display:flex;gap:6px;margin-bottom:14px;background:var(--surface2);padding:4px;border-radius:14px;}
-.tab-pill{flex:1;padding:8px 4px;background:transparent;border:none;border-radius:10px;color:var(--text2);font-family:inherit;font-size:11px;font-weight:600;cursor:pointer;text-align:center;transition:all 0.18s;letter-spacing:0.1px;}
-.tab-pill.active{background:var(--surface);color:var(--text);box-shadow:0 1px 6px rgba(0,0,0,0.4);}
-.wt-filter-btn{padding:4px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:20px;color:var(--text3);font-family:inherit;font-size:11px;font-weight:500;cursor:pointer;transition:all 0.2s;}
-.wt-filter-btn.active{background:var(--blue-dim);border-color:var(--blue);color:var(--blue);font-weight:700;}
+.tab-row{display:flex;gap:6px;margin-bottom:14px;background:var(–surface2);padding:4px;border-radius:14px;}
+.tab-pill{flex:1;padding:8px 4px;background:transparent;border:none;border-radius:10px;color:var(–text2);font-family:inherit;font-size:11px;font-weight:600;cursor:pointer;text-align:center;transition:all 0.18s;letter-spacing:0.1px;}
+.tab-pill.active{background:var(–surface);color:var(–text);box-shadow:0 1px 6px rgba(0,0,0,0.4);}
+.wt-filter-btn{padding:4px 10px;background:var(–surface2);border:1px solid var(–border);border-radius:20px;color:var(–text3);font-family:inherit;font-size:11px;font-weight:500;cursor:pointer;transition:all 0.2s;}
+.wt-filter-btn.active{background:var(–blue-dim);border-color:var(–blue);color:var(–blue);font-weight:700;}
 /* ── FITNESS TARGET STYLES ── */
-.target-metric-card{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:15px;margin-bottom:10px;}
+.target-metric-card{background:var(–surface);border:1px solid var(–border);border-radius:16px;padding:15px;margin-bottom:10px;}
 .target-metric-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;}
 .target-metric-title{font-size:13px;font-weight:700;}
 .target-metric-badge{font-size:11px;padding:2px 10px;border-radius:20px;font-weight:700;}
 .cv-row{display:flex;align-items:center;gap:8px;margin-bottom:8px;}
-.cv-label{font-size:11px;color:var(--text2);width:50px;flex-shrink:0;}
-.cv-bar-track{flex:1;height:7px;background:var(--surface3);border-radius:4px;overflow:hidden;}
+.cv-label{font-size:11px;color:var(–text2);width:50px;flex-shrink:0;}
+.cv-bar-track{flex:1;height:7px;background:var(–surface3);border-radius:4px;overflow:hidden;}
 .cv-bar-fill{height:100%;border-radius:4px;transition:width 0.9s cubic-bezier(.4,0,.2,1);}
 .cv-val{font-size:12px;font-weight:700;width:42px;text-align:right;flex-shrink:0;}
 .target-summary-grid{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-bottom:12px;}
-.target-summary-item{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:13px;text-align:center;}
+.target-summary-item{background:var(–surface);border:1px solid var(–border);border-radius:14px;padding:13px;text-align:center;}
 .target-summary-val{font-size:20px;font-weight:800;}
-.target-summary-label{font-size:10px;color:var(--text3);margin-top:2px;font-weight:600;}
+.target-summary-label{font-size:10px;color:var(–text3);margin-top:2px;font-weight:600;}
 .target-summary-sub{font-size:11px;margin-top:4px;}
 .bmi-zone{display:flex;width:100%;height:10px;border-radius:5px;overflow:hidden;margin:8px 0;}
 .bmi-zone-seg{flex:1;}
-.bmi-pointer{width:10px;height:10px;border-radius:50%;background:white;border:2px solid var(--text);position:relative;transition:left 0.8s ease;}
-.timeline-card{background:var(--surface2);border:1px solid var(--border);border-radius:14px;padding:13px;margin-bottom:8px;display:flex;gap:12px;align-items:flex-start;}
+.bmi-pointer{width:10px;height:10px;border-radius:50%;background:white;border:2px solid var(–text);position:relative;transition:left 0.8s ease;}
+.timeline-card{background:var(–surface2);border:1px solid var(–border);border-radius:14px;padding:13px;margin-bottom:8px;display:flex;gap:12px;align-items:flex-start;}
 .timeline-dot{width:10px;height:10px;border-radius:50%;margin-top:4px;flex-shrink:0;}
 .timeline-text{font-size:13px;line-height:1.6;}
 
 /* ── RETENTION / CONTEXT CHIPS ── */
 .context-chip-row{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0 4px;}
-.context-chip{display:inline-flex;align-items:center;gap:4px;padding:4px 8px;border-radius:20px;background:var(--surface);border:1px solid var(--border);font-size:10px;font-weight:700;color:var(--text2);}
-.context-chip.high{background:rgba(239,68,68,0.10);border-color:rgba(239,68,68,0.30);color:var(--red);}
-.context-chip.med{background:rgba(234,179,8,0.10);border-color:rgba(234,179,8,0.30);color:var(--yellow);}
-.context-chip.low{background:rgba(34,197,94,0.10);border-color:rgba(34,197,94,0.25);color:var(--green);}
+.context-chip{display:inline-flex;align-items:center;gap:4px;padding:4px 8px;border-radius:20px;background:var(–surface);border:1px solid var(–border);font-size:10px;font-weight:700;color:var(–text2);}
+.context-chip.high{background:rgba(239,68,68,0.10);border-color:rgba(239,68,68,0.30);color:var(–red);}
+.context-chip.med{background:rgba(234,179,8,0.10);border-color:rgba(234,179,8,0.30);color:var(–yellow);}
+.context-chip.low{background:rgba(34,197,94,0.10);border-color:rgba(34,197,94,0.25);color:var(–green);}
 /* ── WEIGHT LOG STYLES ── */
 .wt-compare-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:9px;margin-bottom:4px;}
-.wt-compare-item{background:var(--surface2);border:1px solid var(--border);border-radius:14px;padding:13px 8px;text-align:center;}
+.wt-compare-item{background:var(–surface2);border:1px solid var(–border);border-radius:14px;padding:13px 8px;text-align:center;}
 .wt-compare-val{font-size:18px;font-weight:800;}
-.wt-compare-label{font-size:10px;color:var(--text3);margin-top:2px;font-weight:600;}
+.wt-compare-label{font-size:10px;color:var(–text3);margin-top:2px;font-weight:600;}
 .wt-compare-sub{font-size:11px;margin-top:4px;font-weight:600;}
-.wt-log-item{background:var(--surface2);border:1px solid var(--border);border-radius:14px;padding:13px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;}
+.wt-log-item{background:var(–surface2);border:1px solid var(–border);border-radius:14px;padding:13px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;}
 .wt-log-left{flex:1;}
 .wt-log-val{font-size:16px;font-weight:800;}
-.wt-log-meta{font-size:11px;color:var(--text3);margin-top:2px;}
-.wt-log-note{font-size:11px;color:var(--text2);margin-top:2px;}
+.wt-log-meta{font-size:11px;color:var(–text3);margin-top:2px;}
+.wt-log-note{font-size:11px;color:var(–text2);margin-top:2px;}
 .wt-chart-wrap{position:relative;width:100%;height:180px;}
 </style>
+
 </head>
 <body>
 <div class="app">
@@ -327,6 +329,7 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
   </nav>
 
   <!-- DASHBOARD -->
+
   <div class="page active" id="page-dashboard">
     <div class="fold-full" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
       <div class="section-title" style="margin:0">สรุปวันนี้</div>
@@ -371,63 +374,67 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
     </div>
     </div><!-- end fold-grid -->
 
-    <!-- SLEEP TRACKER CARD -->
-    <!-- Recovery Card (Dashboard) -->
-    <div class="card" id="dash-recovery-card">
-      <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
-        <div style="width:28px;height:28px;border-radius:8px;background:linear-gradient(135deg,#22c55e,#16a34a);display:flex;align-items:center;justify-content:center;font-size:14px;">🌅</div>
-        <div>
-          <div style="font-size:13px;font-weight:700;color:var(--text);">Recovery วันนี้</div>
-          <div style="font-size:10px;color:var(--text3);">กรอก sleep ที่ Fitness → 😴 Sleep</div>
-        </div>
-      </div>
-      <div id="dash-recovery-result">
-        <div style="text-align:center;padding:10px 0;color:var(--text3);font-size:12px;">ยังไม่มี Recovery Score วันนี้<br>
-          <button onclick="showPage('fitness');showFitnessTab('sleep');" style="margin-top:8px;background:none;border:1px solid var(--border);border-radius:20px;padding:4px 14px;font-size:11px;color:var(--text2);cursor:pointer;">😴 กรอก Sleep Data</button>
-        </div>
+```
+<!-- SLEEP TRACKER CARD -->
+<!-- Recovery Card (Dashboard) -->
+<div class="card" id="dash-recovery-card">
+  <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
+    <div style="width:28px;height:28px;border-radius:8px;background:linear-gradient(135deg,#22c55e,#16a34a);display:flex;align-items:center;justify-content:center;font-size:14px;">🌅</div>
+    <div>
+      <div style="font-size:13px;font-weight:700;color:var(--text);">Recovery วันนี้</div>
+      <div style="font-size:10px;color:var(--text3);">กรอก sleep ที่ Fitness → 😴 Sleep</div>
+    </div>
+  </div>
+  <div id="dash-recovery-result">
+    <div style="text-align:center;padding:10px 0;color:var(--text3);font-size:12px;">ยังไม่มี Recovery Score วันนี้<br>
+      <button onclick="showPage('fitness');showFitnessTab('sleep');" style="margin-top:8px;background:none;border:1px solid var(--border);border-radius:20px;padding:4px 14px;font-size:11px;color:var(--text2);cursor:pointer;">😴 กรอก Sleep Data</button>
+    </div>
+  </div>
+</div>
+
+<!-- AI DAILY SUMMARY CARD -->
+<div class="card" id="ai-summary-card">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+    <div style="display:flex;align-items:center;gap:8px;">
+      <div style="width:28px;height:28px;border-radius:8px;background:linear-gradient(135deg,#a855f7,#6366f1);display:flex;align-items:center;justify-content:center;font-size:14px;">🤖</div>
+      <div>
+        <div style="font-size:13px;font-weight:700;color:var(--text);">AI Daily Coach</div>
+        <div style="font-size:10px;color:var(--text3);">วิเคราะห์วันนี้ + แนะนำพรุ่งนี้</div>
       </div>
     </div>
+    <button id="ai-summary-btn" onclick="generateDailySummary()" style="padding:7px 14px;background:linear-gradient(135deg,#a855f7,#6366f1);border:none;border-radius:20px;color:white;font-family:inherit;font-size:12px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:5px;transition:all 0.2s;" onmouseover="this.style.opacity='0.85'" onmouseout="this.style.opacity='1'">
+      <span>✨</span><span>สรุปวันนี้</span>
+    </button>
+  </div>
 
-    <!-- AI DAILY SUMMARY CARD -->
-    <div class="card" id="ai-summary-card">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
-        <div style="display:flex;align-items:center;gap:8px;">
-          <div style="width:28px;height:28px;border-radius:8px;background:linear-gradient(135deg,#a855f7,#6366f1);display:flex;align-items:center;justify-content:center;font-size:14px;">🤖</div>
-          <div>
-            <div style="font-size:13px;font-weight:700;color:var(--text);">AI Daily Coach</div>
-            <div style="font-size:10px;color:var(--text3);">วิเคราะห์วันนี้ + แนะนำพรุ่งนี้</div>
-          </div>
-        </div>
-        <button id="ai-summary-btn" onclick="generateDailySummary()" style="padding:7px 14px;background:linear-gradient(135deg,#a855f7,#6366f1);border:none;border-radius:20px;color:white;font-family:inherit;font-size:12px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:5px;transition:all 0.2s;" onmouseover="this.style.opacity='0.85'" onmouseout="this.style.opacity='1'">
-          <span>✨</span><span>สรุปวันนี้</span>
-        </button>
-      </div>
-
-      <!-- Skeleton / Loading -->
-      <div id="ai-summary-loading" style="display:none;padding:8px 0;">
-        <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;">
-          <div class="ai-pulse-dot"></div>
-          <div style="font-size:13px;color:var(--text2);" id="ai-loading-text">กำลังวิเคราะห์ข้อมูลวันนี้...</div>
-        </div>
-        <div class="ai-skeleton" style="height:12px;width:90%;border-radius:6px;margin-bottom:8px;"></div>
-        <div class="ai-skeleton" style="height:12px;width:75%;border-radius:6px;margin-bottom:8px;"></div>
-        <div class="ai-skeleton" style="height:12px;width:85%;border-radius:6px;margin-bottom:8px;"></div>
-        <div class="ai-skeleton" style="height:12px;width:60%;border-radius:6px;"></div>
-      </div>
-
-      <!-- Result -->
-      <div id="ai-summary-result" style="display:none;"></div>
-
-      <!-- Empty nudge -->
-      <div id="ai-summary-empty" style="text-align:center;padding:16px 8px;">
-        <div style="font-size:32px;margin-bottom:8px;">💡</div>
-        <div style="font-size:13px;color:var(--text2);font-weight:500;">กดปุ่มเพื่อให้ AI วิเคราะห์วันนี้</div>
-        <div style="font-size:11px;color:var(--text3);margin-top:4px;">รับ feedback ระดับ WHOOP + แผนพรุ่งนี้</div>
-      </div>
+  <!-- Skeleton / Loading -->
+  <div id="ai-summary-loading" style="display:none;padding:8px 0;">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;">
+      <div class="ai-pulse-dot"></div>
+      <div style="font-size:13px;color:var(--text2);" id="ai-loading-text">กำลังวิเคราะห์ข้อมูลวันนี้...</div>
     </div>
+    <div class="ai-skeleton" style="height:12px;width:90%;border-radius:6px;margin-bottom:8px;"></div>
+    <div class="ai-skeleton" style="height:12px;width:75%;border-radius:6px;margin-bottom:8px;"></div>
+    <div class="ai-skeleton" style="height:12px;width:85%;border-radius:6px;margin-bottom:8px;"></div>
+    <div class="ai-skeleton" style="height:12px;width:60%;border-radius:6px;"></div>
+  </div>
+
+  <!-- Result -->
+  <div id="ai-summary-result" style="display:none;"></div>
+
+  <!-- Empty nudge -->
+  <div id="ai-summary-empty" style="text-align:center;padding:16px 8px;">
+    <div style="font-size:32px;margin-bottom:8px;">💡</div>
+    <div style="font-size:13px;color:var(--text2);font-weight:500;">กดปุ่มเพื่อให้ AI วิเคราะห์วันนี้</div>
+    <div style="font-size:11px;color:var(--text3);margin-top:4px;">รับ feedback ระดับ WHOOP + แผนพรุ่งนี้</div>
+  </div>
+</div>
+```
+
   </div>
 
   <!-- ANALYZE -->
+
   <div class="page" id="page-analyze">
     <div class="section-title">วิเคราะห์อาหาร</div>
     <div class="card">
@@ -495,6 +502,7 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
   </div>
 
   <!-- LOG -->
+
   <div class="page" id="page-log">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
       <div class="section-title" style="margin:0">บันทึกวันนี้</div>
@@ -504,6 +512,7 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
   </div>
 
   <!-- FITNESS -->
+
   <div class="page" id="page-fitness">
     <!-- Sub-tabs -->
     <div class="tab-row">
@@ -514,325 +523,334 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
       <button class="tab-pill" id="ftab-sleep" onclick="showFitnessTab('sleep')">😴 Sleep</button>
     </div>
 
-    <!-- TAB: TODAY -->
-    <div id="ftab-content-today">
-      <!-- Net Calories Card -->
-      <div class="ft-net-card" id="ft-net-card">
-        <div style="font-size:11px;color:var(--text3);margin-bottom:4px;">NET CALORIES วันนี้</div>
-        <div class="ft-net-val" id="ft-net-val" style="color:var(--green)">0</div>
-        <div class="ft-net-sub">kcal คงเหลือ</div>
-        <div class="ft-net-row">
-          <span>🍽️ กิน <b id="ft-eaten">0</b></span>
-          <span style="color:var(--text3)">−</span>
-          <span>🔥 เผา <b id="ft-burned">0</b></span>
-          <span style="color:var(--text3)">−</span>
-          <span>👟 ก้าว <b id="ft-step-cal">0</b></span>
-          <span style="color:var(--text3)">=</span>
-          <span>🎯 เป้า <b id="ft-goal-disp">0</b></span>
-        </div>
-      </div>
+```
+<!-- TAB: TODAY -->
+<div id="ftab-content-today">
+  <!-- Net Calories Card -->
+  <div class="ft-net-card" id="ft-net-card">
+    <div style="font-size:11px;color:var(--text3);margin-bottom:4px;">NET CALORIES วันนี้</div>
+    <div class="ft-net-val" id="ft-net-val" style="color:var(--green)">0</div>
+    <div class="ft-net-sub">kcal คงเหลือ</div>
+    <div class="ft-net-row">
+      <span>🍽️ กิน <b id="ft-eaten">0</b></span>
+      <span style="color:var(--text3)">−</span>
+      <span>🔥 เผา <b id="ft-burned">0</b></span>
+      <span style="color:var(--text3)">−</span>
+      <span>👟 ก้าว <b id="ft-step-cal">0</b></span>
+      <span style="color:var(--text3)">=</span>
+      <span>🎯 เป้า <b id="ft-goal-disp">0</b></span>
+    </div>
+  </div>
 
-      <!-- Today stats -->
-      <div class="ft-stat-grid">
-        <div class="ft-stat"><div class="ft-stat-val" id="ft-total-burn" style="color:var(--accent)">0</div><div class="ft-stat-name">kcal เผา</div></div>
-        <div class="ft-stat"><div class="ft-stat-val" id="ft-total-min" style="color:var(--blue)">0</div><div class="ft-stat-name">นาที</div></div>
-        <div class="ft-stat"><div class="ft-stat-val" id="ft-workout-count" style="color:var(--purple)">0</div><div class="ft-stat-name">session</div></div>
-      </div>
+  <!-- Today stats -->
+  <div class="ft-stat-grid">
+    <div class="ft-stat"><div class="ft-stat-val" id="ft-total-burn" style="color:var(--accent)">0</div><div class="ft-stat-name">kcal เผา</div></div>
+    <div class="ft-stat"><div class="ft-stat-val" id="ft-total-min" style="color:var(--blue)">0</div><div class="ft-stat-name">นาที</div></div>
+    <div class="ft-stat"><div class="ft-stat-val" id="ft-workout-count" style="color:var(--purple)">0</div><div class="ft-stat-name">session</div></div>
+  </div>
 
-      <!-- Add workout -->
-      <div class="card">
-        <div class="card-title">เพิ่มการออกกำลังกาย</div>
-        <div style="font-size:12px;color:var(--text2);margin-bottom:8px;">เลือก Preset</div>
-        <div class="preset-grid" id="presetGrid"></div>
-        <div class="input-group" style="margin-top:4px;">
-          <label class="input-label">ชื่อกิจกรรม (กรอกเองหรือจาก preset)</label>
-          <input class="input-field" type="text" id="ft-name" placeholder="เช่น วิ่ง, ว่ายน้ำ, ยกเวท"/>
-        </div>
-        <div class="input-row">
-          <div class="input-group">
-            <label class="input-label">เวลา (นาที)</label>
-            <input class="input-field" type="number" id="ft-min" placeholder="30" min="1" oninput="calcBurnPreview()"/>
-          </div>
-          <div class="input-group">
-            <label class="input-label">แคลที่เผา (kcal)</label>
-            <input class="input-field" type="number" id="ft-cal-burn" placeholder="คำนวณอัตโนมัติ" min="0"/>
-          </div>
-        </div>
-        <div style="font-size:11px;color:var(--text3);margin-bottom:10px;" id="ft-met-info"></div>
-        <div class="input-group" id="ft-session-steps-wrap">
-          <label class="input-label">👟 ก้าวระหว่าง session นี้ (ไม่บังคับ — ใช้หักซ้ำกับ step count)</label>
-          <input class="input-field" type="number" id="ft-session-steps" placeholder="เช่น 6000" min="0"/>
-          <div style="font-size:10px;color:var(--text3);margin-top:4px;">กรอกก้าวที่เกิดขึ้น<b>ระหว่าง</b>ออกกำลังกาย เพื่อไม่ให้นับซ้ำกับ step count ทั้งวัน</div>
-        </div>
-        <button class="btn-primary" onclick="addWorkout()">➕ บันทึก Workout</button>
+  <!-- Add workout -->
+  <div class="card">
+    <div class="card-title">เพิ่มการออกกำลังกาย</div>
+    <div style="font-size:12px;color:var(--text2);margin-bottom:8px;">เลือก Preset</div>
+    <div class="preset-grid" id="presetGrid"></div>
+    <div class="input-group" style="margin-top:4px;">
+      <label class="input-label">ชื่อกิจกรรม (กรอกเองหรือจาก preset)</label>
+      <input class="input-field" type="text" id="ft-name" placeholder="เช่น วิ่ง, ว่ายน้ำ, ยกเวท"/>
+    </div>
+    <div class="input-row">
+      <div class="input-group">
+        <label class="input-label">เวลา (นาที)</label>
+        <input class="input-field" type="number" id="ft-min" placeholder="30" min="1" oninput="calcBurnPreview()"/>
       </div>
-
-      <!-- Step Count -->
-      <div class="card" style="margin-bottom:14px;">
-        <div class="card-title">👟 จำนวนก้าววันนี้</div>
-        <div style="display:flex;gap:10px;align-items:center;">
-          <input class="input-field" type="number" id="ft-steps-input" placeholder="เช่น 8000" min="0" max="100000"
-            style="flex:1;" oninput="saveSteps()"/>
-          <div style="text-align:right;min-width:80px;">
-            <div style="font-size:16px;font-weight:700;color:var(--green);" id="ft-steps-kcal-display">0 kcal</div>
-            <div style="font-size:10px;color:var(--text3);">จากก้าวเดิน</div>
-          </div>
-        </div>
-        <div style="font-size:10px;color:var(--text3);margin-top:6px;">
-          📱 ดูก้าวจาก Samsung Health / Apple Health แล้วกรอกที่นี่<br>
-          สูตร: ก้าว × 0.04 × (น้ำหนัก÷70) — นับรวมใน Net Calories อัตโนมัติ
-        </div>
-      </div>
-
-      <!-- Today workout list -->
-      <div class="card">
-        <div class="card-title">Workout วันนี้</div>
-        <div id="ft-today-list"></div>
+      <div class="input-group">
+        <label class="input-label">แคลที่เผา (kcal)</label>
+        <input class="input-field" type="number" id="ft-cal-burn" placeholder="คำนวณอัตโนมัติ" min="0"/>
       </div>
     </div>
-
-    <!-- TAB: CHART -->
-    <div id="ftab-content-chart" style="display:none;">
-      <div id="ft-chart-section">
-      <div class="card">
-        <div class="card-title" style="margin-bottom:8px;">🔥 แคล + ⏱ เวลา (7 วันล่าสุด) <span style="font-size:10px;color:var(--text3);font-weight:400;">แกนซ้าย=kcal แกนขวา=นาที</span></div>
-        
-        <div style="position:relative;height:130px;width:100%;"><canvas id="ftChartCombined"></canvas></div>
-      </div>
-      <div class="card">
-        <div class="card-title" style="margin-bottom:8px;">📊 Net Calories รายวัน <span style="font-size:10px;color:var(--text3);font-weight:400;">🟢ต่ำกว่าเป้า 🔴เกินเป้า</span></div>
-        
-        <div style="position:relative;height:120px;width:100%;"><canvas id="ftChartNet"></canvas></div>
-      </div>
-      </div><!-- end ft-chart-section -->
+    <div style="font-size:11px;color:var(--text3);margin-bottom:10px;" id="ft-met-info"></div>
+    <div class="input-group" id="ft-session-steps-wrap">
+      <label class="input-label">👟 ก้าวระหว่าง session นี้ (ไม่บังคับ — ใช้หักซ้ำกับ step count)</label>
+      <input class="input-field" type="number" id="ft-session-steps" placeholder="เช่น 6000" min="0"/>
+      <div style="font-size:10px;color:var(--text3);margin-top:4px;">กรอกก้าวที่เกิดขึ้น<b>ระหว่าง</b>ออกกำลังกาย เพื่อไม่ให้นับซ้ำกับ step count ทั้งวัน</div>
     </div>
+    <button class="btn-primary" onclick="addWorkout()">➕ บันทึก Workout</button>
+  </div>
 
-    <!-- TAB: TARGET -->
-    <div id="ftab-content-target" style="display:none;">
-      <div id="ft-target-dashboard">
-        <div class="empty-state"><div class="empty-icon">🎯</div><div class="empty-text">ยังไม่มี Fitness Target</div><div class="empty-sub">ไปที่ ⚙️ ตั้งค่า → Fitness Target เพื่อกรอกข้อมูล</div></div>
+  <!-- Step Count -->
+  <div class="card" style="margin-bottom:14px;">
+    <div class="card-title">👟 จำนวนก้าววันนี้</div>
+    <div style="display:flex;gap:10px;align-items:center;">
+      <input class="input-field" type="number" id="ft-steps-input" placeholder="เช่น 8000" min="0" max="100000"
+        style="flex:1;" oninput="saveSteps()"/>
+      <div style="text-align:right;min-width:80px;">
+        <div style="font-size:16px;font-weight:700;color:var(--green);" id="ft-steps-kcal-display">0 kcal</div>
+        <div style="font-size:10px;color:var(--text3);">จากก้าวเดิน</div>
       </div>
     </div>
-
-    <!-- TAB: PLAN (AI Weekly) -->
-    <div id="ftab-content-plan" style="display:none;">
-      <div class="card">
-        <div class="card-title">🤖 AI แนะนำ Workout Plan รายสัปดาห์</div>
-        <div style="font-size:13px;color:var(--text2);margin-bottom:12px;line-height:1.6;">
-          AI จะวิเคราะห์จาก Goal Mode, Adaptive TDEE, macro, Training Focus และวันพักที่คุณระบุ เพื่อสร้างแผนออกกำลังกายที่เหมาะสม
-        </div>
-        <div class="input-group" style="margin-bottom:12px;">
-          <label class="input-label">🛌 วันที่ต้องการพัก / ไม่สะดวกออกกำลังกาย</label>
-          <textarea class="input-field" id="plan-rest-days" rows="2" placeholder="เช่น วันพุธ, วันอาทิตย์ หรือ Wednesday, Sunday" style="resize:none;font-size:13px;line-height:1.5;"></textarea>
-          <div style="font-size:10px;color:var(--text3);margin-top:5px;line-height:1.5;">AI จะล็อกวันที่ระบุเป็น Rest / Recovery และกระจายเวท + คาร์ดิโอไปวันอื่น โดยยังยึด Goal Mode เดิม</div>
-        </div>
-        <button class="btn-primary" id="planBtn" onclick="generatePlan()">✨ สร้างแผนสัปดาห์นี้</button>
-        <div id="planSavedLabel" style="font-size:11px;color:var(--text3);text-align:center;margin-top:8px;display:none;"></div>
-      </div>
-      <div class="loading" id="planLoading"><div class="spinner"></div><div style="font-size:14px;color:var(--text2);">AI กำลังวิเคราะห์...</div></div>
-      <div id="planResult"></div>
+    <div style="font-size:10px;color:var(--text3);margin-top:6px;">
+      📱 ดูก้าวจาก Samsung Health / Apple Health แล้วกรอกที่นี่<br>
+      สูตร: ก้าว × 0.04 × (น้ำหนัก÷70) — นับรวมใน Net Calories อัตโนมัติ
     </div>
+  </div>
 
-    <!-- TAB: SLEEP -->
-    <div id="ftab-content-sleep" style="display:none;">
-      <div class="card">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
-          <div style="display:flex;align-items:center;gap:8px;">
-            <div style="width:28px;height:28px;border-radius:8px;background:linear-gradient(135deg,#3b82f6,#6366f1);display:flex;align-items:center;justify-content:center;font-size:14px;">😴</div>
-            <div><div style="font-size:13px;font-weight:700;color:var(--text);">Sleep Tracker</div>
-            <div style="font-size:10px;color:var(--text3);">Polar Loop / Huawei Watch 5 Pro / Galaxy Ring</div></div>
-          </div>
-          <div id="sleep-saved-badge" style="display:none;font-size:11px;color:var(--green);font-weight:600;background:rgba(34,197,94,0.1);border:1px solid rgba(34,197,94,0.3);border-radius:20px;padding:3px 10px;">✓ บันทึกแล้ว</div>
-        </div>
-        <div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px;">⏱️ ระยะเวลาการนอน</div>
-        <div style="margin-bottom:8px;"><label class="input-label">🛏️ Time in Bed <span style="font-size:10px;color:var(--text3);font-weight:400;">(เวลาอยู่บนเตียงทั้งหมด)</span></label>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
-            <div style="position:relative;"><input class="input-field" type="number" id="sleep-tib-h" min="0" max="16" step="1" placeholder="8"/><span style="position:absolute;right:10px;top:50%;transform:translateY(-50%);font-size:11px;color:var(--text3);pointer-events:none;">ชม.</span></div>
-            <div style="position:relative;"><input class="input-field" type="number" id="sleep-tib-m" min="0" max="59" step="1" placeholder="0"/><span style="position:absolute;right:10px;top:50%;transform:translateY(-50%);font-size:11px;color:var(--text3);pointer-events:none;">นาที</span></div>
-          </div></div>
-        <div style="margin-bottom:8px;"><label class="input-label">😴 Sleep Duration <span style="font-size:10px;color:var(--text3);font-weight:400;">(เวลาหลับจริง)</span></label>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
-            <div style="position:relative;"><input class="input-field" type="number" id="sleep-hours" min="0" max="14" step="1" placeholder="7"/><span style="position:absolute;right:10px;top:50%;transform:translateY(-50%);font-size:11px;color:var(--text3);pointer-events:none;">ชม.</span></div>
-            <div style="position:relative;"><input class="input-field" type="number" id="sleep-minutes" min="0" max="59" step="1" placeholder="10"/><span style="position:absolute;right:10px;top:50%;transform:translateY(-50%);font-size:11px;color:var(--text3);pointer-events:none;">นาที</span></div>
-          </div></div>
-        <div style="margin-bottom:8px;"><label class="input-label">🌊 Deep Sleep</label>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
-            <div style="position:relative;"><input class="input-field" type="number" id="sleep-deep-h" min="0" max="5" step="1" placeholder="1"/><span style="position:absolute;right:10px;top:50%;transform:translateY(-50%);font-size:11px;color:var(--text3);pointer-events:none;">ชม.</span></div>
-            <div style="position:relative;"><input class="input-field" type="number" id="sleep-deep-m" min="0" max="59" step="1" placeholder="30"/><span style="position:absolute;right:10px;top:50%;transform:translateY(-50%);font-size:11px;color:var(--text3);pointer-events:none;">นาที</span></div>
-          </div></div>
-        <div style="margin-bottom:16px;"><label class="input-label">💭 REM Sleep</label>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
-            <div style="position:relative;"><input class="input-field" type="number" id="sleep-rem-h" min="0" max="5" step="1" placeholder="1"/><span style="position:absolute;right:10px;top:50%;transform:translateY(-50%);font-size:11px;color:var(--text3);pointer-events:none;">ชม.</span></div>
-            <div style="position:relative;"><input class="input-field" type="number" id="sleep-rem-m" min="0" max="59" step="1" placeholder="40"/><span style="position:absolute;right:10px;top:50%;transform:translateY(-50%);font-size:11px;color:var(--text3);pointer-events:none;">นาที</span></div>
-          </div></div>
-        <div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px;">📊 Physiological Performance</div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;">
-          <div><label class="input-label">❤️ Resting HR</label><div style="position:relative;"><input class="input-field" type="number" id="sleep-rhr" min="30" max="120" placeholder="58"/><span style="position:absolute;right:8px;top:50%;transform:translateY(-50%);font-size:11px;color:var(--text3);pointer-events:none;">bpm</span></div></div>
-          <div><label class="input-label">🫁 Respiratory Rate</label><div style="position:relative;"><input class="input-field" type="number" id="sleep-resp-rate" min="8" max="30" step="0.1" placeholder="15.2"/><span style="position:absolute;right:8px;top:50%;transform:translateY(-50%);font-size:10px;color:var(--text3);pointer-events:none;">br/m</span></div></div>
-        </div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:16px;">
-          <div><label class="input-label">💫 HRV</label><div style="position:relative;"><input class="input-field" type="number" id="sleep-hrv" min="10" max="200" placeholder="39"/><span style="position:absolute;right:8px;top:50%;transform:translateY(-50%);font-size:11px;color:var(--text3);pointer-events:none;">ms</span></div></div>
-          <div><label class="input-label">📊 HRV Baseline</label><div style="position:relative;"><input class="input-field" type="number" id="sleep-hrv-baseline" min="10" max="200" placeholder="36"/><span style="position:absolute;right:8px;top:50%;transform:translateY(-50%);font-size:11px;color:var(--text3);pointer-events:none;">ms</span></div></div>
-        </div>
-        <button class="btn-primary" onclick="saveSleep()">💾 บันทึก Sleep Data</button>
-        <button id="morning-recovery-btn" onclick="generateMorningRecovery()" style="margin-top:10px;width:100%;padding:10px;background:linear-gradient(135deg,#22c55e,#16a34a);border:none;border-radius:12px;color:white;font-family:inherit;font-size:13px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;transition:all 0.2s;" onmouseover="this.style.opacity='0.85'" onmouseout="this.style.opacity='1'">
-          <span>🌅</span><span>วิเคราะห์ Recovery วันนี้</span>
-        </button>
-        <!-- Result stays INSIDE sleep card, inside fitness tab -->
-        <div id="morning-recovery-result" style="display:none;margin-top:12px;background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:12px;"></div>
-      </div>
+  <!-- Today workout list -->
+  <div class="card">
+    <div class="card-title">Workout วันนี้</div>
+    <div id="ft-today-list"></div>
+  </div>
+</div>
+
+<!-- TAB: CHART -->
+<div id="ftab-content-chart" style="display:none;">
+  <div id="ft-chart-section">
+  <div class="card">
+    <div class="card-title" style="margin-bottom:8px;">🔥 แคล + ⏱ เวลา (7 วันล่าสุด) <span style="font-size:10px;color:var(--text3);font-weight:400;">แกนซ้าย=kcal แกนขวา=นาที</span></div>
+    
+    <div style="position:relative;height:130px;width:100%;"><canvas id="ftChartCombined"></canvas></div>
+  </div>
+  <div class="card">
+    <div class="card-title" style="margin-bottom:8px;">📊 Net Calories รายวัน <span style="font-size:10px;color:var(--text3);font-weight:400;">🟢ต่ำกว่าเป้า 🔴เกินเป้า</span></div>
+    
+    <div style="position:relative;height:120px;width:100%;"><canvas id="ftChartNet"></canvas></div>
+  </div>
+  </div><!-- end ft-chart-section -->
+</div>
+
+<!-- TAB: TARGET -->
+<div id="ftab-content-target" style="display:none;">
+  <div id="ft-target-dashboard">
+    <div class="empty-state"><div class="empty-icon">🎯</div><div class="empty-text">ยังไม่มี Fitness Target</div><div class="empty-sub">ไปที่ ⚙️ ตั้งค่า → Fitness Target เพื่อกรอกข้อมูล</div></div>
+  </div>
+</div>
+
+<!-- TAB: PLAN (AI Weekly) -->
+<div id="ftab-content-plan" style="display:none;">
+  <div class="card">
+    <div class="card-title">🤖 AI แนะนำ Workout Plan รายสัปดาห์</div>
+    <div style="font-size:13px;color:var(--text2);margin-bottom:12px;line-height:1.6;">
+      AI จะวิเคราะห์จาก Goal Mode, Adaptive TDEE, macro, Training Focus และวันพักที่คุณระบุ เพื่อสร้างแผนออกกำลังกายที่เหมาะสม
     </div>
+    <div class="input-group" style="margin-bottom:12px;">
+      <label class="input-label">🛌 วันที่ต้องการพัก / ไม่สะดวกออกกำลังกาย</label>
+      <textarea class="input-field" id="plan-rest-days" rows="2" placeholder="เช่น วันพุธ, วันอาทิตย์ หรือ Wednesday, Sunday" style="resize:none;font-size:13px;line-height:1.5;"></textarea>
+      <div style="font-size:10px;color:var(--text3);margin-top:5px;line-height:1.5;">AI จะล็อกวันที่ระบุเป็น Rest / Recovery และกระจายเวท + คาร์ดิโอไปวันอื่น โดยยังยึด Goal Mode เดิม</div>
+    </div>
+    <button class="btn-primary" id="planBtn" onclick="generatePlan()">✨ สร้างแผนสัปดาห์นี้</button>
+    <div id="planSavedLabel" style="font-size:11px;color:var(--text3);text-align:center;margin-top:8px;display:none;"></div>
+  </div>
+  <div class="loading" id="planLoading"><div class="spinner"></div><div style="font-size:14px;color:var(--text2);">AI กำลังวิเคราะห์...</div></div>
+  <div id="planResult"></div>
+</div>
+
+<!-- TAB: SLEEP -->
+<div id="ftab-content-sleep" style="display:none;">
+  <div class="card">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+      <div style="display:flex;align-items:center;gap:8px;">
+        <div style="width:28px;height:28px;border-radius:8px;background:linear-gradient(135deg,#3b82f6,#6366f1);display:flex;align-items:center;justify-content:center;font-size:14px;">😴</div>
+        <div><div style="font-size:13px;font-weight:700;color:var(--text);">Sleep Tracker</div>
+        <div style="font-size:10px;color:var(--text3);">Polar Loop / Huawei Watch 5 Pro / Galaxy Ring</div></div>
+      </div>
+      <div id="sleep-saved-badge" style="display:none;font-size:11px;color:var(--green);font-weight:600;background:rgba(34,197,94,0.1);border:1px solid rgba(34,197,94,0.3);border-radius:20px;padding:3px 10px;">✓ บันทึกแล้ว</div>
+    </div>
+    <div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px;">⏱️ ระยะเวลาการนอน</div>
+    <div style="margin-bottom:8px;"><label class="input-label">🛏️ Time in Bed <span style="font-size:10px;color:var(--text3);font-weight:400;">(เวลาอยู่บนเตียงทั้งหมด)</span></label>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+        <div style="position:relative;"><input class="input-field" type="number" id="sleep-tib-h" min="0" max="16" step="1" placeholder="8"/><span style="position:absolute;right:10px;top:50%;transform:translateY(-50%);font-size:11px;color:var(--text3);pointer-events:none;">ชม.</span></div>
+        <div style="position:relative;"><input class="input-field" type="number" id="sleep-tib-m" min="0" max="59" step="1" placeholder="0"/><span style="position:absolute;right:10px;top:50%;transform:translateY(-50%);font-size:11px;color:var(--text3);pointer-events:none;">นาที</span></div>
+      </div></div>
+    <div style="margin-bottom:8px;"><label class="input-label">😴 Sleep Duration <span style="font-size:10px;color:var(--text3);font-weight:400;">(เวลาหลับจริง)</span></label>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+        <div style="position:relative;"><input class="input-field" type="number" id="sleep-hours" min="0" max="14" step="1" placeholder="7"/><span style="position:absolute;right:10px;top:50%;transform:translateY(-50%);font-size:11px;color:var(--text3);pointer-events:none;">ชม.</span></div>
+        <div style="position:relative;"><input class="input-field" type="number" id="sleep-minutes" min="0" max="59" step="1" placeholder="10"/><span style="position:absolute;right:10px;top:50%;transform:translateY(-50%);font-size:11px;color:var(--text3);pointer-events:none;">นาที</span></div>
+      </div></div>
+    <div style="margin-bottom:8px;"><label class="input-label">🌊 Deep Sleep</label>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+        <div style="position:relative;"><input class="input-field" type="number" id="sleep-deep-h" min="0" max="5" step="1" placeholder="1"/><span style="position:absolute;right:10px;top:50%;transform:translateY(-50%);font-size:11px;color:var(--text3);pointer-events:none;">ชม.</span></div>
+        <div style="position:relative;"><input class="input-field" type="number" id="sleep-deep-m" min="0" max="59" step="1" placeholder="30"/><span style="position:absolute;right:10px;top:50%;transform:translateY(-50%);font-size:11px;color:var(--text3);pointer-events:none;">นาที</span></div>
+      </div></div>
+    <div style="margin-bottom:16px;"><label class="input-label">💭 REM Sleep</label>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+        <div style="position:relative;"><input class="input-field" type="number" id="sleep-rem-h" min="0" max="5" step="1" placeholder="1"/><span style="position:absolute;right:10px;top:50%;transform:translateY(-50%);font-size:11px;color:var(--text3);pointer-events:none;">ชม.</span></div>
+        <div style="position:relative;"><input class="input-field" type="number" id="sleep-rem-m" min="0" max="59" step="1" placeholder="40"/><span style="position:absolute;right:10px;top:50%;transform:translateY(-50%);font-size:11px;color:var(--text3);pointer-events:none;">นาที</span></div>
+      </div></div>
+    <div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px;">📊 Physiological Performance</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;">
+      <div><label class="input-label">❤️ Resting HR</label><div style="position:relative;"><input class="input-field" type="number" id="sleep-rhr" min="30" max="120" placeholder="58"/><span style="position:absolute;right:8px;top:50%;transform:translateY(-50%);font-size:11px;color:var(--text3);pointer-events:none;">bpm</span></div></div>
+      <div><label class="input-label">🫁 Respiratory Rate</label><div style="position:relative;"><input class="input-field" type="number" id="sleep-resp-rate" min="8" max="30" step="0.1" placeholder="15.2"/><span style="position:absolute;right:8px;top:50%;transform:translateY(-50%);font-size:10px;color:var(--text3);pointer-events:none;">br/m</span></div></div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:16px;">
+      <div><label class="input-label">💫 HRV</label><div style="position:relative;"><input class="input-field" type="number" id="sleep-hrv" min="10" max="200" placeholder="39"/><span style="position:absolute;right:8px;top:50%;transform:translateY(-50%);font-size:11px;color:var(--text3);pointer-events:none;">ms</span></div></div>
+      <div><label class="input-label">📊 HRV Baseline</label><div style="position:relative;"><input class="input-field" type="number" id="sleep-hrv-baseline" min="10" max="200" placeholder="36"/><span style="position:absolute;right:8px;top:50%;transform:translateY(-50%);font-size:11px;color:var(--text3);pointer-events:none;">ms</span></div></div>
+    </div>
+    <button class="btn-primary" onclick="saveSleep()">💾 บันทึก Sleep Data</button>
+    <button id="morning-recovery-btn" onclick="generateMorningRecovery()" style="margin-top:10px;width:100%;padding:10px;background:linear-gradient(135deg,#22c55e,#16a34a);border:none;border-radius:12px;color:white;font-family:inherit;font-size:13px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;transition:all 0.2s;" onmouseover="this.style.opacity='0.85'" onmouseout="this.style.opacity='1'">
+      <span>🌅</span><span>วิเคราะห์ Recovery วันนี้</span>
+    </button>
+    <!-- Result stays INSIDE sleep card, inside fitness tab -->
+    <div id="morning-recovery-result" style="display:none;margin-top:12px;background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:12px;"></div>
+  </div>
+</div>
+```
+
   </div><!-- end page-fitness -->
 
   <!-- WEIGHT LOG -->
+
   <div class="page" id="page-weight">
     <div class="fold-full" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
       <div class="section-title" style="margin:0">⚖️ บันทึกน้ำหนัก</div>
     </div>
     <div class="fold-grid">
 
-    <!-- Unified Health Check-in Card -->
-    <div class="card fold-full" id="health-checkin-card">
-      <div class="card-title">📝 Health Check-in วันนี้</div>
-      <div style="font-size:11px;color:var(--text3);line-height:1.6;margin-bottom:12px;">
-        กรอกน้ำหนักครั้งเดียวเป็น single source of truth — ถ้ามี Eufy/InBody ค่อยกรอก Body Composition เพิ่มในส่วน Optional
-      </div>
+```
+<!-- Unified Health Check-in Card -->
+<div class="card fold-full" id="health-checkin-card">
+  <div class="card-title">📝 Health Check-in วันนี้</div>
+  <div style="font-size:11px;color:var(--text3);line-height:1.6;margin-bottom:12px;">
+    กรอกน้ำหนักครั้งเดียวเป็น single source of truth — ถ้ามี Eufy/InBody ค่อยกรอก Body Composition เพิ่มในส่วน Optional
+  </div>
 
-      <div class="input-row">
-        <div class="input-group">
-          <label class="input-label">วันที่บันทึก</label>
-          <input class="input-field" type="date" id="checkin-date"/>
-        </div>
-        <div class="input-group">
-          <label class="input-label">Source</label>
-          <select class="input-field" id="bc-source">
-            <option value="eufy" selected>Eufy / Smart Scale</option>
-            <option value="inbody">InBody</option>
-            <option value="manual">Manual</option>
-          </select>
-        </div>
-      </div>
-
-      <div class="input-row">
-        <div class="input-group">
-          <label class="input-label">น้ำหนัก (กก.) <span style="color:var(--accent);font-weight:700;">required</span></label>
-          <div style="display:flex;gap:6px;align-items:center;">
-            <input class="input-field" type="number" id="wt-input" placeholder="เช่น 68.5" step="0.1" min="20" max="300" style="flex:1;"/>
-            <span style="color:var(--text3);font-size:13px;">กก.</span>
-          </div>
-        </div>
-        <div class="input-group">
-          <label class="input-label">รอบเอว (ซม.) <span style="color:var(--text3);font-weight:400;">ไม่บังคับ</span></label>
-          <div style="display:flex;gap:6px;align-items:center;">
-            <input class="input-field" type="number" id="wt-waist" placeholder="เช่น 82.0" step="0.1" min="40" max="180" style="flex:1;"/>
-            <span style="color:var(--text3);font-size:13px;">ซม.</span>
-          </div>
-        </div>
-      </div>
-
-      <details id="body-comp-details" style="margin:8px 0 12px;background:var(--surface2);border:1px solid var(--border);border-radius:14px;padding:10px 12px;">
-        <summary style="cursor:pointer;font-size:13px;font-weight:700;color:var(--text2);list-style:none;display:flex;align-items:center;justify-content:space-between;">
-          <span>🧬 Body Composition <span style="font-size:11px;color:var(--text3);font-weight:500;">Optional</span></span>
-          <span style="font-size:11px;color:var(--accent);">Eufy / InBody</span>
-        </summary>
-        <div style="font-size:11px;color:var(--text3);line-height:1.6;margin:8px 0 10px;">
-          ใช้ Eufy เป็น daily trend และใช้ InBody เป็น calibration source — ระบบจะใช้ค่าน้ำหนักจากช่องด้านบน ไม่ต้องกรอกซ้ำ
-        </div>
-        <div class="input-row">
-          <div class="input-group"><label class="input-label">Body Fat %</label><input class="input-field" type="number" id="bc-bf" step="0.1" placeholder="18.0"/></div>
-          <div class="input-group"><label class="input-label">Skeletal Muscle Mass (kg)</label><input class="input-field" type="number" id="bc-smm" step="0.1" placeholder="31.2"/></div>
-        </div>
-        <div class="input-row">
-          <div class="input-group"><label class="input-label">Visceral Fat Level</label><input class="input-field" type="number" id="bc-vf" step="1" placeholder="4"/></div>
-          <div class="input-group"><label class="input-label">BMR (kcal)</label><input class="input-field" type="number" id="bc-bmr" step="1" placeholder="1565"/></div>
-        </div>
-      </details>
-
-      <div class="input-group">
-        <label class="input-label">หมายเหตุ (ไม่บังคับ)</label>
-        <input class="input-field" type="text" id="wt-note" placeholder="เช่น หลังตื่นนอน / วัดรอบเอวระดับสะดือ"/>
-      </div>
-
-      <button class="btn-primary" onclick="handleSaveWeight()">💾 บันทึก Check-in</button>
-      <div id="bc-source-summary" style="margin-top:10px;"></div>
+  <div class="input-row">
+    <div class="input-group">
+      <label class="input-label">วันที่บันทึก</label>
+      <input class="input-field" type="date" id="checkin-date"/>
     </div>
-
-    <!-- Compare Card -->
-    <div class="card" id="wt-compare-card">
-      <div class="card-title">🎯 เทียบเป้าหมาย</div>
-      <div class="wt-compare-grid" id="wt-compare-row">
-        <div class="wt-compare-item"><div class="wt-compare-val" style="color:var(--blue)">—</div><div class="wt-compare-label">ปัจจุบัน (กก.)</div></div>
-        <div class="wt-compare-item"><div class="wt-compare-val" style="color:var(--green)">—</div><div class="wt-compare-label">เป้าหมาย (กก.)</div></div>
-        <div class="wt-compare-item"><div class="wt-compare-val" style="color:var(--text2)">—</div><div class="wt-compare-label">ห่างเป้า</div></div>
-      </div>
-    </div>
-
-    <!-- Chart Card -->
-    <div class="card fold-full">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
-        <div class="card-title" style="margin:0;">📈 กราฟน้ำหนัก</div>
-        <div style="display:flex;gap:6px;">
-          <button class="wt-filter-btn active" id="wf-7" onclick="setWeightFilter(7,this)">7 วัน</button>
-          <button class="wt-filter-btn" id="wf-30" onclick="setWeightFilter(30,this)">30 วัน</button>
-          <button class="wt-filter-btn" id="wf-0" onclick="setWeightFilter(0,this)">ทั้งหมด</button>
-        </div>
-      </div>
-      <div class="wt-chart-wrap"><canvas id="wtChart"></canvas></div>
-      <div style="font-size:10px;color:var(--text3);margin-top:6px;text-align:center;">🟢 เส้นประ = เป้าหมายจาก Fitness Target</div>
-    </div>
-
-    <!-- Weight vs Cal Chart Card -->
-    <div class="card fold-full">
-      <div class="card-title">📊 น้ำหนัก vs Net Calories (7 วันล่าสุด)</div>
-      <div style="font-size:10px;color:var(--text3);margin-bottom:8px;">แกนซ้าย = กก. &nbsp;|&nbsp; แกนขวา = kcal &nbsp;|&nbsp; 🟦 น้ำหนัก &nbsp;🟩🟥 Net Cal</div>
-      <div class="wt-chart-wrap" style="height:200px;"><canvas id="wtCalChart"></canvas></div>
-    </div>
-
-    </div><!-- end fold-grid -->
-
-
-    <!-- Progress Photo Card -->
-    <div class="card fold-full" id="progress-photo-card">
-      <div class="card-title">📷 Visual Progress Photo</div>
-      <div style="font-size:11px;color:var(--text3);line-height:1.6;margin-bottom:10px;">Optional: ใช้รูปเป็น validation layer เพื่อแยก recomp / water retention / fat trend ไม่ใช้แทนเครื่องชั่ง</div>
-      <div class="input-row">
-        <div class="input-group"><label class="input-label">มุมถ่าย</label><select class="input-field" id="vp-angle"><option value="front">Front</option><option value="side">Side</option><option value="back">Back</option></select></div>
-        <div class="input-group"><label class="input-label">Note</label><input class="input-field" type="text" id="vp-note" placeholder="เช่น เช้า หลังตื่น"/></div>
-      </div>
-      <input type="file" id="vp-file" accept="image/*" style="display:none" onchange="handleProgressPhotoFile(event)"/>
-      <button class="btn-secondary" onclick="document.getElementById('vp-file').click()">📸 เลือกรูป Progress</button>
-      <img id="vp-preview" class="preview-img" style="display:none;margin-top:10px;max-height:260px;object-fit:cover;"/>
-      <button class="btn-secondary" style="margin-top:8px;" onclick="analyzeProgressPhotoAI()">🤖 วิเคราะห์ Visual Trend ด้วย AI (ไม่บังคับ)</button>
-      <div id="vp-ai-result" style="display:none;margin-top:8px;background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:10px;font-size:12px;color:var(--text2);line-height:1.6;"></div>
-      <button class="btn-primary" style="margin-top:8px;" onclick="saveProgressPhotoLog()">💾 บันทึกรูป</button>
-      <div id="vp-summary" style="margin-top:10px;"></div>
-    </div>
-
-    <!-- Weight Trend Analyzer Card -->
-    <div class="card" id="wt-analyzer-card">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
-        <div class="card-title" style="margin:0;">🔬 วิเคราะห์ Trend น้ำหนัก</div>
-        <button onclick="runWeightAnalysis()" style="padding:6px 14px;background:linear-gradient(135deg,#3b82f6,#1d4ed8);border:none;border-radius:20px;color:white;font-family:inherit;font-size:12px;font-weight:600;cursor:pointer;transition:all 0.2s;" onmouseover="this.style.opacity='0.85'" onmouseout="this.style.opacity='1'">📊 วิเคราะห์</button>
-      </div>
-      <div id="wt-analysis-result" style="min-height:40px;">
-        <div style="text-align:center;padding:16px 0;color:var(--text3);font-size:13px;">กด วิเคราะห์ เพื่อดู Diagnosis จาก data 14 วันล่าสุด</div>
-      </div>
-    </div>
-
-    <!-- Log List -->
-    <div class="card">
-      <div class="card-title">📋 ประวัติน้ำหนัก</div>
-      <div id="wt-log-list"><div class="empty-state"><div class="empty-icon">⚖️</div><div class="empty-text">ยังไม่มีข้อมูล</div><div class="empty-sub">กรอกน้ำหนักด้านบนเพื่อเริ่มต้น</div></div></div>
+    <div class="input-group">
+      <label class="input-label">Source</label>
+      <select class="input-field" id="bc-source">
+        <option value="eufy" selected>Eufy / Smart Scale</option>
+        <option value="inbody">InBody</option>
+        <option value="manual">Manual</option>
+      </select>
     </div>
   </div>
 
+  <div class="input-row">
+    <div class="input-group">
+      <label class="input-label">น้ำหนัก (กก.) <span style="color:var(--accent);font-weight:700;">required</span></label>
+      <div style="display:flex;gap:6px;align-items:center;">
+        <input class="input-field" type="number" id="wt-input" placeholder="เช่น 68.5" step="0.1" min="20" max="300" style="flex:1;"/>
+        <span style="color:var(--text3);font-size:13px;">กก.</span>
+      </div>
+    </div>
+    <div class="input-group">
+      <label class="input-label">รอบเอว (ซม.) <span style="color:var(--text3);font-weight:400;">ไม่บังคับ</span></label>
+      <div style="display:flex;gap:6px;align-items:center;">
+        <input class="input-field" type="number" id="wt-waist" placeholder="เช่น 82.0" step="0.1" min="40" max="180" style="flex:1;"/>
+        <span style="color:var(--text3);font-size:13px;">ซม.</span>
+      </div>
+    </div>
+  </div>
+
+  <details id="body-comp-details" style="margin:8px 0 12px;background:var(--surface2);border:1px solid var(--border);border-radius:14px;padding:10px 12px;">
+    <summary style="cursor:pointer;font-size:13px;font-weight:700;color:var(--text2);list-style:none;display:flex;align-items:center;justify-content:space-between;">
+      <span>🧬 Body Composition <span style="font-size:11px;color:var(--text3);font-weight:500;">Optional</span></span>
+      <span style="font-size:11px;color:var(--accent);">Eufy / InBody</span>
+    </summary>
+    <div style="font-size:11px;color:var(--text3);line-height:1.6;margin:8px 0 10px;">
+      ใช้ Eufy เป็น daily trend และใช้ InBody เป็น calibration source — ระบบจะใช้ค่าน้ำหนักจากช่องด้านบน ไม่ต้องกรอกซ้ำ
+    </div>
+    <div class="input-row">
+      <div class="input-group"><label class="input-label">Body Fat %</label><input class="input-field" type="number" id="bc-bf" step="0.1" placeholder="18.0"/></div>
+      <div class="input-group"><label class="input-label">Skeletal Muscle Mass (kg)</label><input class="input-field" type="number" id="bc-smm" step="0.1" placeholder="31.2"/></div>
+    </div>
+    <div class="input-row">
+      <div class="input-group"><label class="input-label">Visceral Fat Level</label><input class="input-field" type="number" id="bc-vf" step="1" placeholder="4"/></div>
+      <div class="input-group"><label class="input-label">BMR (kcal)</label><input class="input-field" type="number" id="bc-bmr" step="1" placeholder="1565"/></div>
+    </div>
+  </details>
+
+  <div class="input-group">
+    <label class="input-label">หมายเหตุ (ไม่บังคับ)</label>
+    <input class="input-field" type="text" id="wt-note" placeholder="เช่น หลังตื่นนอน / วัดรอบเอวระดับสะดือ"/>
+  </div>
+
+  <button class="btn-primary" onclick="handleSaveWeight()">💾 บันทึก Check-in</button>
+  <div id="bc-source-summary" style="margin-top:10px;"></div>
+</div>
+
+<!-- Compare Card -->
+<div class="card" id="wt-compare-card">
+  <div class="card-title">🎯 เทียบเป้าหมาย</div>
+  <div class="wt-compare-grid" id="wt-compare-row">
+    <div class="wt-compare-item"><div class="wt-compare-val" style="color:var(--blue)">—</div><div class="wt-compare-label">ปัจจุบัน (กก.)</div></div>
+    <div class="wt-compare-item"><div class="wt-compare-val" style="color:var(--green)">—</div><div class="wt-compare-label">เป้าหมาย (กก.)</div></div>
+    <div class="wt-compare-item"><div class="wt-compare-val" style="color:var(--text2)">—</div><div class="wt-compare-label">ห่างเป้า</div></div>
+  </div>
+</div>
+
+<!-- Chart Card -->
+<div class="card fold-full">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+    <div class="card-title" style="margin:0;">📈 กราฟน้ำหนัก</div>
+    <div style="display:flex;gap:6px;">
+      <button class="wt-filter-btn active" id="wf-7" onclick="setWeightFilter(7,this)">7 วัน</button>
+      <button class="wt-filter-btn" id="wf-30" onclick="setWeightFilter(30,this)">30 วัน</button>
+      <button class="wt-filter-btn" id="wf-0" onclick="setWeightFilter(0,this)">ทั้งหมด</button>
+    </div>
+  </div>
+  <div class="wt-chart-wrap"><canvas id="wtChart"></canvas></div>
+  <div style="font-size:10px;color:var(--text3);margin-top:6px;text-align:center;">🟢 เส้นประ = เป้าหมายจาก Fitness Target</div>
+</div>
+
+<!-- Weight vs Cal Chart Card -->
+<div class="card fold-full">
+  <div class="card-title">📊 น้ำหนัก vs Net Calories (7 วันล่าสุด)</div>
+  <div style="font-size:10px;color:var(--text3);margin-bottom:8px;">แกนซ้าย = กก. &nbsp;|&nbsp; แกนขวา = kcal &nbsp;|&nbsp; 🟦 น้ำหนัก &nbsp;🟩🟥 Net Cal</div>
+  <div class="wt-chart-wrap" style="height:200px;"><canvas id="wtCalChart"></canvas></div>
+</div>
+
+</div><!-- end fold-grid -->
+
+
+<!-- Progress Photo Card -->
+<div class="card fold-full" id="progress-photo-card">
+  <div class="card-title">📷 Visual Progress Photo</div>
+  <div style="font-size:11px;color:var(--text3);line-height:1.6;margin-bottom:10px;">Optional: ใช้รูปเป็น validation layer เพื่อแยก recomp / water retention / fat trend ไม่ใช้แทนเครื่องชั่ง</div>
+  <div class="input-row">
+    <div class="input-group"><label class="input-label">มุมถ่าย</label><select class="input-field" id="vp-angle"><option value="front">Front</option><option value="side">Side</option><option value="back">Back</option></select></div>
+    <div class="input-group"><label class="input-label">Note</label><input class="input-field" type="text" id="vp-note" placeholder="เช่น เช้า หลังตื่น"/></div>
+  </div>
+  <input type="file" id="vp-file" accept="image/*" style="display:none" onchange="handleProgressPhotoFile(event)"/>
+  <button class="btn-secondary" onclick="document.getElementById('vp-file').click()">📸 เลือกรูป Progress</button>
+  <img id="vp-preview" class="preview-img" style="display:none;margin-top:10px;max-height:260px;object-fit:cover;"/>
+  <button class="btn-secondary" style="margin-top:8px;" onclick="analyzeProgressPhotoAI()">🤖 วิเคราะห์ Visual Trend ด้วย AI (ไม่บังคับ)</button>
+  <div id="vp-ai-result" style="display:none;margin-top:8px;background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:10px;font-size:12px;color:var(--text2);line-height:1.6;"></div>
+  <button class="btn-primary" style="margin-top:8px;" onclick="saveProgressPhotoLog()">💾 บันทึกรูป</button>
+  <div id="vp-summary" style="margin-top:10px;"></div>
+</div>
+
+<!-- Weight Trend Analyzer Card -->
+<div class="card" id="wt-analyzer-card">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+    <div class="card-title" style="margin:0;">🔬 วิเคราะห์ Trend น้ำหนัก</div>
+    <button onclick="runWeightAnalysis()" style="padding:6px 14px;background:linear-gradient(135deg,#3b82f6,#1d4ed8);border:none;border-radius:20px;color:white;font-family:inherit;font-size:12px;font-weight:600;cursor:pointer;transition:all 0.2s;" onmouseover="this.style.opacity='0.85'" onmouseout="this.style.opacity='1'">📊 วิเคราะห์</button>
+  </div>
+  <div id="wt-analysis-result" style="min-height:40px;">
+    <div style="text-align:center;padding:16px 0;color:var(--text3);font-size:13px;">กด วิเคราะห์ เพื่อดู Diagnosis จาก data 14 วันล่าสุด</div>
+  </div>
+</div>
+
+<!-- Log List -->
+<div class="card">
+  <div class="card-title">📋 ประวัติน้ำหนัก</div>
+  <div id="wt-log-list"><div class="empty-state"><div class="empty-icon">⚖️</div><div class="empty-text">ยังไม่มีข้อมูล</div><div class="empty-sub">กรอกน้ำหนักด้านบนเพื่อเริ่มต้น</div></div></div>
+</div>
+```
+
+  </div>
+
   <!-- HISTORY -->
+
   <div class="page" id="page-history">
     <div class="section-title">ประวัติทั้งหมด</div>
     <div id="historyList"></div>
   </div>
 
   <!-- FAVORITES -->
+
   <div class="page" id="page-favorites">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
       <div class="section-title" style="margin:0">⭐ เมนูโปรด</div>
@@ -842,6 +860,7 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
   </div>
 
   <!-- HISTORY -->
+
   <div class="page" id="page-settings">
     <div class="section-title fold-full">ข้อมูลส่วนตัวและเป้าหมาย</div>
     <div class="fold-grid">
@@ -918,158 +937,161 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
       <div class="card-title">🎯 Fitness Target</div>
       <div style="font-size:12px;color:var(--text3);margin-bottom:12px;">กรอกข้อมูลปัจจุบันและเป้าหมาย — AI จะใช้ข้อมูลนี้ในการวางแผน workout และคำนวณ Lean Mass ให้อัตโนมัติ</div>
 
-      <div style="font-size:12px;font-weight:600;color:var(--text2);margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid var(--border);">📍 ข้อมูลปัจจุบัน</div>
-      <div class="input-row">
-        <div class="input-group">
-          <label class="input-label">🔥 % Body Fat ปัจจุบัน</label>
-          <input class="input-field" type="number" id="ft-curr-bf" placeholder="25" step="0.5" min="3" max="60" oninput="updateLeanMassPreview()"/>
-        </div>
-        <div class="input-group">
-          <label class="input-label">💪 Skeletal Muscle ปัจจุบัน (%)</label>
-          <input class="input-field" type="number" id="ft-curr-muscle" placeholder="35" step="0.1" min="10" max="60" oninput="updateMusclePreview()"/>
-        </div>
-      </div>
-      <div id="ft-lean-curr-preview" style="font-size:11px;color:var(--text3);margin-bottom:10px;padding:6px 10px;background:var(--surface2);border-radius:8px;display:none;"></div>
-
-      <div style="font-size:12px;font-weight:600;color:var(--accent);margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid var(--border);margin-top:4px;">🎯 เป้าหมาย</div>
-      <div class="input-row">
-        <div class="input-group">
-          <label class="input-label">⚖️ น้ำหนักเป้าหมาย (กก.)</label>
-          <input class="input-field" type="number" id="ft-target-weight" placeholder="60" step="0.5" oninput="updateLeanMassPreview()"/>
-        </div>
-        <div class="input-group">
-          <label class="input-label">🔥 % Body Fat เป้าหมาย</label>
-          <input class="input-field" type="number" id="ft-target-bf" placeholder="18" step="0.5" min="5" max="50" oninput="updateLeanMassPreview()"/>
-        </div>
-      </div>
-      <div class="input-row">
-        <div class="input-group">
-          <label class="input-label">💪 Skeletal Muscle เป้าหมาย (%)</label>
-          <input class="input-field" type="number" id="ft-target-muscle" placeholder="40" step="0.1" min="10" max="60"/>
-        </div>
-        <div class="input-group">
-          <label class="input-label">📊 BMI เป้าหมาย <span style="color:var(--text3);font-size:10px;">(หรือปล่อยว่าง)</span></label>
-          <input class="input-field" type="number" id="ft-target-bmi" placeholder="คำนวณอัตโนมัติ" step="0.1" min="15" max="35"/>
-        </div>
-      </div>
-      <div id="ft-lean-target-preview" style="font-size:11px;color:var(--text3);margin-bottom:10px;padding:6px 10px;background:var(--surface2);border-radius:8px;display:none;"></div>
-      <div id="ft-muscle-preview" style="font-size:11px;color:var(--text3);margin-bottom:10px;padding:6px 10px;background:var(--surface2);border-radius:8px;display:none;"></div>
-      <div class="input-row" style="margin-top:4px;">
-        <div class="input-group">
-          <label class="input-label">🫀 Visceral Fat ปัจจุบัน (level 1-30)</label>
-          <input class="input-field" type="number" id="ft-curr-visceral" placeholder="8" step="1" min="1" max="30"/>
-        </div>
-        <div class="input-group">
-          <label class="input-label">🫀 Visceral Fat เป้าหมาย (level)</label>
-          <input class="input-field" type="number" id="ft-target-visceral" placeholder="5" step="1" min="1" max="30"/>
-        </div>
-      </div>
-      <div style="font-size:10px;color:var(--text3);margin-bottom:10px;">📌 ค่า Visceral Fat ได้จาก Smart Scale หรือ InBody (ปกติ: 1-9 | เสี่ยง: 10-14 | สูง: 15+)</div>
-
-      <div class="input-row">
-        <div class="input-group">
-          <label class="input-label">⏳ ระยะเวลาเป้าหมาย</label>
-          <select class="input-field" id="ft-target-duration">
-            <option value="4">4 สัปดาห์</option>
-            <option value="8" selected>8 สัปดาห์</option>
-            <option value="12">12 สัปดาห์</option>
-            <option value="24">6 เดือน</option>
-          </select>
-        </div>
-        <div class="input-group">
-          <label class="input-label">💪 ระดับความพร้อม</label>
-          <select class="input-field" id="ft-target-level">
-            <option value="beginner">มือใหม่</option>
-            <option value="intermediate" selected>ปานกลาง</option>
-            <option value="advanced">ขั้นสูง</option>
-          </select>
-        </div>
-      </div>
-      <button class="btn-primary" onclick="saveFitnessTarget()">💾 บันทึก Fitness Target</button>
+```
+  <div style="font-size:12px;font-weight:600;color:var(--text2);margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid var(--border);">📍 ข้อมูลปัจจุบัน</div>
+  <div class="input-row">
+    <div class="input-group">
+      <label class="input-label">🔥 % Body Fat ปัจจุบัน</label>
+      <input class="input-field" type="number" id="ft-curr-bf" placeholder="25" step="0.5" min="3" max="60" oninput="updateLeanMassPreview()"/>
     </div>
-    <div class="card">
-      <div class="card-title">🔗 Google Sheets Sync</div>
-      <div style="font-size:12px;color:var(--text3);margin-bottom:12px;">ใช้ Webhook URL เดียวกัน — ระบบจะส่งข้อมูลไปยังคนละ sheet tab อัตโนมัติ</div>
+    <div class="input-group">
+      <label class="input-label">💪 Skeletal Muscle ปัจจุบัน (%)</label>
+      <input class="input-field" type="number" id="ft-curr-muscle" placeholder="35" step="0.1" min="10" max="60" oninput="updateMusclePreview()"/>
+    </div>
+  </div>
+  <div id="ft-lean-curr-preview" style="font-size:11px;color:var(--text3);margin-bottom:10px;padding:6px 10px;background:var(--surface2);border-radius:8px;display:none;"></div>
 
-      <div style="display:flex;gap:10px;margin-bottom:12px;">
-        <div style="flex:1;display:flex;align-items:center;gap:8px;padding:10px 12px;border-radius:10px;background:var(--surface2);border:1px solid var(--border);">
-          <div class="sync-dot" id="syncDot"></div>
-          <div>
-            <div style="font-size:12px;font-weight:600;" id="syncLabel">ยังไม่ได้เชื่อมต่อ</div>
-            <div style="font-size:10px;color:var(--text3);">🍽️ Calories (sheet: Meals)</div>
-          </div>
-        </div>
-        <div style="flex:1;display:flex;align-items:center;gap:8px;padding:10px 12px;border-radius:10px;background:var(--surface2);border:1px solid var(--border);">
-          <div class="sync-dot" id="syncDotFt"></div>
-          <div>
-            <div style="font-size:12px;font-weight:600;" id="syncLabelFt">ยังไม่ได้เชื่อมต่อ</div>
-            <div style="font-size:10px;color:var(--text3);">🏋️ Fitness (sheet: Workouts)</div>
-          </div>
-        </div>
-      </div>
-      <div style="display:flex;gap:8px;margin-bottom:12px;">
-        <div style="flex:1;display:flex;align-items:center;gap:8px;padding:10px 12px;border-radius:10px;background:var(--surface2);border:1px solid var(--border);">
-          <div class="sync-dot" id="syncDotWt"></div>
-          <div>
-            <div style="font-size:12px;font-weight:600;" id="syncLabelWt">ยังไม่ได้เชื่อมต่อ</div>
-            <div style="font-size:10px;color:var(--text3);">⚖️ น้ำหนัก (sheet: WeightLog)</div>
-          </div>
-        </div>
-      </div>
+  <div style="font-size:12px;font-weight:600;color:var(--accent);margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid var(--border);margin-top:4px;">🎯 เป้าหมาย</div>
+  <div class="input-row">
+    <div class="input-group">
+      <label class="input-label">⚖️ น้ำหนักเป้าหมาย (กก.)</label>
+      <input class="input-field" type="number" id="ft-target-weight" placeholder="60" step="0.5" oninput="updateLeanMassPreview()"/>
+    </div>
+    <div class="input-group">
+      <label class="input-label">🔥 % Body Fat เป้าหมาย</label>
+      <input class="input-field" type="number" id="ft-target-bf" placeholder="18" step="0.5" min="5" max="50" oninput="updateLeanMassPreview()"/>
+    </div>
+  </div>
+  <div class="input-row">
+    <div class="input-group">
+      <label class="input-label">💪 Skeletal Muscle เป้าหมาย (%)</label>
+      <input class="input-field" type="number" id="ft-target-muscle" placeholder="40" step="0.1" min="10" max="60"/>
+    </div>
+    <div class="input-group">
+      <label class="input-label">📊 BMI เป้าหมาย <span style="color:var(--text3);font-size:10px;">(หรือปล่อยว่าง)</span></label>
+      <input class="input-field" type="number" id="ft-target-bmi" placeholder="คำนวณอัตโนมัติ" step="0.1" min="15" max="35"/>
+    </div>
+  </div>
+  <div id="ft-lean-target-preview" style="font-size:11px;color:var(--text3);margin-bottom:10px;padding:6px 10px;background:var(--surface2);border-radius:8px;display:none;"></div>
+  <div id="ft-muscle-preview" style="font-size:11px;color:var(--text3);margin-bottom:10px;padding:6px 10px;background:var(--surface2);border-radius:8px;display:none;"></div>
+  <div class="input-row" style="margin-top:4px;">
+    <div class="input-group">
+      <label class="input-label">🫀 Visceral Fat ปัจจุบัน (level 1-30)</label>
+      <input class="input-field" type="number" id="ft-curr-visceral" placeholder="8" step="1" min="1" max="30"/>
+    </div>
+    <div class="input-group">
+      <label class="input-label">🫀 Visceral Fat เป้าหมาย (level)</label>
+      <input class="input-field" type="number" id="ft-target-visceral" placeholder="5" step="1" min="1" max="30"/>
+    </div>
+  </div>
+  <div style="font-size:10px;color:var(--text3);margin-bottom:10px;">📌 ค่า Visceral Fat ได้จาก Smart Scale หรือ InBody (ปกติ: 1-9 | เสี่ยง: 10-14 | สูง: 15+)</div>
 
-      <label class="input-label">Webhook URL (ใช้ URL เดียวกัน)</label>
-      <input class="input-field-sm" type="url" id="webhookUrl" placeholder="https://script.google.com/macros/s/.../exec"/>
-      <button class="btn-primary" onclick="testSync()">🔗 ทดสอบการเชื่อมต่อ</button>
-      <div style="display:flex;gap:8px;margin-top:8px;">
-        <button class="btn-secondary" style="flex:1;" onclick="syncNow()">☁️ ซิงค์มื้ออาหารทั้งหมด</button>
-        <button class="btn-secondary" style="flex:1;" onclick="syncWorkoutsNow()">🏋️ ซิงค์ workout ทั้งหมด</button>
-      </div>
-      <button class="btn-secondary" style="margin-top:8px;" onclick="syncWeightNow()">⚖️ ซิงค์น้ำหนักทั้งหมด</button>
+  <div class="input-row">
+    <div class="input-group">
+      <label class="input-label">⏳ ระยะเวลาเป้าหมาย</label>
+      <select class="input-field" id="ft-target-duration">
+        <option value="4">4 สัปดาห์</option>
+        <option value="8" selected>8 สัปดาห์</option>
+        <option value="12">12 สัปดาห์</option>
+        <option value="24">6 เดือน</option>
+      </select>
+    </div>
+    <div class="input-group">
+      <label class="input-label">💪 ระดับความพร้อม</label>
+      <select class="input-field" id="ft-target-level">
+        <option value="beginner">มือใหม่</option>
+        <option value="intermediate" selected>ปานกลาง</option>
+        <option value="advanced">ขั้นสูง</option>
+      </select>
+    </div>
+  </div>
+  <button class="btn-primary" onclick="saveFitnessTarget()">💾 บันทึก Fitness Target</button>
+</div>
+<div class="card">
+  <div class="card-title">🔗 Google Sheets Sync</div>
+  <div style="font-size:12px;color:var(--text3);margin-bottom:12px;">ใช้ Webhook URL เดียวกัน — ระบบจะส่งข้อมูลไปยังคนละ sheet tab อัตโนมัติ</div>
 
-      <div style="margin-top:14px;padding:10px 12px;background:rgba(249,115,22,0.06);border:1px solid rgba(249,115,22,0.2);border-radius:10px;">
-        <div style="font-size:11px;font-weight:600;color:var(--accent);margin-bottom:6px;">📋 Google Apps Script — ต้องอัปเดต</div>
-        <div style="font-size:11px;color:var(--text3);line-height:1.7;">
-          Script ต้องรองรับ <code style="background:var(--surface);padding:1px 5px;border-radius:4px;">sheetName</code> parameter<br>
-          • action: <code style="background:var(--surface);padding:1px 5px;border-radius:4px;">"addMeal"</code> → sheet <b>Meals</b><br>
-          • action: <code style="background:var(--surface);padding:1px 5px;border-radius:4px;">"addWorkout"</code> → sheet <b>Workouts</b><br>
-          • action: <code style="background:var(--surface);padding:1px 5px;border-radius:4px;">"addWeight"</code> → sheet <b>WeightLog</b><br>
-          • action: <code style="background:var(--surface);padding:1px 5px;border-radius:4px;">"syncAll"</code> → ระบุ <code style="background:var(--surface);padding:1px 5px;border-radius:4px;">sheetName</code> ใน payload
-        </div>
+  <div style="display:flex;gap:10px;margin-bottom:12px;">
+    <div style="flex:1;display:flex;align-items:center;gap:8px;padding:10px 12px;border-radius:10px;background:var(--surface2);border:1px solid var(--border);">
+      <div class="sync-dot" id="syncDot"></div>
+      <div>
+        <div style="font-size:12px;font-weight:600;" id="syncLabel">ยังไม่ได้เชื่อมต่อ</div>
+        <div style="font-size:10px;color:var(--text3);">🍽️ Calories (sheet: Meals)</div>
       </div>
     </div>
-    <div class="card">
-      <div class="card-title">🔑 Gemini API Keys (Auto-Rotate)</div>
-      <div style="font-size:12px;color:var(--text3);margin-bottom:10px;">ใส่ได้สูงสุด 4 keys — ระบบจะ rotate อัตโนมัติเมื่อ key ไหน rate limit · <a href="https://aistudio.google.com/app/apikey" target="_blank" style="color:var(--accent)">ขอ key ฟรี</a></div>
-      <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px;">
-        <div style="display:flex;align-items:center;gap:8px;">
-          <div style="font-size:11px;font-weight:700;color:var(--accent);width:20px;flex-shrink:0;">K1</div>
-          <input class="input-field-sm" type="password" id="apiKey1" placeholder="AIzaSy... (primary)" style="margin:0;flex:1;"/>
-          <button onclick="toggleKeyVis('apiKey1',this)" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:15px;padding:2px 4px;flex-shrink:0;">👁</button>
-          <div id="keyStatus1" style="width:8px;height:8px;border-radius:50%;background:var(--border);flex-shrink:0;"></div>
-        </div>
-        <div style="display:flex;align-items:center;gap:8px;">
-          <div style="font-size:11px;font-weight:700;color:var(--text3);width:20px;flex-shrink:0;">K2</div>
-          <input class="input-field-sm" type="password" id="apiKey2" placeholder="AIzaSy... (optional)" style="margin:0;flex:1;"/>
-          <button onclick="toggleKeyVis('apiKey2',this)" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:15px;padding:2px 4px;flex-shrink:0;">👁</button>
-          <div id="keyStatus2" style="width:8px;height:8px;border-radius:50%;background:var(--border);flex-shrink:0;"></div>
-        </div>
-        <div style="display:flex;align-items:center;gap:8px;">
-          <div style="font-size:11px;font-weight:700;color:var(--text3);width:20px;flex-shrink:0;">K3</div>
-          <input class="input-field-sm" type="password" id="apiKey3" placeholder="AIzaSy... (optional)" style="margin:0;flex:1;"/>
-          <button onclick="toggleKeyVis('apiKey3',this)" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:15px;padding:2px 4px;flex-shrink:0;">👁</button>
-          <div id="keyStatus3" style="width:8px;height:8px;border-radius:50%;background:var(--border);flex-shrink:0;"></div>
-        </div>
-        <div style="display:flex;align-items:center;gap:8px;">
-          <div style="font-size:11px;font-weight:700;color:var(--text3);width:20px;flex-shrink:0;">K4</div>
-          <input class="input-field-sm" type="password" id="apiKey4" placeholder="AIzaSy... (optional)" style="margin:0;flex:1;"/>
-          <button onclick="toggleKeyVis('apiKey4',this)" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:15px;padding:2px 4px;flex-shrink:0;">👁</button>
-          <div id="keyStatus4" style="width:8px;height:8px;border-radius:50%;background:var(--border);flex-shrink:0;"></div>
-        </div>
+    <div style="flex:1;display:flex;align-items:center;gap:8px;padding:10px 12px;border-radius:10px;background:var(--surface2);border:1px solid var(--border);">
+      <div class="sync-dot" id="syncDotFt"></div>
+      <div>
+        <div style="font-size:12px;font-weight:600;" id="syncLabelFt">ยังไม่ได้เชื่อมต่อ</div>
+        <div style="font-size:10px;color:var(--text3);">🏋️ Fitness (sheet: Workouts)</div>
       </div>
-      <div id="keyRotateStatus" style="font-size:11px;color:var(--text3);margin-bottom:10px;min-height:16px;"></div>
-      <button class="btn-primary" onclick="saveApiKeys()">💾 บันทึก API Keys</button>
     </div>
-    </div><!-- end fold-grid -->
+  </div>
+  <div style="display:flex;gap:8px;margin-bottom:12px;">
+    <div style="flex:1;display:flex;align-items:center;gap:8px;padding:10px 12px;border-radius:10px;background:var(--surface2);border:1px solid var(--border);">
+      <div class="sync-dot" id="syncDotWt"></div>
+      <div>
+        <div style="font-size:12px;font-weight:600;" id="syncLabelWt">ยังไม่ได้เชื่อมต่อ</div>
+        <div style="font-size:10px;color:var(--text3);">⚖️ น้ำหนัก (sheet: WeightLog)</div>
+      </div>
+    </div>
+  </div>
+
+  <label class="input-label">Webhook URL (ใช้ URL เดียวกัน)</label>
+  <input class="input-field-sm" type="url" id="webhookUrl" placeholder="https://script.google.com/macros/s/.../exec"/>
+  <button class="btn-primary" onclick="testSync()">🔗 ทดสอบการเชื่อมต่อ</button>
+  <div style="display:flex;gap:8px;margin-top:8px;">
+    <button class="btn-secondary" style="flex:1;" onclick="syncNow()">☁️ ซิงค์มื้ออาหารทั้งหมด</button>
+    <button class="btn-secondary" style="flex:1;" onclick="syncWorkoutsNow()">🏋️ ซิงค์ workout ทั้งหมด</button>
+  </div>
+  <button class="btn-secondary" style="margin-top:8px;" onclick="syncWeightNow()">⚖️ ซิงค์น้ำหนักทั้งหมด</button>
+
+  <div style="margin-top:14px;padding:10px 12px;background:rgba(249,115,22,0.06);border:1px solid rgba(249,115,22,0.2);border-radius:10px;">
+    <div style="font-size:11px;font-weight:600;color:var(--accent);margin-bottom:6px;">📋 Google Apps Script — ต้องอัปเดต</div>
+    <div style="font-size:11px;color:var(--text3);line-height:1.7;">
+      Script ต้องรองรับ <code style="background:var(--surface);padding:1px 5px;border-radius:4px;">sheetName</code> parameter<br>
+      • action: <code style="background:var(--surface);padding:1px 5px;border-radius:4px;">"addMeal"</code> → sheet <b>Meals</b><br>
+      • action: <code style="background:var(--surface);padding:1px 5px;border-radius:4px;">"addWorkout"</code> → sheet <b>Workouts</b><br>
+      • action: <code style="background:var(--surface);padding:1px 5px;border-radius:4px;">"addWeight"</code> → sheet <b>WeightLog</b><br>
+      • action: <code style="background:var(--surface);padding:1px 5px;border-radius:4px;">"syncAll"</code> → ระบุ <code style="background:var(--surface);padding:1px 5px;border-radius:4px;">sheetName</code> ใน payload
+    </div>
+  </div>
+</div>
+<div class="card">
+  <div class="card-title">🔑 Gemini API Keys (Auto-Rotate)</div>
+  <div style="font-size:12px;color:var(--text3);margin-bottom:10px;">ใส่ได้สูงสุด 4 keys — ระบบจะ rotate อัตโนมัติเมื่อ key ไหน rate limit · <a href="https://aistudio.google.com/app/apikey" target="_blank" style="color:var(--accent)">ขอ key ฟรี</a></div>
+  <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px;">
+    <div style="display:flex;align-items:center;gap:8px;">
+      <div style="font-size:11px;font-weight:700;color:var(--accent);width:20px;flex-shrink:0;">K1</div>
+      <input class="input-field-sm" type="password" id="apiKey1" placeholder="AIzaSy... (primary)" style="margin:0;flex:1;"/>
+      <button onclick="toggleKeyVis('apiKey1',this)" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:15px;padding:2px 4px;flex-shrink:0;">👁</button>
+      <div id="keyStatus1" style="width:8px;height:8px;border-radius:50%;background:var(--border);flex-shrink:0;"></div>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;">
+      <div style="font-size:11px;font-weight:700;color:var(--text3);width:20px;flex-shrink:0;">K2</div>
+      <input class="input-field-sm" type="password" id="apiKey2" placeholder="AIzaSy... (optional)" style="margin:0;flex:1;"/>
+      <button onclick="toggleKeyVis('apiKey2',this)" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:15px;padding:2px 4px;flex-shrink:0;">👁</button>
+      <div id="keyStatus2" style="width:8px;height:8px;border-radius:50%;background:var(--border);flex-shrink:0;"></div>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;">
+      <div style="font-size:11px;font-weight:700;color:var(--text3);width:20px;flex-shrink:0;">K3</div>
+      <input class="input-field-sm" type="password" id="apiKey3" placeholder="AIzaSy... (optional)" style="margin:0;flex:1;"/>
+      <button onclick="toggleKeyVis('apiKey3',this)" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:15px;padding:2px 4px;flex-shrink:0;">👁</button>
+      <div id="keyStatus3" style="width:8px;height:8px;border-radius:50%;background:var(--border);flex-shrink:0;"></div>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;">
+      <div style="font-size:11px;font-weight:700;color:var(--text3);width:20px;flex-shrink:0;">K4</div>
+      <input class="input-field-sm" type="password" id="apiKey4" placeholder="AIzaSy... (optional)" style="margin:0;flex:1;"/>
+      <button onclick="toggleKeyVis('apiKey4',this)" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:15px;padding:2px 4px;flex-shrink:0;">👁</button>
+      <div id="keyStatus4" style="width:8px;height:8px;border-radius:50%;background:var(--border);flex-shrink:0;"></div>
+    </div>
+  </div>
+  <div id="keyRotateStatus" style="font-size:11px;color:var(--text3);margin-bottom:10px;min-height:16px;"></div>
+  <button class="btn-primary" onclick="saveApiKeys()">💾 บันทึก API Keys</button>
+</div>
+</div><!-- end fold-grid -->
+```
+
   </div>
 </div>
 
@@ -1089,6 +1111,7 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
 </div>
 
 <!-- FAVORITE MODAL: Use (add to meal) -->
+
 <div id="favUseModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:999;align-items:center;justify-content:center;padding:20px;">
   <div style="background:var(--surface);border:1px solid var(--border);border-radius:20px;padding:22px;width:100%;max-width:360px;">
     <div style="font-size:16px;font-weight:700;margin-bottom:4px;">🍽️ บันทึกเป็นมื้ออาหาร</div>
@@ -2989,7 +3012,7 @@ function updateFitnessUI() {
   // Net card
   document.getElementById('ft-eaten').textContent = eaten;
   document.getElementById('ft-burned').textContent = totalBurn;
-  document.getElementById('ft-step-cal').textContent = stepCal;
+  document.getElementById('ft-step-cal').textContent = Math.round(neatCal);
   document.getElementById('ft-goal-disp').textContent = S.goals.cal;
   var netRemain = S.goals.cal - (eaten - totalActive);
   var netEl = document.getElementById('ft-net-val');
@@ -5468,5 +5491,6 @@ initFitness();
 
 
 </script>
+
 </body>
 </html>
