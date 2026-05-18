@@ -743,6 +743,10 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
           <div class="input-group"><label class="input-label">Skeletal Muscle Mass (kg)</label><input class="input-field" type="number" id="bc-smm" step="0.1" placeholder="31.2"/></div>
         </div>
         <div class="input-row">
+          <div class="input-group"><label class="input-label">Skeletal Muscle % <span style="font-size:10px;color:var(--accent);">(sync &rarr; Fitness Target)</span></label><input class="input-field" type="number" id="bc-smm-pct" step="0.1" placeholder="36.5" min="10" max="60"/></div>
+          <div class="input-group" style="display:flex;align-items:center;padding-top:8px;"><span style="font-size:10px;color:var(--text3);line-height:1.6;">&#128161; กรอก SMM kg หรือ %<br>อย่างใดอย่างหนึ่ง sync อัตโนมัติ</span></div>
+        </div>
+        <div class="input-row">
           <div class="input-group"><label class="input-label">Visceral Fat Level</label><input class="input-field" type="number" id="bc-vf" step="1" placeholder="4"/></div>
           <div class="input-group"><label class="input-label">BMR (kcal)</label><input class="input-field" type="number" id="bc-bmr" step="1" placeholder="1565"/></div>
         </div>
@@ -4412,7 +4416,7 @@ function handleSaveWeight() {
   document.getElementById('wt-input').value = '';
   if (document.getElementById('wt-waist')) document.getElementById('wt-waist').value = '';
   if (document.getElementById('wt-note')) document.getElementById('wt-note').value = '';
-  ['bc-bf','bc-smm','bc-vf','bc-bmr'].forEach(function(id){ var el=document.getElementById(id); if(el) el.value=''; });
+  ['bc-bf','bc-smm','bc-smm-pct','bc-vf','bc-bmr'].forEach(function(id){ var el=document.getElementById(id); if(el) el.value=''; });
   _renderWeightTab();
   showToast('✅ บันทึก Check-in แล้ว' + (bcSaved ? ' + Body Composition' : '') ,'success');
 }
@@ -4486,11 +4490,17 @@ function saveBodyCompLog(){
 }
 function saveBodyCompLogFromCheckin(entry, showEmptyToast){
   var bfEl = document.getElementById('bc-bf'), smmEl = document.getElementById('bc-smm'), vfEl = document.getElementById('bc-vf'), bmrEl = document.getElementById('bc-bmr');
+  var smmPctEl = document.getElementById('bc-smm-pct');
   var bf = bfEl ? parseFloat(bfEl.value) : null;
   var smm = smmEl ? parseFloat(smmEl.value) : null;
+  var smmPct = smmPctEl ? parseFloat(smmPctEl.value) : null;
   var visceral = vfEl ? parseFloat(vfEl.value) : null;
   var bmr = bmrEl ? parseFloat(bmrEl.value) : null;
-  var hasAny = !!(bf || smm || visceral || bmr);
+  if (isNaN(bf)) bf = null; if (isNaN(smm)) smm = null; if (isNaN(smmPct)) smmPct = null;
+  if (isNaN(visceral)) visceral = null; if (isNaN(bmr)) bmr = null;
+  // Derive smmPct from smm+weight if not entered directly
+  if (!smmPct && smm && entry.weight) smmPct = parseFloat((smm / entry.weight * 100).toFixed(1));
+  var hasAny = !!(bf || smm || smmPct || visceral || bmr);
   if (!hasAny) { if(showEmptyToast) showToast('ยังไม่ได้กรอกค่า Body Composition','info'); return false; }
   var source = (document.getElementById('bc-source') && document.getElementById('bc-source').value) || 'manual';
   var row = {
@@ -4500,6 +4510,7 @@ function saveBodyCompLogFromCheckin(entry, showEmptyToast){
     weight: entry.weight || null,
     bf: bf || null,
     smm: smm || null,
+    smmPct: smmPct || null,
     visceral: visceral || null,
     bmr: bmr || null,
     note: entry.note || '',
@@ -4512,6 +4523,19 @@ function saveBodyCompLogFromCheckin(entry, showEmptyToast){
   setBodyCompLogs(logs);
   renderBodyCompSummary();
   localStorage.removeItem('gd_wt_analysis'); localStorage.removeItem('gd_daily_summary');
+
+  // Sync to Fitness Target (currBF, currMuscle%, currVisceral)
+  var ft = window._fitnessTarget || JSON.parse(localStorage.getItem('gd_ft_target')||'{}') || {};
+  var changed = false;
+  if (bf) { ft.currBF = bf; changed = true; var elBF = document.getElementById('ft-curr-bf'); if(elBF) elBF.value = bf; }
+  if (smmPct) { ft.currMuscle = smmPct; changed = true; var elM = document.getElementById('ft-curr-muscle'); if(elM) elM.value = smmPct; }
+  if (visceral) { ft.currVisceral = visceral; changed = true; var elV2 = document.getElementById('ft-curr-visceral'); if(elV2) elV2.value = visceral; }
+  if (changed) {
+    window._fitnessTarget = ft;
+    localStorage.setItem('gd_ft_target', JSON.stringify(ft));
+    if (window.FB_OK) window.FB.saveSetting('fitnessTarget', ft);
+  }
+
   return true;
 }
 function getLatestBodyCompBySource(source){
