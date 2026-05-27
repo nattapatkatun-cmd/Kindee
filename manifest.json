@@ -1,0 +1,27 @@
+{
+  "name": "กินดี - ติดตามสุขภาพ",
+  "short_name": "กินดี",
+  "description": "ติดตามแคลอรี่ โภชนาการ ออกกำลังกาย และสุขภาพด้วย AI",
+  "start_url": "/Kindee/",
+  "scope": "/Kindee/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0b0d14",
+  "theme_color": "#f97316",
+  "lang": "th",
+  "categories": ["health", "fitness"],
+  "icons": [
+    {
+      "src": "icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
