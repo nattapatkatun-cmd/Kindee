@@ -1234,11 +1234,7 @@ function initFirebase() {
       loadSetting: function(k,fb){ return db.collection('users').doc(UID).collection('settings').doc(k).get().then(function(s){ return s.exists?JSON.parse(s.data().v):fb; }); },
       saveFavorite: function(f){ return db.collection('users').doc(UID).collection('favorites').doc(String(f.id)).set(f); },
       delFavorite: function(id){ return db.collection('users').doc(UID).collection('favorites').doc(String(id)).delete(); },
-      loadFavorites: function(){ return db.collection('users').doc(UID).collection('favorites').get().then(function(s){ return s.docs.map(function(d){return d.data();}).sort(function(a,b){return b.id-a.id;}); }); },
-      saveBodyComp: function(row){ return db.collection('users').doc(UID).collection('bodyComp').doc(String(row.id)).set(row); },
-      loadBodyComps: function(){ return db.collection('users').doc(UID).collection('bodyComp').get().then(function(s){ return s.docs.map(function(d){return d.data();}).sort(function(a,b){return a.id-b.id;}); }); },
-      savePhotoMeta: function(m){ return db.collection('users').doc(UID).collection('photoMeta').doc(String(m.id)).set(m); },
-      loadPhotoMetas: function(){ return db.collection('users').doc(UID).collection('photoMeta').get().then(function(s){ return s.docs.map(function(d){return d.data();}).sort(function(a,b){return a.id-b.id;}); }); }
+      loadFavorites: function(){ return db.collection('users').doc(UID).collection('favorites').get().then(function(s){ return s.docs.map(function(d){return d.data();}).sort(function(a,b){return b.id-a.id;}); }); }
     };
     window.FB_OK = true;
     console.log('Firebase OK');
@@ -1348,7 +1344,7 @@ var S = {
   meals: [],
   goals: {cal:1800,pro:120,crb:200,fat:60},
   profile: null,
-  webhook: localStorage.getItem('gd_wh')||'',
+  webhook: 'https://script.google.com/macros/s/AKfycbzyZ1Fb5NUZIHXzMPqE6jbSTdm1udj9PCmz36JtUnI6GfPiwD6Zqd6-7_jTS2FYNklw/exec',
   favorites: (function(){ try { return JSON.parse(localStorage.getItem('gd_favorites') || '[]'); } catch(e){ return []; } })(),
   apiKeys: (function(){
     try { return JSON.parse(localStorage.getItem('gd_keys') || '[]'); } catch(e){ return []; }
@@ -1394,55 +1390,18 @@ function init() {
       window.FB.loadMeals(),
       window.FB.loadSetting('goals', S.goals),
       window.FB.loadSetting('profile', null),
-      window.FB.loadFavorites(),
-      window.db.collection('users').doc('nattapat').collection('settings').doc('sleep').get().catch(function(){return null;}),
-      window.FB.loadSetting('fitnessTarget', null),
-      window.FB.loadBodyComps().catch(function(){return [];}),
-      window.FB.loadPhotoMetas().catch(function(){return [];})
+      window.FB.loadFavorites()
     ]).then(function(r){
       S.meals = r[0] || [];
       S.goals = r[1] || S.goals;
       S.profile = r[2] || null;
       S.favorites = r[3] || S.favorites;
       localStorage.setItem('gd_favorites', JSON.stringify(S.favorites));
-      // Restore sleep from Firebase if localStorage empty or stale
-      var fbSleep = r[4] && r[4].exists ? r[4].data() : null;
-      if (fbSleep && fbSleep.date) {
-        var localSleep = S.sleepData;
-        // Use Firebase data if local is missing or Firebase is newer
-        if (!localSleep || fbSleep.date >= localSleep.date) {
-          S.sleepData = fbSleep;
-          localStorage.setItem('gd_sleep', JSON.stringify(fbSleep));
-        }
-      }
-      // Restore fitnessTarget from Firebase if localStorage empty
-      var fbFT = r[5];
-      if (fbFT) {
-        localStorage.setItem('gd_ft_target', JSON.stringify(fbFT));
-      }
-      // Restore body comp logs — merge Firebase with local (Firebase wins on conflict by id)
-      var fbBC = r[6] || [];
-      if (fbBC.length) {
-        var localBC = safeJSON('gd_body_comp_logs', []);
-        var merged = Object.values(fbBC.concat(localBC).reduce(function(acc, x){ acc[x.id] = x; return acc; }, {}));
-        merged.sort(function(a,b){ return a.id - b.id; });
-        setBodyCompLogs(merged);
-      }
-      // Restore photo metas — merge into existing localStorage photos (keep imageB64 from local)
-      var fbPM = r[7] || [];
-      if (fbPM.length) {
-        var localPhotos = safeJSON('gd_progress_photos', []);
-        var localMap = localPhotos.reduce(function(acc, x){ acc[x.id] = x; return acc; }, {});
-        fbPM.forEach(function(m){
-          if (!localMap[m.id]) localMap[m.id] = m; // add meta-only entry if not in local
-          else { localMap[m.id].analysis = m.analysis || localMap[m.id].analysis; } // update analysis
-        });
-        var merged2 = Object.values(localMap).sort(function(a,b){ return a.id - b.id; });
-        setProgressPhotos(merged2);
-      }
       if(S.profile) loadProfile();
       loadGoalInputs(); syncProfileWeightFromLatestCheckin(); render();
       showToast('โหลดข้อมูลจาก Firebase ✅','success');
+      // Persist hardcoded webhook URL to Firebase settings once
+      window.FB.saveSetting('webhook', S.webhook).catch(function(){});
     }).catch(function(e){
       console.error('Firebase load error:', e);
       showToast('โหลด Firebase ไม่สำเร็จ ใช้ข้อมูล local','error');
@@ -2233,43 +2192,20 @@ function generateDailySummary() {
     'Body Composition Calibration: ' + (typeof getSourceAwareStatusText === 'function' ? getSourceAwareStatusText() : 'N/A') + '\n' +
     'Latest Visual Progress: ' + (typeof getLatestVisualAnalysis === 'function' && getLatestVisualAnalysis() ? (getLatestVisualAnalysis().summary || getLatestVisualAnalysis().visualTrend || 'available') : 'N/A') + '\n\n' +
     (function() {
+      var log = []; try { log = JSON.parse(localStorage.getItem('gd_summary_log') || '[]'); } catch(e) {}
       var todayStr = new Date().toISOString().split('T')[0];
-      // Build 14-day raw metrics block
-      var sleepLog = []; try { sleepLog = JSON.parse(localStorage.getItem('gd_sleep_log') || '[]'); } catch(e) {}
-      var weightLog = (S.weightLog || []).slice();
-      var days = [];
-      for (var i = 13; i >= 1; i--) {
-        var d = new Date(); d.setDate(d.getDate() - i);
-        days.push(d.toISOString().split('T')[0]);
-      }
-      var hasAnyData = false;
-      var block = '14-DAY TREND (use to identify patterns, trajectory, and overreaching — raw data per day):\n';
-      block += 'Date       | NetCal | Intake | WkBurn | Steps | Sleep(h) | HRV | RHR | Weight\n';
-      block += '-----------|--------|--------|--------|-------|----------|-----|-----|-------\n';
-      days.forEach(function(date) {
-        var m = getDailyMetrics(date);
-        var sl = sleepLog.find(function(s){ return s.date === date; });
-        var wt = weightLog.filter(function(w){ return w.date === date; });
-        var wtVal = wt.length ? wt[wt.length-1].weight : '-';
-        var hasData = m.intake > 0 || m.workoutBurn > 0 || m.steps > 0 || sl;
-        if (hasData) hasAnyData = true;
-        block += date + ' | ' +
-          (m.intake > 0 ? Math.round(m.netCal) : '-') + ' | ' +
-          (m.intake > 0 ? m.intake : '-') + ' | ' +
-          (m.workoutBurn > 0 ? m.workoutBurn : '-') + ' | ' +
-          (m.steps > 0 ? m.steps : '-') + ' | ' +
-          (sl ? (sl.hours || '-') : '-') + ' | ' +
-          (sl && sl.hrv ? sl.hrv : '-') + ' | ' +
-          (sl && sl.rhr ? sl.rhr : '-') + ' | ' +
-          wtVal + '\n';
+      var past = log.filter(function(e){ return e.date !== todayStr; }).slice(0, 3);
+      if (!past.length) return '';
+      var block = 'RECENT HISTORY (last ' + past.length + ' day(s) — reference for multi-day trends; avoid repeating same advice; detect overreaching):\n';
+      past.forEach(function(e) {
+        block += '\n[' + e.date + ']\n';
+        if (e.nutrition) block += '• Nutrition: ' + e.nutrition + '\n';
+        if (e.strain)    block += '• Strain: ' + e.strain + '\n';
+        if (e.recovery)  block += '• Recovery: ' + e.recovery + '\n';
+        if (e.progress)  block += '• Progress: ' + e.progress + '\n';
+        if (e.playbook)  block += '• Playbook was: ' + e.playbook + '\n';
       });
-      if (!hasAnyData) return '';
-      block += '\nTrend interpretation guidance:\n';
-      block += '- Calorie deficit consistency: look for days where netCal >> goal (potential compliance breaks)\n';
-      block += '- Sleep debt accumulation: flag if sleep < 7h for 3+ consecutive days\n';
-      block += '- Overreaching signal: high workout burn + low sleep + low HRV on consecutive days\n';
-      block += '- Weight noise vs signal: single-day spikes are retention; 5+ day direction is real trend\n\n';
-      return block;
+      return block + '\n';
     })() +
     'TODAY\'S DATA:\n' +
     'Meals:\n' + mealStr + '\n' +
@@ -3962,6 +3898,7 @@ function saveFitnessTarget() {
   localStorage.setItem('gd_ft_target', JSON.stringify(target));
   window._fitnessTarget = target; // expose for weight log module
   if (window.FB_OK) window.FB.saveSetting('fitnessTarget', target);
+  if (S.webhook) { fetch('https://kindee.ojo0308.workers.dev/',{method:'POST',headers:{'Content-Type':'application/json','x-target-url':S.webhook},body:JSON.stringify({action:'saveFitnessTarget',data:target})}).catch(function(){}); }
   showToast('บันทึก Fitness Target แล้ว ✅','success');
 }
 
@@ -5138,6 +5075,7 @@ function saveBodyCompLogFromCheckin(entry, showEmptyToast){
   logs.sort(function(a,b){ return (a.date+String(a.id)).localeCompare(b.date+String(b.id)); });
   setBodyCompLogs(logs);
   if (window.FB_OK) window.FB.saveBodyComp(row);
+  if (S.webhook) { fetch('https://kindee.ojo0308.workers.dev/',{method:'POST',headers:{'Content-Type':'application/json','x-target-url':S.webhook},body:JSON.stringify({action:'addBodyComp',data:row})}).catch(function(){}); }
   renderBodyCompSummary();
   localStorage.removeItem('gd_wt_analysis'); localStorage.removeItem('gd_daily_summary');
 
@@ -5242,10 +5180,8 @@ function saveProgressPhotoLog(){
   logs.push(row); if(logs.length>20) logs=logs.slice(logs.length-20);
   try{
     setProgressPhotos(logs);
-  if (window.FB_OK) {
-    var meta = Object.assign({}, row); delete meta.imageB64;
-    window.FB.savePhotoMeta(meta).catch(function(){});
-  }
+    if (window.FB_OK) { var meta = Object.assign({}, row); delete meta.imageB64; window.FB.savePhotoMeta(meta).catch(function(){}); }
+    if (S.webhook) { var pmeta = Object.assign({}, row); delete pmeta.imageB64; fetch('https://kindee.ojo0308.workers.dev/',{method:'POST',headers:{'Content-Type':'application/json','x-target-url':S.webhook},body:JSON.stringify({action:'addPhotoMeta',data:pmeta})}).catch(function(){}); }
   } catch(e){
     // Quota exceeded — remove oldest photos until it fits
     while(logs.length>1){
@@ -6161,6 +6097,7 @@ function saveSleep() {
   S.sleepData=data;
   localStorage.setItem('gd_sleep',JSON.stringify(data));
   if(window.FB_OK&&window.db){window.db.collection('users').doc('nattapat').collection('settings').doc('sleep').set(data).catch(function(){});}
+  if(S.webhook){ fetch('https://kindee.ojo0308.workers.dev/',{method:'POST',headers:{'Content-Type':'application/json','x-target-url':S.webhook},body:JSON.stringify({action:'addSleep',data:data})}).catch(function(){}); }
   document.getElementById('sleep-saved-badge').style.display='block';
   var msg='✅ บันทึก Sleep '+displayStr;
   if(hrv&&hrvBaseline){var diff=((hrv-hrvBaseline)/hrvBaseline*100).toFixed(1);msg+=' | HRV '+(diff>=0?'+':'')+diff+'% vs baseline';}
