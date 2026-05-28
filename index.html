@@ -1390,12 +1390,14 @@ function init() {
       window.FB.loadMeals(),
       window.FB.loadSetting('goals', S.goals),
       window.FB.loadSetting('profile', null),
-      window.FB.loadFavorites()
+      window.FB.loadFavorites(),
+      window.FB.loadSetting('fitnessTarget', null)
     ]).then(function(r){
       S.meals = r[0] || [];
       S.goals = r[1] || S.goals;
       S.profile = r[2] || null;
       S.favorites = r[3] || S.favorites;
+      if (r[4]) { window._fitnessTarget = r[4]; localStorage.setItem('gd_ft_target', JSON.stringify(r[4])); }
       localStorage.setItem('gd_favorites', JSON.stringify(S.favorites));
       if(S.profile) loadProfile();
       loadGoalInputs(); syncProfileWeightFromLatestCheckin(); render();
