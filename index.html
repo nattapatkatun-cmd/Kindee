@@ -3996,10 +3996,12 @@ function calcBurnPreview() {
 
 function addWorkout() {
 
-  // เช็คจากข้อมูลจริง ไม่ใช้ preset เพราะอาจค้าง state
   var isStrength = !!(
-    ST.sessionExercises &&
-    ST.sessionExercises.length > 0
+    FT.curPreset &&
+    (
+      FT.curPreset.name === 'ยกเวท' ||
+      FT.curPreset.name === 'Body Weight'
+    )
   );
 
   if (!FT.curPreset) {
@@ -4009,10 +4011,16 @@ function addWorkout() {
 
   if (isStrength) {
 
+    if (!ST.sessionExercises || !ST.sessionExercises.length) {
+      showToast('เลือกและบันทึกท่าก่อนกด บันทึก Workout','error');
+      return;
+    }
+
     var exNames = ST.sessionExercises.map(function(e){
       var ex = EXERCISE_DB.find(function(x){
         return x.id === e.exerciseId;
       });
+
       return ex ? ex.name : e.exerciseId;
     });
 
@@ -4020,6 +4028,8 @@ function addWorkout() {
       'ยกเวท: ' + exNames.join(', ');
   }
 
+  ...
+}
   var name = document.getElementById('ft-name').value.trim();
   var min = +document.getElementById('ft-min').value;
   var calBurn = +document.getElementById('ft-cal-burn').value;
