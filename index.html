@@ -163,7 +163,8 @@ body{font-family:'Sarabun',sans-serif;background:var(--bg);color:var(--text);min
 .nav-btn.active .nav-icon{transform:scale(1.1);}
 .nav-icon{font-size:17px;transition:transform 0.18s;}
 @media (min-width:600px){
-  .nav{max-width:860px;justify-content:center;padding:6px 20px env(safe-area-inset-bottom,6px);}
+  .nav{max-width:860px;justify-content:center;padding:6px 20px env(safe-area-inset-bottom,6px);overflow-x:hidden;}
+  .nav-btn{flex:1;}
   .nav-btn{min-width:80px;max-width:110px;font-size:12px;padding:8px 10px;}
   .nav-icon{font-size:18px;}
 }
@@ -186,7 +187,7 @@ body{font-family:'Sarabun',sans-serif;background:var(--bg);color:var(--text);min
 
 /* ── Buttons ── */
 .btn-primary{width:100%;padding:14px;background:linear-gradient(135deg,var(--accent),#c2410c);border:none;border-radius:var(--radius-btn);color:white;font-family:inherit;font-size:15px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;transition:all 0.2s;box-shadow:0 4px 18px var(--accent-glow);}
-.btn-primary:hover{transform:translateY(-1px);box-shadow:0 6px 24px rgba(249,115,22,0.38);}
+.btn-primary:hover{box-shadow:0 6px 24px rgba(249,115,22,0.38);}
 .btn-primary:active{transform:translateY(0);}
 .btn-primary:disabled{opacity:0.45;cursor:not-allowed;transform:none;box-shadow:none;}
 .btn-secondary{width:100%;padding:12px;background:var(--surface2);border:1px solid var(--border-md);border-radius:var(--radius-input);color:var(--text2);font-family:inherit;font-size:13px;font-weight:600;cursor:pointer;margin-top:8px;transition:all 0.18s;}
@@ -810,8 +811,9 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
             </div>
             <div id="set-rows-container"></div>
           </div>
-          <div style="flex-shrink:0;padding:10px 16px calc(env(safe-area-inset-bottom,14px)+14px);background:var(--bg);border-top:1px solid var(--border);">
-            <button onclick="addSetRow()" style="width:100%;background:var(--surface2);border:1px dashed var(--border-md);border-radius:10px;color:var(--text2);font-size:13px;font-weight:600;padding:12px;cursor:pointer;margin-bottom:10px;font-family:inherit;">+ เพิ่ม Set</button>
+          <div style="flex-shrink:0;padding:10px 16px calc(env(safe-area-inset-bottom,14px)+14px);background:var(--bg);border-top:1px solid var(--border);position:relative;z-index:10;">
+            <div id="ex-sheet-msg" style="display:none;text-align:center;font-size:12px;font-weight:600;border-radius:8px;padding:7px 10px;margin-bottom:8px;"></div>
+            <button onclick="addSetRow()" style="width:100%;background:var(--surface2);border:1px dashed var(--border-md);border-radius:10px;color:var(--text2);font-size:13px;font-weight:600;padding:14px;cursor:pointer;margin-bottom:10px;font-family:inherit;touch-action:manipulation;-webkit-tap-highlight-color:transparent;">+ เพิ่ม Set</button>
             <button class="btn-primary" style="width:100%;" onclick="confirmExerciseFromSheet()">✅ เพิ่มท่านี้เข้า Session</button>
           </div>
         </div>
@@ -3570,6 +3572,22 @@ function showAlertPopup(icon, title, body) {
 function closeAlert() { document.getElementById('alertPopup').style.display='none'; }
 
 // Toast
+function localDateStr(date) {
+  var d = date || new Date();
+  return d.getFullYear() + '-' +
+    String(d.getMonth()+1).padStart(2,'0') + '-' +
+    String(d.getDate()).padStart(2,'0');
+}
+function showExMsg(msg, type) {
+  var el = document.getElementById('ex-sheet-msg');
+  if (!el) return;
+  el.textContent = msg;
+  el.style.display = 'block';
+  el.style.background = type === 'error' ? 'rgba(239,68,68,0.15)' : 'rgba(34,197,94,0.15)';
+  el.style.color = type === 'error' ? '#ef4444' : '#22c55e';
+  el.style.border = '1px solid ' + (type === 'error' ? 'rgba(239,68,68,0.3)' : 'rgba(34,197,94,0.3)');
+  setTimeout(function(){ el.style.display = 'none'; }, 3000);
+}
 function showToast(msg, type) {
   type = type||'info';
   var t=document.getElementById('toast');
@@ -3787,9 +3805,21 @@ function updateE1RMDisplay() {
   } else { el.innerHTML = ''; }
 }
 function confirmExerciseFromSheet() {
-  if (!ST.curExercise) return;
+  // Force-read any active input value before blur (iOS may not have fired oninput yet)
+  var active = document.activeElement;
+  if (active && (active.classList.contains('set-input'))) {
+    var rows = document.querySelectorAll('#set-rows-container .set-row');
+    rows.forEach(function(row, idx) {
+      var inputs = row.querySelectorAll('input.set-input');
+      if (inputs[0]) ST.sets[idx] = ST.sets[idx] || {};
+      if (inputs[0] && inputs[0].value !== '') ST.sets[idx].weight = parseFloat(inputs[0].value) || 0;
+      if (inputs[1] && inputs[1].value !== '') ST.sets[idx].reps = parseInt(inputs[1].value) || 0;
+    });
+    active.blur();
+  }
+  if (!ST.curExercise) { showExMsg('⚠️ ไม่พบท่าที่เลือก กรุณาเปิดท่าใหม่','error'); return; }
   var validSets = ST.sets.filter(function(s){ return s.weight > 0 && s.reps > 0; });
-  if (!validSets.length) { showToast('ใส่ weight และ reps อย่างน้อย 1 set','error'); return; }
+  if (!validSets.length) { showExMsg('ใส่ weight และ reps อย่างน้อย 1 set','error'); return; }
   var bestE1RM = validSets.reduce(function(b,s){ var e=calcE1RM(s.weight,s.reps); return e>b?e:b; }, 0);
   var pr = getExPR(ST.curExercise.id);
   var isPR = !pr || bestE1RM > pr.e1RM;
@@ -3813,10 +3843,11 @@ function confirmExerciseFromSheet() {
   var idx = ST.sessionExercises.findIndex(function(e){ return e.exerciseId === ST.curExercise.id; });
   var entry = {exerciseId:ST.curExercise.id, sets:validSets, e1RM:bestE1RM};
   if (idx >= 0) ST.sessionExercises[idx] = entry; else ST.sessionExercises.push(entry);
+  var successMsg = ST.curExercise.name + (isPR?' 🏆 PR ใหม่!':' ✅ บันทึกแล้ว');
   closeExSheet();
   renderSessionChips();
   renderExList();
-  showToast(ST.curExercise.name + (isPR?' 🏆 PR ใหม่!':' ✅ บันทึกแล้ว'), 'success');
+  showToast(successMsg, 'success');
   updateStrengthSelectOptions();
 }
 function autoSyncStrengthLog(ex, sets, e1RM, isPR, date) {
