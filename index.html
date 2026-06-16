@@ -1365,6 +1365,7 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
         <button class="btn-secondary" style="flex:1;" onclick="syncWorkoutsNow()">🏋️ ซิงค์ workout ทั้งหมด</button>
       </div>
       <button class="btn-secondary" style="margin-top:8px;" onclick="syncWeightNow()">⚖️ ซิงค์น้ำหนักทั้งหมด</button>
+      <button class="btn-secondary" style="margin-top:8px;width:100%;" onclick="importSleepFromSheet()">🌙 นำเข้าข้อมูล Sleep จาก Sheet</button>
 
       <div style="margin-top:14px;padding:10px 12px;background:rgba(249,115,22,0.06);border:1px solid rgba(249,115,22,0.2);border-radius:10px;">
         <div style="font-size:11px;font-weight:600;color:var(--accent);margin-bottom:6px;">📋 Google Apps Script — ต้องอัปเดต</div>
@@ -6100,7 +6101,54 @@ function syncWeightNow() {
     else throw new Error();
   }).catch(function(){ showToast('ซิงค์ไม่สำเร็จ','error'); });
 }
-// ==================== WEIGHT TREND ANALYZER v4 ====================
+function importSleepFromSheet() {
+  if (!S.webhook) { showToast('กรุณาตั้งค่า Webhook ก่อน','error'); return; }
+  showToast('กำลังนำเข้า Sleep จาก Sheet...','info');
+  // Call Apps Script doGet with action=getSleepLog via Cloudflare Worker GET proxy
+  fetch('https://kindee.ojo0308.workers.dev/', {
+    method: 'GET',
+    headers: {'x-target-url': S.webhook + '?action=getSleepLog'}
+  }).then(function(r){ return r.json(); }).then(function(res){
+    if (!res.success || !res.data || !res.data.length) {
+      showToast('ไม่พบข้อมูลใน Sheet','info'); return;
+    }
+    var incoming = res.data; // array of sleep objects from Sheet
+    var log = []; try{ log = JSON.parse(localStorage.getItem('gd_sleep_log')||'[]'); }catch(e){}
+    var merged = 0, added = 0;
+    incoming.forEach(function(d){
+      if (!d.date) return;
+      var idx = log.findIndex(function(s){ return s.date === d.date; });
+      if (idx >= 0) {
+        // Merge — Sheet values fill in missing fields only
+        var entry = log[idx];
+        if (!entry.hours && d.hours) entry.hours = d.hours;
+        if (!entry.rhr && d.rhr) entry.rhr = d.rhr;
+        if (!entry.hrv && d.hrv) entry.hrv = d.hrv;
+        if (!entry.hrvBaseline && d.hrvBaseline) entry.hrvBaseline = d.hrvBaseline;
+        if (!entry.bedtime && d.bedtime) entry.bedtime = d.bedtime;
+        if (!entry.wakeTime && d.wakeTime) entry.wakeTime = d.wakeTime;
+        if (!entry.consistency && d.consistency) entry.consistency = d.consistency;
+        if (!entry.sleepScore && d.sleepScore) entry.sleepScore = d.sleepScore;
+        if (!entry.scoreLabel && d.scoreLabel) entry.scoreLabel = d.scoreLabel;
+        if (!entry.recoveryScore && d.recoveryScore) entry.recoveryScore = d.recoveryScore;
+        if (!entry.recoveryEmoji && d.recoveryEmoji) entry.recoveryEmoji = d.recoveryEmoji;
+        if (!entry.polarStrain && d.polarStrain) entry.polarStrain = d.polarStrain;
+        if (!entry.polarTolerance && d.polarTolerance) entry.polarTolerance = d.polarTolerance;
+        if (!entry.timeInBed && d.timeInBed) entry.timeInBed = d.timeInBed;
+        if (!entry.deepSleep && d.deepSleep) entry.deepSleep = d.deepSleep;
+        if (!entry.remSleep && d.remSleep) entry.remSleep = d.remSleep;
+        if (!entry.respRate && d.respRate) entry.respRate = d.respRate;
+        log[idx] = entry; merged++;
+      } else {
+        log.push(d); added++;
+      }
+    });
+    log.sort(function(a,b){ return a.date < b.date ? -1 : 1; });
+    localStorage.setItem('gd_sleep_log', JSON.stringify(log));
+    showToast('นำเข้าสำเร็จ: เพิ่ม '+added+' รายการ, อัปเดต '+merged+' รายการ ✅','success');
+  }).catch(function(err){ showToast('นำเข้าไม่สำเร็จ: '+err.message,'error'); });
+}
+
 // Bug fixes from screenshot review:
 // B1/B2: Separate trigger conditions — rule≥3days, AI requires weight≥7 AND intake≥5
 
@@ -7362,10 +7410,12 @@ function computeConsistency(bedtime, wakeTime, today){
 function syncSleepLog(data){
   if(!data||!data.date) return;
   var log=[]; try{ log=JSON.parse(localStorage.getItem('gd_sleep_log')||'[]'); }catch(e){}
-  var rec={date:data.date,hours:data.hours,rhr:data.rhr,hrv:data.hrv,hrvBaseline:data.hrvBaseline,
+  var rec={date:data.date,hours:data.hours,timeInBed:data.timeInBed||null,deepSleep:data.deepSleep||null,remSleep:data.remSleep||null,
+    rhr:data.rhr,hrv:data.hrv,hrvBaseline:data.hrvBaseline,respRate:data.respRate||null,
     bedtime:data.bedtime,wakeTime:data.wakeTime,consistency:data.consistency,sleepScore:data.sleepScore||null,
     scoreLabel:data.scoreLabel||null,recoveryScore:data.recoveryScore||null,recoveryEmoji:data.recoveryEmoji||null,
-    recommendation:data.recoveryRec||null,polarStrain:data.polarStrain||null,polarTolerance:data.polarTolerance||null};
+    recoveryResultHTML:data.recoveryResultHTML||null,recommendation:data.recoveryRec||null,
+    polarStrain:data.polarStrain||null,polarTolerance:data.polarTolerance||null};
   var i=log.findIndex(function(s){return s.date===data.date;});
   if(i>=0){ // merge, never overwrite existing values with null
     if(rec.sleepScore==null && log[i].sleepScore!=null) rec.sleepScore=log[i].sleepScore;
