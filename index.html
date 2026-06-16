@@ -6112,7 +6112,28 @@ function importSleepFromSheet() {
     if (!res.success || !res.data || !res.data.length) {
       showToast('ไม่พบข้อมูลใน Sheet','info'); return;
     }
-    var incoming = res.data; // array of sleep objects from Sheet
+    // Normalize date and time fields from Google Sheets format
+    var incoming = res.data.map(function(d){
+      // Convert "Thu May 28 2026 00:00:00 GMT+0700..." → "2026-05-28"
+      if (d.date && d.date.length > 10) {
+        var dt = new Date(d.date);
+        if (!isNaN(dt)) {
+          d.date = dt.getFullYear()+'-'+String(dt.getMonth()+1).padStart(2,'0')+'-'+String(dt.getDate()).padStart(2,'0');
+        }
+      }
+      // Convert bedtime/wakeTime "Sat Dec 30 1899 00:55:00..." → "HH:MM"
+      function toHHMM(s) {
+        if (!s || s.length <= 5) return s;
+        var t = new Date(s);
+        if (isNaN(t)) return s;
+        return String(t.getHours()).padStart(2,'0')+':'+String(t.getMinutes()).padStart(2,'0');
+      }
+      if (d.bedtime) d.bedtime = toHHMM(d.bedtime);
+      if (d.wakeTime) d.wakeTime = toHHMM(d.wakeTime);
+      return d;
+    });
+    // Deduplicate by date (keep last entry per date)
+    var seen = {}; incoming = incoming.filter(function(d){ var k=d.date; if(seen[k]) return false; seen[k]=true; return true; });
     var log = []; try{ log = JSON.parse(localStorage.getItem('gd_sleep_log')||'[]'); }catch(e){}
     var merged = 0, added = 0;
     incoming.forEach(function(d){
