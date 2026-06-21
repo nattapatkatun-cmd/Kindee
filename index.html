@@ -91,7 +91,6 @@ body{font-family:'Sarabun',sans-serif;background:var(--bg);color:var(--text);min
 /* ── AI Chat (ask your data) ── */
 .chat-fab{position:fixed;right:16px;bottom:calc(var(--nav-h) + 16px);width:54px;height:54px;border-radius:50%;background:linear-gradient(135deg,var(--purple),var(--blue));border:none;color:#fff;font-size:24px;display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:300;box-shadow:0 6px 20px rgba(99,102,241,0.45);transition:transform .2s,opacity .2s;}
 .chat-fab:active{transform:scale(0.92);}
-.app{max-width:480px;}
 @media(min-width:600px){.chat-fab{right:calc(50% - 430px + 16px);}}
 .chat-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:400;backdrop-filter:blur(2px);-webkit-backdrop-filter:blur(2px);}
 .chat-overlay.open{display:block;}
@@ -257,14 +256,6 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
 .meal-item{background:var(--surface2);border:1px solid var(--border);border-radius:14px;padding:13px;margin-bottom:9px;display:flex;gap:11px;align-items:flex-start;}
 .meal-thumb{width:48px;height:48px;border-radius:12px;object-fit:cover;flex-shrink:0;}
 .meal-thumb-ph{width:48px;height:48px;border-radius:12px;background:var(--surface3);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0;}
-.meal-info{flex:1;min-width:0;}
-.meal-name{font-size:14px;font-weight:600;margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-.meal-time{font-size:11px;color:var(--text3);margin-bottom:5px;}
-.meal-macros{display:flex;gap:6px;flex-wrap:wrap;}
-.meal-tag{font-size:11px;padding:2px 8px;border-radius:6px;background:var(--surface);border:1px solid var(--border);}
-.meal-cal{font-size:13px;font-weight:700;color:var(--accent);text-align:right;white-space:nowrap;}
-.meal-del{background:none;border:none;color:var(--text3);cursor:pointer;font-size:16px;padding:2px;transition:color 0.2s;}
-.meal-del:hover{color:var(--red);}
 .meal-info{flex:1;min-width:0;}
 .meal-name{font-size:14px;font-weight:700;margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .meal-time{font-size:11px;color:var(--text3);margin-bottom:6px;}
@@ -1468,6 +1459,19 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
 </div>
 
 <script>
+// ── Security helpers ──────────────────────────────────────────────────────────
+function sanitizeHTML(html) {
+  if (!html) return '';
+  return String(html)
+    .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
+    .replace(/on\w+\s*=\s*(["'])[^"']*\1/gi, '')
+    .replace(/javascript\s*:/gi, '');
+}
+function escapeAttr(s) {
+  return String(s || '').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+// ─────────────────────────────────────────────────────────────────────────────
+
 // Firebase
 function initFirebase() {
   try {
@@ -1699,7 +1703,7 @@ function restoreDailySummary() {
     // Only restore if it was generated today
     var today = localDateStr();
     if (saved.date !== today) { localStorage.removeItem('gd_daily_summary'); return; }
-    document.getElementById('ai-summary-result').innerHTML = saved.html;
+    document.getElementById('ai-summary-result').innerHTML = sanitizeHTML(saved.html);
     document.getElementById('ai-summary-result').style.display = 'block';
     document.getElementById('ai-summary-empty').style.display = 'none';
   } catch(e) {}
@@ -1779,9 +1783,9 @@ function renderMenuItems() {
     html += '<div class="menu-item-row">'+
       '<div class="menu-item-num">เมนูที่ '+(idx+1)+'</div>'+delBtn+
       '<div class="input-group"><label class="input-label">ชื่อเมนู</label>'+
-      '<input class="input-field" type="text" id="mn_'+item.id+'" placeholder="เช่น ข้าวผัดกุ้ง" value="'+item.name+'" oninput="syncItem('+item.id+')"/></div>'+
+      '<input class="input-field" type="text" id="mn_'+item.id+'" placeholder="เช่น ข้าวผัดกุ้ง" value="'+escapeAttr(item.name)+'" oninput="syncItem('+item.id+')"/></div>'+
       '<div class="input-group"><label class="input-label">ปริมาณ/ขนาด</label>'+
-      '<input class="input-field" type="text" id="mp_'+item.id+'" placeholder="เช่น 1 จาน" value="'+item.portion+'" oninput="syncItem('+item.id+')"/></div>'+
+      '<input class="input-field" type="text" id="mp_'+item.id+'" placeholder="เช่น 1 จาน" value="'+escapeAttr(item.portion)+'" oninput="syncItem('+item.id+')"/></div>'+
       '</div>';
   });
   document.getElementById('menuItemsList').innerHTML = html;
@@ -2721,7 +2725,7 @@ function renderDailySummary(r) {
   html += '<div style="margin-top:12px;text-align:right;font-size:11px;color:var(--text3);">Generated ' + now.toLocaleTimeString('th-TH', {hour:'2-digit',minute:'2-digit'}) + '</div>';
 
   var el = document.getElementById('ai-summary-result');
-  el.innerHTML = html;
+  el.innerHTML = sanitizeHTML(html);
   el.style.display = 'block';
   document.getElementById('ai-summary-empty').style.display = 'none';
   // Persist so it survives page refresh — cleared only when user regenerates
@@ -3596,7 +3600,7 @@ function autoSync(meal) {
   fetch('https://kindee.ojo0308.workers.dev/', {
     method:'POST', headers:{'Content-Type':'application/json','x-target-url':S.webhook},
     body:JSON.stringify({action:'addMeal', sheetName:'Meals', meal:m})
-  }).catch(function(){});
+  }).catch(function(e){ console.error('autoSync meal failed:', e); });
 }
 
 function autoSyncWorkout(w) {
@@ -3604,7 +3608,7 @@ function autoSyncWorkout(w) {
   fetch('https://kindee.ojo0308.workers.dev/', {
     method:'POST', headers:{'Content-Type':'application/json','x-target-url':S.webhook},
     body:JSON.stringify({action:'addWorkout', sheetName:'Workouts', workout:w})
-  }).catch(function(){});
+  }).catch(function(e){ console.error('autoSync workout failed:', e); });
 }
 
 // Alerts
@@ -3840,10 +3844,12 @@ function renderExList() {
     var matchSearch = !query || ex.name.toLowerCase().indexOf(query) >= 0 || ex.muscle.toLowerCase().indexOf(query) >= 0 || ex.equipment.toLowerCase().indexOf(query) >= 0;
     return matchGroup && matchSearch;
   });
+  var strengthLog = getStrengthLog();
   var html = '';
   list.forEach(function(ex) {
     var inSession = ST.sessionExercises.find(function(s){ return s.exerciseId === ex.id; });
-    var pr = getExPR(ex.id);
+    var exLog = strengthLog.filter(function(e){ return e.exerciseId === ex.id; });
+    var pr = exLog.length ? exLog.reduce(function(b,e){ return e.e1RM > b.e1RM ? e : b; }, exLog[0]) : null;
     var c = GROUP_COLOR[ex.group] || 'var(--accent)';
     html += '<div class="ex-row'+(inSession?' selected':'')+'" onclick="openExSheet(\''+ex.id+'\')">' +
       '<div class="ex-row-icon" style="background:'+c+'22;color:'+c+';">'+ex.emoji+'</div>' +
@@ -4179,6 +4185,7 @@ function renderPresets() {
 
 function selectPresetFromDropdown(name) {
   var isStrengthMode = (name === 'ยกเวท' || name === 'Body Weight');
+  var wasAlreadyStrength = (document.getElementById('strength-picker-section').style.display === 'block');
   document.getElementById('strength-picker-section').style.display = isStrengthMode ? 'block' : 'none';
   document.getElementById('cardio-name-section').style.display = isStrengthMode ? 'none' : 'block';
   if (!name) { FT.curPreset = null; document.getElementById('ft-met-info').textContent = ''; return; }
@@ -4186,7 +4193,6 @@ function selectPresetFromDropdown(name) {
   if (!p) return;
   FT.curPreset = {name:p.name, icon:p.icon, met:p.met, isStepBased:!!p.isStepBased};
   if (isStrengthMode) {
-    var wasAlreadyStrength = (document.getElementById('strength-picker-section').style.display === 'block');
     if (!wasAlreadyStrength) { ST.sessionExercises = []; }
     ST.curFilter = 'all';
     document.querySelectorAll('.ex-pill').forEach(function(pl,i){ pl.classList.toggle('active', i===0); });
@@ -4207,7 +4213,7 @@ function selectPreset(name, icon, met, isStepBased) {
 }
 
 function calcBurnKcal(met, minutes) {
-  var weight = S.profile ? S.profile.weight : 65;
+  var weight = (S.profile && S.profile.weight > 0) ? S.profile.weight : 65;
   return Math.round(met * weight * (minutes/60));
 }
 
@@ -5758,131 +5764,6 @@ function renderWeightChart() {
         x: { ticks:{ color:'#64748b', font:{size:10}, maxRotation:45 }, grid:{color:'rgba(255,255,255,0.04)'} },
         y: { ticks:{ color:'#64748b', font:{size:10} }, grid:{color:'rgba(255,255,255,0.04)'}, grace:'5%',
              title:{display:true, text:'กก.', color:'#64748b', font:{size:10}} }
-      }
-    }
-  });
-}
-
-var _wtCalChartInstance = null;
-function renderWeightCalChart() {
-  var canvas = document.getElementById('wtCalChart');
-  var emptyEl = document.getElementById('wt-cal-chart-empty');
-  var wrapEl = document.getElementById('wt-cal-chart-wrap');
-  if (!canvas) return;
-  if (typeof Chart === 'undefined') return;
-
-  if (_wtCalChartInstance) { _wtCalChartInstance.destroy(); _wtCalChartInstance = null; }
-
-  // Build last-7-days date list
-  var days = [];
-  for (var i = 6; i >= 0; i--) {
-    var d = new Date(); d.setDate(d.getDate() - i);
-    days.push(localDateStr(d));
-  }
-
-  // Weight per day: use last logged weight on or before that date
-  var sortedLog = [].concat(WT.log).sort(function(a,b){ return a.date.localeCompare(b.date); });
-  var weightByDay = days.map(function(date) {
-    var entries = sortedLog.filter(function(e){ return e.date <= date; });
-    return entries.length ? entries[entries.length-1].weight : null;
-  });
-
-  // Check if any weight data
-  var hasWeight = weightByDay.some(function(v){ return v !== null; });
-  if (!hasWeight) {
-    if (emptyEl) emptyEl.style.display = 'block';
-    if (wrapEl) wrapEl.style.display = 'none';
-    return;
-  }
-  if (emptyEl) emptyEl.style.display = 'none';
-  if (wrapEl) wrapEl.style.display = 'block';
-
-  // Net Cal per day: intake - workout burn - neat
-  var stepData = JSON.parse(localStorage.getItem('gd_steps') || '{}');
-  var netCalByDay = days.map(function(date) {
-    var intake = S.meals.filter(function(m){ return m.date === date; })
-                        .reduce(function(a,m){ return a + m.calories; }, 0);
-    if (!intake) return null;
-    var wBurn = FT.workouts.filter(function(w){ return w.date === date; })
-                           .reduce(function(a,w){ return a + (w.calories_burned || 0); }, 0);
-    var totalSteps = stepData[date] || 0;
-    var sessionSteps = FT.workouts.filter(function(w){ return w.date === date; })
-                                  .reduce(function(a,w){ return a + (w.session_steps || 0); }, 0);
-    var neatCal = calcStepCalories ? calcStepCalories(Math.max(totalSteps - sessionSteps, 0)) : 0;
-    return intake - wBurn - neatCal;
-  });
-
-  var labels = days.map(function(d) {
-    var parts = d.split('-'); return parts[2]+'/'+parts[1];
-  });
-
-  _wtCalChartInstance = new Chart(canvas.getContext('2d'), {
-    type: 'bar',
-    data: {
-      labels: labels,
-      datasets: [
-        {
-          label: 'Net Cal (kcal)',
-          data: netCalByDay,
-          backgroundColor: netCalByDay.map(function(v) {
-            if (v === null) return 'transparent';
-            var goal = (S.goals && S.goals.cal) ? S.goals.cal : 2000;
-            return v > goal ? 'rgba(239,68,68,0.65)' : 'rgba(249,115,22,0.65)';
-          }),
-          borderColor: netCalByDay.map(function(v) {
-            if (v === null) return 'transparent';
-            var goal = (S.goals && S.goals.cal) ? S.goals.cal : 2000;
-            return v > goal ? '#ef4444' : '#f97316';
-          }),
-          borderWidth: 1,
-          borderRadius: 4,
-          yAxisID: 'yNet',
-          order: 2
-        },
-        {
-          label: 'น้ำหนัก (กก.)',
-          data: weightByDay,
-          type: 'line',
-          borderColor: '#3b82f6',
-          backgroundColor: 'rgba(59,130,246,0.1)',
-          fill: false, tension: 0.35,
-          pointRadius: 4, pointBackgroundColor: '#3b82f6',
-          borderWidth: 2,
-          yAxisID: 'yWeight',
-          order: 1
-        }
-      ]
-    },
-    options: {
-      responsive: true, maintainAspectRatio: false,
-      interaction: { mode: 'index', intersect: false },
-      plugins: {
-        legend: { display: false },
-        tooltip: {
-          callbacks: {
-            label: function(ctx) {
-              if (ctx.raw === null) return null;
-              if (ctx.datasetIndex === 0) return 'Net Cal: ' + Math.round(ctx.raw) + ' kcal';
-              return 'น้ำหนัก: ' + ctx.raw + ' กก.';
-            }
-          }
-        }
-      },
-      scales: {
-        x: { ticks:{ color:'#64748b', font:{size:10} }, grid:{color:'rgba(255,255,255,0.04)'} },
-        yNet: {
-          position: 'left',
-          ticks:{ color:'#f97316', font:{size:9} },
-          grid:{ color:'rgba(255,255,255,0.04)' },
-          title:{ display:true, text:'kcal', color:'#f97316', font:{size:9} }
-        },
-        yWeight: {
-          position: 'right',
-          ticks:{ color:'#3b82f6', font:{size:9} },
-          grid:{ drawOnChartArea: false },
-          title:{ display:true, text:'กก.', color:'#3b82f6', font:{size:9} },
-          grace: '3%'
-        }
       }
     }
   });
