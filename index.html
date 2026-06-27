@@ -1555,12 +1555,33 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
 
 <script>
 // ── Security helpers ──────────────────────────────────────────────────────────
+function escapeHTML(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
 function sanitizeHTML(html) {
   if (!html) return '';
-  return String(html)
-    .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
-    .replace(/on\w+\s*=\s*(["'])[^"']*\1/gi, '')
-    .replace(/javascript\s*:/gi, '');
+  // DOM-based sanitizer: parse then strip dangerous elements/attributes
+  var tmp = document.createElement('div');
+  tmp.innerHTML = String(html);
+  var dangerous = tmp.querySelectorAll('script,style,iframe,object,embed,form,base,link,meta,svg,math');
+  dangerous.forEach(function(el){ el.parentNode && el.parentNode.removeChild(el); });
+  var allEls = tmp.querySelectorAll('*');
+  allEls.forEach(function(el){
+    for (var i = el.attributes.length - 1; i >= 0; i--) {
+      var n = el.attributes[i].name.toLowerCase();
+      var v = el.attributes[i].value.toLowerCase().replace(/[\s\r\n]/g,'');
+      if (n.indexOf('on') === 0 || v.indexOf('javascript:') === 0 || v.indexOf('data:text/html') === 0) {
+        el.removeAttribute(el.attributes[i].name);
+      }
+    }
+    ['href','src','action'].forEach(function(attr){
+      var v = (el.getAttribute(attr)||'').toLowerCase().replace(/[\s\r\n]/g,'');
+      if (v.indexOf('javascript:') === 0 || v.indexOf('data:text/html') === 0) el.removeAttribute(attr);
+    });
+  });
+  return tmp.innerHTML;
 }
 function escapeAttr(s) {
   return String(s || '').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
@@ -1796,7 +1817,7 @@ function init() {
         var local = safeJSON('gd_body_comp_logs', []);
         var byId = {};
         fbBodyComps.concat(local).forEach(function(e){ if(e && e.id) byId[e.id]=e; });
-        var merged = Object.values(byId).sort(function(a,b){ return a.date.localeCompare(b.date)||a.id-b.id; });
+        var merged = Object.keys(byId).map(function(k){ return byId[k]; }).sort(function(a,b){ return a.date.localeCompare(b.date)||a.id-b.id; });
         localStorage.setItem('gd_body_comp_logs', JSON.stringify(merged));
       }
       if(S.profile) loadProfile();
@@ -2150,7 +2171,7 @@ function showResult(r) {
     var html = '<div style="margin-bottom:6px;font-size:12px;color:var(--text2);font-weight:600">รายละเอียดแต่ละเมนู:</div>';
     r.items.forEach(function(item){
       html += '<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--border);font-size:12px;">'+
-        '<span style="flex:1;padding-right:8px;">'+item.foodName+'</span>'+
+        '<span style="flex:1;padding-right:8px;">'+escapeHTML(item.foodName)+'</span>'+
         '<span style="color:var(--text3);font-size:11px;margin-right:8px;">P '+(item.protein||0)+'g C '+(item.carbs||0)+'g F '+(item.fat||0)+'g · 🧂 '+(item.sodiumFlag||'-')+' · 🍚 '+(item.carbLoadFlag||'-')+'</span>'+
         '<span style="color:var(--accent);font-weight:700;white-space:nowrap;">'+item.calories+' kcal</span></div>';
     });
@@ -2158,10 +2179,10 @@ function showResult(r) {
     html += '<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;font-size:13px;font-weight:700;">'+
       '<span style="color:var(--text2);">รวมทั้งหมด</span>'+
       '<span style="color:var(--accent);">'+r.calories+' kcal</span></div>';
-    html += contextHtml + '<div style="margin-top:4px;font-size:11px;color:var(--text3)">'+(r.disclaimer||'')+'</div>';
+    html += contextHtml + '<div style="margin-top:4px;font-size:11px;color:var(--text3)">'+escapeHTML(r.disclaimer||'')+'</div>';
     disc.innerHTML = html;
   } else {
-    disc.innerHTML = contextHtml + '<div style="margin-top:4px;">'+(r.disclaimer||'')+'</div>';
+    disc.innerHTML = contextHtml + '<div style="margin-top:4px;">'+escapeHTML(r.disclaimer||'')+'</div>';
   }
 }
 
@@ -2400,7 +2421,7 @@ function renderFavorites() {
     return '<div style="background:var(--surface2);border:1px solid var(--border);border-radius:14px;padding:14px;margin-bottom:10px;">'+
       '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px;">'+
         '<div>'+
-          '<div style="font-size:14px;font-weight:700;margin-bottom:2px;">'+f.foodName+'</div>'+
+          '<div style="font-size:14px;font-weight:700;margin-bottom:2px;">'+escapeHTML(f.foodName)+'</div>'+
           '<div style="font-size:11px;color:var(--text3);">บันทึก '+dateStr+'</div>'+
         '</div>'+
         '<button onclick="deleteFavorite('+f.id+')" style="background:none;border:none;color:var(--text3);font-size:18px;cursor:pointer;padding:0 4px;line-height:1;">🗑</button>'+
@@ -2449,9 +2470,12 @@ function getDailyRetentionContext(date) {
   return {score:score, sodiumHigh:sodiumHigh, carbHigh:carbHigh, mealCount:meals.length, contexts:contexts, label:getRetentionLabel(score)};
 }
 function getRangeRetentionContext(startDate, endDate) {
-  var arr = [];
-  var d = new Date(startDate+'T00:00:00'); var end = new Date(endDate+'T00:00:00');
-  while(d<=end){ var iso=localDateStr(d); arr.push(getDailyRetentionContext(iso)); d.setDate(d.getDate()+1); }
+  var arr = []; var cur = startDate;
+  while (cur <= endDate) {
+    arr.push(getDailyRetentionContext(cur));
+    var d = new Date(cur + 'T12:00:00'); d.setDate(d.getDate() + 1);
+    cur = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+  }
   var avg = arr.length ? arr.reduce(function(s,x){return s+x.score;},0)/arr.length : 0;
   var highDays = arr.filter(function(x){return x.score>=65;}).length;
   return {avgScore:Math.round(avg), highDays:highDays, days:arr.length, label:getRetentionLabel(avg)};
@@ -3430,9 +3454,9 @@ function mealHTML(m, showDel) {
     '<span class="context-chip '+((m.carbLoadFlag||'normal')==='high'?'high':(m.carbLoadFlag||'normal')==='normal'?'med':'low')+'">🍚 '+flagLabel(m.carbLoadFlag||'normal','carb')+'</span>' +
     '<span class="context-chip '+chipClassFromRisk(m.retentionRisk||0)+'">💧 '+(m.retentionRisk||0)+'%</span>' +
     '</div>' : '';
-  return '<div class="meal-item"><div class="meal-thumb-ph">🍽️</div>'+ 
-    '<div class="meal-info"><div class="meal-name">'+m.foodName+'</div><div class="meal-time">'+m.label+' • '+m.time+'</div>'+ 
-    '<div class="meal-macros"><span class="meal-tag" style="color:var(--blue)">P '+m.protein+'g</span><span class="meal-tag" style="color:var(--green)">C '+m.carbs+'g</span><span class="meal-tag" style="color:var(--purple)">F '+m.fat+'g</span></div>'+chips+'</div>'+ 
+  return '<div class="meal-item"><div class="meal-thumb-ph">🍽️</div>'+
+    '<div class="meal-info"><div class="meal-name">'+escapeHTML(m.foodName)+'</div><div class="meal-time">'+escapeHTML(m.label)+' • '+escapeHTML(m.time)+'</div>'+
+    '<div class="meal-macros"><span class="meal-tag" style="color:var(--blue)">P '+m.protein+'g</span><span class="meal-tag" style="color:var(--green)">C '+m.carbs+'g</span><span class="meal-tag" style="color:var(--purple)">F '+m.fat+'g</span></div>'+chips+'</div>'+
     '<div style="display:flex;flex-direction:column;align-items:flex-end;gap:5px;"><div class="meal-cal">'+m.calories+'<br><span style="font-size:11px;color:var(--text3)">kcal</span></div>'+del+'</div></div>';
 }
 
@@ -3446,6 +3470,7 @@ function renderLog() {
 
 function delMeal(id) {
   var backup = S.meals.slice();
+  var deleted = S.meals.find(function(m){ return m.id === id; });
   S.meals = S.meals.filter(function(m){return m.id!==id;});
   localStorage.setItem('gd_meals',JSON.stringify(S.meals));
   if(window.FB_OK) window.FB.delMeal(id);
@@ -3453,6 +3478,7 @@ function delMeal(id) {
   showUndoToast('ลบมื้ออาหารแล้ว', function(){
     S.meals = backup;
     localStorage.setItem('gd_meals',JSON.stringify(S.meals));
+    if(window.FB_OK && deleted) window.FB.saveMeal(deleted);
     render(); showToast('คืนค่าแล้ว','info');
   });
 }
@@ -3465,7 +3491,7 @@ function renderHistory() {
   var dates = Object.keys(grouped).sort(function(a,b){return b.localeCompare(a);});
   var html = '';
   dates.forEach(function(date){
-    var d = new Date(date);
+    var d = new Date(date + 'T12:00:00');
     var lbl = d.toLocaleDateString('th-TH',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
     var total = grouped[date].reduce(function(a,m){return a+m.calories;},0);
     html += '<div class="history-date-hdr">'+lbl+' — '+total+' kcal</div>';
@@ -3734,8 +3760,12 @@ function getDailyMetrics(date, opts) {
   return { date:date, meals:meals, workouts:workouts, intake:intake, protein:protein, carbs:carbs, fat:fat, workoutBurn:workoutBurn, creditedWorkoutBurn:creditedWorkoutBurn, steps:steps, sessionSteps:sessionSteps, neatCal:neatCal, totalBurn:workoutBurn+neatCal, netCal:intake-creditedWorkoutBurn-neatCal, retentionScore:retention.score, retention:retention };
 }
 function getDateRangeMetrics(startDate, endDate, opts) {
-  var out=[]; var d=new Date(startDate+'T00:00:00'); var end=new Date(endDate+'T00:00:00');
-  while(d<=end){ var iso=localDateStr(d); out.push(getDailyMetrics(iso, opts)); d.setDate(d.getDate()+1); }
+  var out = []; var cur = startDate;
+  while (cur <= endDate) {
+    out.push(getDailyMetrics(cur, opts));
+    var d = new Date(cur + 'T12:00:00'); d.setDate(d.getDate() + 1);
+    cur = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+  }
   return out;
 }
 
@@ -3922,7 +3952,7 @@ function checkAlert() {
   var eaten = meals.reduce(function(a,m){return a+m.calories;},0);
 
   // Use net calories (กิน - เผา - ก้าว) instead of raw intake
-  var workoutBurn = (typeof todayWorkouts==='function') ? todayWorkouts().reduce(function(a,w){return a+w.calories_burned;},0) : 0;
+  var workoutBurn = (typeof todayWorkouts==='function') ? todayWorkouts().reduce(function(a,w){return a+(+w.calories_burned||0);},0) : 0;
   var stepBurn    = (typeof calcStepCalories==='function' && typeof getTodaySteps==='function') ? calcStepCalories(getTodaySteps()) : 0;
   var net = eaten - workoutBurn - stepBurn;
 
@@ -4006,7 +4036,14 @@ function showToast(msg, type) {
 
 function showUndoToast(msg, undoFn) {
   var t = document.getElementById('toast');
-  t.innerHTML = msg + ' <span style="color:var(--accent);font-weight:700;cursor:pointer;margin-left:8px;" id="undo-link">↩ Undo</span>';
+  t.textContent = '';
+  var msgNode = document.createTextNode(msg + ' ');
+  var undoSpan = document.createElement('span');
+  undoSpan.id = 'undo-link';
+  undoSpan.textContent = '↩ Undo';
+  undoSpan.style.cssText = 'color:var(--accent);font-weight:700;cursor:pointer;margin-left:8px;';
+  t.appendChild(msgNode);
+  t.appendChild(undoSpan);
   t.className = 'toast info show';
   clearTimeout(window._tt);
   var done = false;
@@ -4610,6 +4647,7 @@ function addWorkout() {
 
 function delWorkout(id) {
   var backup = FT.workouts.slice();
+  var deleted = FT.workouts.find(function(w){ return w.id === id; });
   FT.workouts = FT.workouts.filter(function(w){return w.id!==id;});
   localStorage.setItem('gd_workouts', JSON.stringify(FT.workouts));
   if (window.FB_OK) window.FB.delWorkout(id);
@@ -4617,6 +4655,7 @@ function delWorkout(id) {
   showUndoToast('ลบ workout แล้ว', function(){
     FT.workouts = backup;
     localStorage.setItem('gd_workouts', JSON.stringify(FT.workouts));
+    if (window.FB_OK && deleted) window.FB.saveWorkout(deleted);
     updateFitnessUI(); showToast('คืนค่าแล้ว','info');
   });
 }
@@ -6298,6 +6337,7 @@ function handleSaveWeight() {
 
 function handleDeleteWeight(id) {
   var backup = WT.log.slice();
+  var deleted = WT.log.find(function(e){ return e.id === id; });
   WT.log = WT.log.filter(function(e){ return e.id !== id; });
   localStorage.setItem('gd_weight', JSON.stringify(WT.log));
   if (window.FB_OK && window.FB.delWeight) window.FB.delWeight(id);
@@ -6305,6 +6345,7 @@ function handleDeleteWeight(id) {
   showUndoToast('ลบรายการแล้ว', function(){
     WT.log = backup;
     localStorage.setItem('gd_weight', JSON.stringify(WT.log));
+    if (window.FB_OK && window.FB.saveWeight && deleted) window.FB.saveWeight(deleted);
     _renderWeightTab(); showToast('คืนค่าแล้ว','info');
   });
 }
