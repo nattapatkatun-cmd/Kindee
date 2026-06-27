@@ -1629,6 +1629,50 @@ function initFirebase() {
 }
 
 // ─────────────────────────────────────────────
+// OFFLINE WRITE QUEUE
+// Writes that happen while FB_OK=false are queued in localStorage and
+// replayed the next time Firebase is available.
+// ─────────────────────────────────────────────
+function queueFBWrite(type, op, data) {
+  var q = JSON.parse(localStorage.getItem('gd_pending_fb') || '[]');
+  // Dedup: a newer save for the same id supersedes the old one
+  if (op === 'save' && data && data.id != null) {
+    q = q.filter(function(item){ return !(item.type===type && item.op==='save' && item.data && item.data.id===data.id); });
+  }
+  // A delete supersedes any pending save for the same id, and dedupes itself
+  if (op === 'del') {
+    q = q.filter(function(item){ return !(item.type===type && item.data && (item.data===data || (item.data && item.data.id===data))); });
+  }
+  q.push({ type: type, op: op, data: data, ts: Date.now() });
+  localStorage.setItem('gd_pending_fb', JSON.stringify(q));
+}
+
+function drainFBQueue() {
+  if (!window.FB_OK || !window.FB) return;
+  var q = JSON.parse(localStorage.getItem('gd_pending_fb') || '[]');
+  if (!q.length) return;
+  localStorage.removeItem('gd_pending_fb');
+  var count = 0;
+  q.forEach(function(item) {
+    try {
+      if (item.type === 'meal') {
+        if (item.op === 'save') { window.FB.saveMeal(item.data); count++; }
+        else if (item.op === 'del') { window.FB.delMeal(item.data); count++; }
+      } else if (item.type === 'workout') {
+        if (item.op === 'save' && window.FB.saveWorkout) { window.FB.saveWorkout(item.data); count++; }
+        else if (item.op === 'del' && window.FB.delWorkout) { window.FB.delWorkout(item.data); count++; }
+      } else if (item.type === 'weight') {
+        if (item.op === 'save' && window.FB.saveWeight) { window.FB.saveWeight(item.data); count++; }
+        else if (item.op === 'del' && window.FB.delWeight) { window.FB.delWeight(item.data); count++; }
+      }
+    } catch(e) { console.warn('drainFBQueue error:', e); }
+  });
+  if (count) showToast('ซิงค์ข้อมูลที่ค้างไว้ ' + count + ' รายการ ✅', 'success');
+}
+
+window.addEventListener('online', function() { if (window.FB_OK) drainFBQueue(); });
+
+// ─────────────────────────────────────────────
 // GEMINI API HELPER — auto-retry + key rotation on rate limit / quota / overload
 // Strategy:
 //   429 / quota  → rotate to next key immediately
@@ -1822,6 +1866,7 @@ function init() {
       }
       if(S.profile) loadProfile();
       loadGoalInputs(); syncProfileWeightFromLatestCheckin(); render();
+      drainFBQueue();
       showToast('โหลดข้อมูลจาก Firebase ✅','success');
       // Persist hardcoded webhook URL to Firebase settings once
       window.FB.saveSetting('webhook', S.webhook).catch(function(){});
@@ -2208,7 +2253,7 @@ function saveMeal() {
   };
   S.meals.push(meal);
   localStorage.setItem('gd_meals', JSON.stringify(S.meals));
-  if(window.FB_OK) window.FB.saveMeal(meal);
+  if(window.FB_OK) window.FB.saveMeal(meal); else queueFBWrite('meal','save',meal);
   showToast('บันทึกมื้ออาหารสำเร็จ ✅','success');
   resetAnalyze();
   render();
@@ -2386,7 +2431,7 @@ function confirmUseFavorite() {
   };
   S.meals.push(meal);
   localStorage.setItem('gd_meals', JSON.stringify(S.meals));
-  if(window.FB_OK) window.FB.saveMeal(meal);
+  if(window.FB_OK) window.FB.saveMeal(meal); else queueFBWrite('meal','save',meal);
   if(S.webhook) autoSync(meal);
   closeFavUseModal();
   render();
@@ -3473,12 +3518,12 @@ function delMeal(id) {
   var deleted = S.meals.find(function(m){ return m.id === id; });
   S.meals = S.meals.filter(function(m){return m.id!==id;});
   localStorage.setItem('gd_meals',JSON.stringify(S.meals));
-  if(window.FB_OK) window.FB.delMeal(id);
+  if(window.FB_OK) window.FB.delMeal(id); else queueFBWrite('meal','del',id);
   render();
   showUndoToast('ลบมื้ออาหารแล้ว', function(){
     S.meals = backup;
     localStorage.setItem('gd_meals',JSON.stringify(S.meals));
-    if(window.FB_OK && deleted) window.FB.saveMeal(deleted);
+    if(window.FB_OK && deleted) window.FB.saveMeal(deleted); else if(deleted) queueFBWrite('meal','save',deleted);
     render(); showToast('คืนค่าแล้ว','info');
   });
 }
@@ -4616,6 +4661,8 @@ function addWorkout() {
     } catch (err) {
       console.error('saveWorkout threw:', err);
     }
+  } else {
+    queueFBWrite('workout', 'save', w);
   }
   if (S.webhook) autoSyncWorkout(w);
   var savedDate = w.date;
@@ -4650,12 +4697,12 @@ function delWorkout(id) {
   var deleted = FT.workouts.find(function(w){ return w.id === id; });
   FT.workouts = FT.workouts.filter(function(w){return w.id!==id;});
   localStorage.setItem('gd_workouts', JSON.stringify(FT.workouts));
-  if (window.FB_OK) window.FB.delWorkout(id);
+  if (window.FB_OK) window.FB.delWorkout(id); else queueFBWrite('workout','del',id);
   updateFitnessUI();
   showUndoToast('ลบ workout แล้ว', function(){
     FT.workouts = backup;
     localStorage.setItem('gd_workouts', JSON.stringify(FT.workouts));
-    if (window.FB_OK && deleted) window.FB.saveWorkout(deleted);
+    if (window.FB_OK && deleted) window.FB.saveWorkout(deleted); else if(deleted) queueFBWrite('workout','save',deleted);
     updateFitnessUI(); showToast('คืนค่าแล้ว','info');
   });
 }
@@ -4710,20 +4757,20 @@ function getTodaySteps() {
 }
 
 function updateFitnessUI() {
-  // Selected date for the list (defaults to today). Stats below always reflect today.
   var listDateEl = document.getElementById('ft-list-date');
   var todayStr = localDateStr();
   var listDate = (listDateEl && listDateEl.value) ? listDateEl.value : todayStr;
   var isToday = (listDate === todayStr);
 
-  var ws = todayWorkouts();
-  var totalBurn = ws.reduce(function(a,w){return a+w.calories_burned;},0);
+  // All stats reflect the selected date, not just today
+  var ws = FT.workouts.filter(function(w){ return w.date === listDate; });
+  var totalBurn = ws.reduce(function(a,w){return a+(+w.calories_burned||0);},0);
   var totalMin = ws.reduce(function(a,w){return a+w.duration_min;},0);
-  var eaten = todayMeals().reduce(function(a,m){return a+m.calories;},0);
-  var steps = getTodaySteps();
-  var stepCal = calcStepCalories(steps); // raw — for display only
-  var today = localDateStr();
-  var neatCal = getNeatCalForDate(today); // deduped — for net calc
+  var eaten = S.meals.filter(function(m){ return m.date === listDate; }).reduce(function(a,m){return a+m.calories;},0);
+  var stepData = JSON.parse(localStorage.getItem('gd_steps') || '{}');
+  var steps = stepData[listDate] || 0;
+  var stepCal = calcStepCalories(steps);
+  var neatCal = getNeatCalForDate(listDate);
   var totalActive = totalBurn + neatCal;
   // Stats
   document.getElementById('ft-total-burn').textContent = totalBurn;
@@ -4737,26 +4784,23 @@ function updateFitnessUI() {
   document.getElementById('ft-burned').textContent = totalBurn;
   document.getElementById('ft-step-cal').textContent = Math.round(neatCal);
   document.getElementById('ft-goal-disp').textContent = S.goals.cal;
-  // Primary: gross intake vs goal (คุมตรงนี้)
   var grossRemain = S.goals.cal - eaten;
   var netEl = document.getElementById('ft-net-val');
   netEl.textContent = Math.abs(Math.round(grossRemain));
   document.querySelector('#ft-net-card .ft-net-sub').textContent = grossRemain >= 0 ? 'kcal คงเหลือ' : 'kcal เกินเป้า';
   netEl.style.color = grossRemain >= 0 ? 'var(--green)' : 'var(--red)';
-  // Secondary: net result (deficit จริงหลังหักกิจกรรม)
   var netResultEl = document.getElementById('ft-net-result');
   if (netResultEl) netResultEl.textContent = Math.round(eaten - totalActive);
-  // Workout list (by selected date)
-  var listWs = isToday ? ws : FT.workouts.filter(function(w){return w.date===listDate;});
+  // Workout list
   var titleEl = document.getElementById('ft-list-title');
   if (titleEl) titleEl.textContent = isToday ? 'Workout วันนี้' : ('Workout วันที่ ' + listDate);
   var todayBtn = document.getElementById('ft-list-today-btn');
   if (todayBtn) todayBtn.style.display = isToday ? 'none' : 'block';
   var el = document.getElementById('ft-today-list');
-  if (listWs.length === 0) {
-    el.innerHTML = '<div class="empty-state"><div class="empty-icon">🏃</div><div class="empty-text">ยังไม่มี workout '+(isToday?'วันนี้':'วันนี้ที่เลือก')+'</div><div class="empty-sub">เพิ่มการออกกำลังกายด้านบน</div></div>';
+  if (ws.length === 0) {
+    el.innerHTML = '<div class="empty-state"><div class="empty-icon">🏃</div><div class="empty-text">ยังไม่มี workout '+(isToday?'วันนี้':'วันที่เลือก')+'</div><div class="empty-sub">เพิ่มการออกกำลังกายด้านบน</div></div>';
   } else {
-    el.innerHTML = [].concat(listWs).reverse().map(function(w) {
+    el.innerHTML = [].concat(ws).reverse().map(function(w) {
       return '<div class="workout-item">'+
         '<div class="workout-icon">'+w.icon+'</div>'+
         '<div class="workout-info"><div class="workout-name">'+w.name+'</div>'+
@@ -4765,11 +4809,8 @@ function updateFitnessUI() {
         '<button class="workout-del" onclick="delWorkout('+w.id+')">🗑️</button></div>';
     }).join('');
   }
-  // Refresh history zone if open
   if (FT._historyOpen) renderWorkoutHistory();
-  // Also update dashboard net cal if visible
   updateDash();
-  // Keep the today plan card in sync
   if (typeof renderTodayPlanCard === 'function') renderTodayPlanCard();
 }
 
@@ -6300,18 +6341,23 @@ function handleSaveWeight() {
     showToast('รอบเอวควรอยู่ระหว่าง 40–180 ซม. หรือปล่อยว่าง','error'); return;
   }
   var now = new Date();
+  var existingIdx = WT.log.findIndex(function(e){ return e.date === entryDate; });
   var entry = {
-    id: Date.now(),
+    id: existingIdx !== -1 ? WT.log[existingIdx].id : Date.now(),
     date: entryDate,
     time: now.toLocaleTimeString('th-TH',{hour:'2-digit',minute:'2-digit'}),
     weight: wVal,
     waist: waistVal || null,
     note: note
   };
-  WT.log.push(entry);
+  if (existingIdx !== -1) {
+    WT.log.splice(existingIdx, 1, entry);
+  } else {
+    WT.log.push(entry);
+  }
   WT.log.sort(function(a,b){ return (a.date+a.time).localeCompare(b.date+b.time); });
   localStorage.setItem('gd_weight', JSON.stringify(WT.log));
-  if (window.FB_OK && window.FB.saveWeight) window.FB.saveWeight(entry);
+  if (window.FB_OK && window.FB.saveWeight) window.FB.saveWeight(entry); else queueFBWrite('weight','save',entry);
   if (S.webhook) autoSyncWeight(entry);
 
   // Optional body composition uses the same weight/date/note from this check-in.
@@ -6332,7 +6378,7 @@ function handleSaveWeight() {
   if (document.getElementById('wt-note')) document.getElementById('wt-note').value = '';
   ['bc-bf','bc-smm','bc-smm-pct','bc-vf','bc-bmr'].forEach(function(id){ var el=document.getElementById(id); if(el) el.value=''; });
   _renderWeightTab();
-  showToast('✅ บันทึก Check-in แล้ว' + (bcSaved ? ' + Body Composition' : '') ,'success');
+  showToast((existingIdx !== -1 ? '✅ อัปเดต Check-in แล้ว' : '✅ บันทึก Check-in แล้ว') + (bcSaved ? ' + Body Composition' : '') ,'success');
 }
 
 function handleDeleteWeight(id) {
@@ -6340,12 +6386,12 @@ function handleDeleteWeight(id) {
   var deleted = WT.log.find(function(e){ return e.id === id; });
   WT.log = WT.log.filter(function(e){ return e.id !== id; });
   localStorage.setItem('gd_weight', JSON.stringify(WT.log));
-  if (window.FB_OK && window.FB.delWeight) window.FB.delWeight(id);
+  if (window.FB_OK && window.FB.delWeight) window.FB.delWeight(id); else queueFBWrite('weight','del',id);
   _renderWeightTab();
   showUndoToast('ลบรายการแล้ว', function(){
     WT.log = backup;
     localStorage.setItem('gd_weight', JSON.stringify(WT.log));
-    if (window.FB_OK && window.FB.saveWeight && deleted) window.FB.saveWeight(deleted);
+    if (window.FB_OK && window.FB.saveWeight && deleted) window.FB.saveWeight(deleted); else if(deleted) queueFBWrite('weight','save',deleted);
     _renderWeightTab(); showToast('คืนค่าแล้ว','info');
   });
 }
