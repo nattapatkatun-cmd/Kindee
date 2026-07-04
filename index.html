@@ -166,6 +166,13 @@ body{font-family:'Sarabun',sans-serif;background:var(--bg);color:var(--text);min
 .set-done{width:30px;height:30px;border-radius:50%;border:2px solid var(--border-md);background:none;color:var(--text3);font-size:13px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all .15s;}
 .set-done.checked{background:var(--green);border-color:var(--green);color:#fff;}
 .set-del{background:none;border:none;color:var(--text3);font-size:13px;cursor:pointer;padding:2px 4px;flex-shrink:0;}
+/* ── Rest timer (between sets) ── */
+.rest-timer-bar{display:none;align-items:center;justify-content:space-between;gap:10px;background:var(--accent-dim);border:1px solid var(--accent);border-radius:12px;padding:9px 12px;margin-bottom:8px;}
+.rest-timer-info{display:flex;flex-direction:column;gap:1px;min-width:0;}
+.rest-timer-label{font-size:11px;color:var(--text2);font-weight:600;}
+.rest-timer-time{font-size:21px;font-weight:800;color:var(--accent);letter-spacing:-0.3px;line-height:1;}
+.rest-timer-actions{display:flex;gap:6px;flex-shrink:0;}
+.rest-timer-btn{background:var(--surface);border:1px solid var(--border-md);border-radius:10px;padding:7px 10px;font-size:12px;font-weight:600;color:var(--text2);cursor:pointer;font-family:inherit;touch-action:manipulation;}
 .e1rm-badge{display:inline-flex;align-items:center;gap:5px;background:var(--accent-dim);border:1px solid var(--accent);border-radius:10px;padding:4px 10px;font-size:12px;font-weight:700;color:var(--accent);}
 .pr-badge{background:linear-gradient(135deg,#f59e0b,#ef4444);color:#fff;border-radius:6px;padding:1px 6px;font-size:11px;font-weight:800;}
 .str-exercise-select{width:100%;background:var(--surface2);border:1px solid var(--border-md);border-radius:10px;color:var(--text);font-family:inherit;font-size:16px;padding:8px 10px;margin-bottom:12px;}
@@ -957,6 +964,17 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
             <button onclick="addSetRow()" style="width:100%;background:var(--surface2);border:1px dashed var(--border-md);border-radius:10px;color:var(--text2);font-size:13px;font-weight:600;padding:14px;cursor:pointer;margin-top:6px;font-family:inherit;touch-action:manipulation;">+ เพิ่ม Set</button>
           </div>
           <div style="flex-shrink:0;padding:10px 16px calc(env(safe-area-inset-bottom,14px)+14px);background:var(--bg);border-top:1px solid var(--border);position:relative;z-index:10;">
+            <div id="rest-timer-bar" class="rest-timer-bar">
+              <div class="rest-timer-info">
+                <span class="rest-timer-label">⏱ พักระหว่างเซ็ต</span>
+                <span class="rest-timer-time" id="rest-timer-time">01:30</span>
+              </div>
+              <div class="rest-timer-actions">
+                <button type="button" class="rest-timer-btn" onclick="adjustRestTimer(-15)">−15s</button>
+                <button type="button" class="rest-timer-btn" onclick="adjustRestTimer(15)">+15s</button>
+                <button type="button" class="rest-timer-btn" onclick="skipRestTimer()">ข้าม</button>
+              </div>
+            </div>
             <div id="ex-sheet-msg" style="display:none;text-align:center;font-size:12px;font-weight:600;border-radius:8px;padding:7px 10px;margin-bottom:8px;"></div>
             <button class="btn-primary" style="width:100%;" onclick="confirmExerciseFromSheet()">✅ เพิ่มท่านี้เข้า Session</button>
           </div>
@@ -4652,6 +4670,7 @@ function renderSessionChips() {
 function openExSheet(exerciseId) {
   var ex = getExById(exerciseId);
   if (!ex) return;
+  stopRestTimer(); // fresh sheet — don't carry over a running timer from the last exercise
   ST.curExercise = ex;
   var existing = ST.sessionExercises.find(function(s){ return s.exerciseId === ex.id; });
   if (existing && existing.sets && existing.sets.length) {
@@ -4688,6 +4707,7 @@ function closeExSheet() {
   document.getElementById('ex-sheet-overlay').classList.remove('open');
   document.getElementById('ex-sheet').style.maxHeight = '';
   ST.curExercise = null;
+  stopRestTimer();
 }
 function closeExSheetIfBg(e) { if (e.target === document.getElementById('ex-sheet-overlay')) closeExSheet(); }
 function setRowHTML(s, i, total) {
@@ -4727,9 +4747,58 @@ function updateSet(i, field, val) {
 function toggleSetDone(i) {
   if (!ST.sets[i]) return;
   syncSetsFromDOM();
-  ST.sets[i].done = !ST.sets[i].done;
+  var wasDone = ST.sets[i].done;
+  ST.sets[i].done = !wasDone;
   renderSetRows();
+  // Ticking a set off (not un-ticking) kicks off the rest-timer countdown —
+  // compound lifts get longer rest than isolation moves.
+  if (!wasDone && ST.sets[i].done) {
+    var tier = ST.curExercise ? exerciseTier(ST.curExercise) : 'isolation';
+    startRestTimer(tier === 'compound' ? 120 : 75);
+  }
 }
+
+// ── Rest timer (between sets) ──────────────────────────────────
+var REST_TIMER = { remaining: 0, interval: null, running: false };
+function fmtRestTimer(s) {
+  s = Math.max(0, Math.round(s));
+  var m = Math.floor(s / 60), sec = s % 60;
+  return String(m).padStart(2, '0') + ':' + String(sec).padStart(2, '0');
+}
+function renderRestTimer() {
+  var bar = document.getElementById('rest-timer-bar');
+  if (!bar) return;
+  bar.style.display = REST_TIMER.running ? 'flex' : 'none';
+  var timeEl = document.getElementById('rest-timer-time');
+  if (timeEl && REST_TIMER.running) timeEl.textContent = fmtRestTimer(REST_TIMER.remaining);
+}
+function stopRestTimer() {
+  if (REST_TIMER.interval) { clearInterval(REST_TIMER.interval); REST_TIMER.interval = null; }
+  REST_TIMER.running = false;
+  renderRestTimer();
+}
+function startRestTimer(seconds) {
+  stopRestTimer();
+  REST_TIMER.remaining = seconds || 90;
+  REST_TIMER.running = true;
+  renderRestTimer();
+  REST_TIMER.interval = setInterval(function() {
+    REST_TIMER.remaining--;
+    if (REST_TIMER.remaining <= 0) {
+      stopRestTimer();
+      if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
+      showToast('⏱ หมดเวลาพัก — เริ่มเซ็ตถัดไปได้เลย', 'info');
+      return;
+    }
+    renderRestTimer();
+  }, 1000);
+}
+function adjustRestTimer(deltaSeconds) {
+  if (!REST_TIMER.running) return;
+  REST_TIMER.remaining = Math.max(0, REST_TIMER.remaining + deltaSeconds);
+  renderRestTimer();
+}
+function skipRestTimer() { stopRestTimer(); }
 function addSetRow() {
   // Capture current typed values first so nothing is lost on rebuild
   syncSetsFromDOM();
