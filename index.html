@@ -1927,7 +1927,18 @@ function init() {
   });
   updateKeyStatusDots();
   updateGoalModeHint();
-  if(typeof Notification !== 'undefined' && Notification.permission==='default') Notification.requestPermission();
+  // iOS Safari silently ignores requestPermission() unless it runs inside a
+  // real user gesture, so calling it unconditionally on load never actually
+  // shows the prompt there. Defer to the first tap/click instead.
+  if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
+    var _askNotifPerm = function(){
+      document.removeEventListener('click', _askNotifPerm);
+      document.removeEventListener('touchend', _askNotifPerm);
+      Notification.requestPermission();
+    };
+    document.addEventListener('click', _askNotifPerm, { once: true });
+    document.addEventListener('touchend', _askNotifPerm, { once: true });
+  }
 
   if(window.FB_OK){
     showToast('กำลังโหลดข้อมูล...','info');
@@ -3422,7 +3433,7 @@ function renderWeeklyReview() {
   else{var sdx=S.sleepData;if(sdx&&sdx.hrv&&days.indexOf(sdx.date)>=0)avgHRV=sdx.hrv+' ms';}
   function pill(label,val,col){return '<div style="background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:10px 12px;flex:1;min-width:0;"><div style="font-size:11px;color:var(--text3);font-weight:500;margin-bottom:4px;">'+label+'</div><div style="font-size:14px;font-weight:800;color:'+(col||'var(--text)')+';">'+val+'</div></div>';}
   if(!daysWithMeals){el.innerHTML='<div style="text-align:center;padding:18px 0;color:var(--text3);font-size:12px;">ยังไม่มีข้อมูลอาหาร 7 วันที่ผ่านมา</div>';return;}
-  var html='<div style="display:flex;gap:8px;margin-bottom:8px;">'+pill('แคล/วัน เฉลี่ย',avgCal+' kcal')+pill('Net vs Goal',netLabel,netColor)+'</div>'+
+  var html='<div style="display:flex;gap:8px;margin-bottom:8px;">'+pill('แคล/วัน เฉลี่ย',avgCal+' kcal')+pill('Intake vs Goal',netLabel,netColor)+'</div>'+
     '<div style="display:flex;gap:8px;margin-bottom:8px;">'+pill('โปรตีน/วัน',avgPro+' g')+pill('น้ำหนัก trend',weightSlope!==null?wTrend:'—',wColor)+'</div>'+
     '<div style="display:flex;gap:8px;margin-bottom:'+(onTrackMsg?'10':'0')+'px;">'+pill('Training Load',trainLabel)+pill('HRV เฉลี่ย',avgHRV||'—')+'</div>';
   if(onTrackMsg)html+='<div style="padding:7px 12px;background:var(--surface2);border-radius:10px;font-size:12px;font-weight:600;margin-bottom:8px;">'+onTrackMsg+'</div>';
@@ -4169,32 +4180,45 @@ function checkAlert() {
   var meals = todayMeals();
   var eaten = meals.reduce(function(a,m){return a+m.calories;},0);
 
-  // Use net calories (กิน - เผา - ก้าว) instead of raw intake
+  // Net calories are informational only, same as the dashboard's "dash-net-note".
+  // The trigger itself must use gross intake vs goal — Adaptive TDEE already
+  // bakes activity into the goal number, so gating on net here would silently
+  // let a heavy-workout day go over the gross target without ever alerting.
   var workoutBurn = (typeof todayWorkouts==='function') ? todayWorkouts().reduce(function(a,w){return a+(+w.calories_burned||0);},0) : 0;
-  var stepBurn    = (typeof calcStepCalories==='function' && typeof getTodaySteps==='function') ? calcStepCalories(getTodaySteps()) : 0;
-  var net = eaten - workoutBurn - stepBurn;
+  var neatCal = (typeof getNeatCalForDate==='function') ? getNeatCalForDate(localDateStr()) : 0;
+  var net = eaten - workoutBurn - neatCal;
 
   var goal = S.goals.cal;
-  var pct  = net / goal;
-  var rem  = goal - net;
+  var pct  = eaten / goal;
+  var rem  = goal - eaten;
   var today = localDateStr();
   var alerted = JSON.parse(localStorage.getItem('gd_alerted')||'{}');
+  // Prune entries older than a week — this object otherwise grows by 2 keys
+  // every day forever since nothing ever removed old dates.
+  (function(){
+    var cutoff = localDateStr(new Date(Date.now() - 7*24*60*60*1000));
+    var changed = false;
+    Object.keys(alerted).forEach(function(k){
+      if (k.slice(0,10) < cutoff) { delete alerted[k]; changed = true; }
+    });
+    if (changed) localStorage.setItem('gd_alerted', JSON.stringify(alerted));
+  })();
 
-  if (net > goal && !alerted[today+'_over']) {
+  if (eaten > goal && !alerted[today+'_over']) {
     alerted[today+'_over'] = true;
     localStorage.setItem('gd_alerted', JSON.stringify(alerted));
-    showAlertPopup('🚨','Net Calories เกินเป้าหมายแล้ว!',
-      'กิน '+eaten+' kcal  เผา '+(workoutBurn+stepBurn)+' kcal\nNet '+net+' kcal — เกินเป้า '+Math.abs(rem)+' kcal');
+    showAlertPopup('🚨','กินเกินเป้าหมายแล้ว!',
+      'กิน '+eaten+' kcal / เป้า '+goal+' kcal — เกินเป้า '+Math.abs(rem)+' kcal\nnet '+Math.round(net)+' kcal (หักกิจกรรม)');
     if (typeof Notification !== 'undefined' && Notification.permission==='granted')
-      new Notification('🚨 Net Calories เกินเป้าแล้ว!', {body:'Net '+net+' kcal (เกิน '+Math.abs(rem)+')'});
+      new Notification('🚨 กินเกินเป้าแล้ว!', {body:'เกินเป้า '+Math.abs(rem)+' kcal'});
 
   } else if (pct >= 0.8 && pct < 1 && !alerted[today+'_near']) {
     alerted[today+'_near'] = true;
     localStorage.setItem('gd_alerted', JSON.stringify(alerted));
-    showAlertPopup('⚠️','Net Calories ใกล้ถึงเป้าหมายแล้ว!',
-      'กิน '+eaten+' kcal  เผา '+(workoutBurn+stepBurn)+' kcal\nNet '+net+' kcal — เหลืออีก '+rem+' kcal');
+    showAlertPopup('⚠️','ใกล้ถึงเป้าหมายแล้ว!',
+      'กิน '+eaten+' kcal / เป้า '+goal+' kcal — เหลืออีก '+rem+' kcal\nnet '+Math.round(net)+' kcal (หักกิจกรรม)');
     if (typeof Notification !== 'undefined' && Notification.permission==='granted')
-      new Notification('⚠️ Net Calories ใกล้เป้าแล้ว!', {body:'เหลืออีก '+rem+' kcal'});
+      new Notification('⚠️ ใกล้เป้าแล้ว!', {body:'เหลืออีก '+rem+' kcal'});
   }
 }
 
@@ -4214,6 +4238,12 @@ function localDateStr(date) {
   return d.getFullYear() + '-' +
     String(d.getMonth()+1).padStart(2,'0') + '-' +
     String(d.getDate()).padStart(2,'0');
+}
+// Weekday index (0=Sun) using the same 04:00 boundary as localDateStr(), so
+// "today's plan" agrees with the dashboard between midnight and 4am instead
+// of flipping to the next day's plan while the dashboard still shows yesterday.
+function appTodayWeekday() {
+  return new Date(Date.now() - 4 * 60 * 60 * 1000).getDay();
 }
 // ── Backdating helpers (manual log date override) ──
 // Reads a date <input>; falls back to today if empty/invalid. Never returns a future date.
@@ -6461,7 +6491,7 @@ function renderTodayPlanCard() {
   if (!card) return;
   var plan = getSavedPlanObj();
   if (!plan) { card.style.display = 'none'; return; }
-  var todayName = PLAN_DAY_NAMES[new Date().getDay()];
+  var todayName = PLAN_DAY_NAMES[appTodayWeekday()];
   var day = plan.days.find(function(d){ return d.day === todayName; });
   if (!day) { card.style.display = 'none'; return; }
 
@@ -6503,7 +6533,7 @@ function renderTodayPlanCard() {
 function fillFromPlanExercise(idx) {
   var plan = getSavedPlanObj();
   if (!plan) return;
-  var todayName = PLAN_DAY_NAMES[new Date().getDay()];
+  var todayName = PLAN_DAY_NAMES[appTodayWeekday()];
   var day = plan.days.find(function(d){ return d.day === todayName; });
   if (!day || !day.exercises || !day.exercises[idx]) return;
   var ex = day.exercises[idx];
