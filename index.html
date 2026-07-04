@@ -1806,12 +1806,13 @@ function geminiCall(key, body, timeoutMs, onProgress) {
 
         // 429 / quota → rotate immediately, no retry on same key
         if (isRateLimit && triedCount < keys.length - 1) {
+          var prevKeyIdx1 = keyIdx; // capture before reassigning, for the progress message
           triedCount++;
           keyIdx = (startIdx + triedCount) % keys.length;
           overloadRetry = 0;
           S.currentKeyIndex = keyIdx;
           updateKeyStatusDots();
-          if (onProgress) onProgress('K' + (keyIdx) + ' quota หมด → เปลี่ยนเป็น K' + (keyIdx + 1) + '...');
+          if (onProgress) onProgress('K' + (prevKeyIdx1 + 1) + ' quota หมด → เปลี่ยนเป็น K' + (keyIdx + 1) + '...');
           return tryFetch();
         }
 
@@ -1825,12 +1826,13 @@ function geminiCall(key, body, timeoutMs, onProgress) {
           }
           // Overload retries exhausted on this key → rotate to next
           if (triedCount < keys.length - 1) {
+            var prevKeyIdx2 = keyIdx; // capture before reassigning, for the progress message
             triedCount++;
             keyIdx = (startIdx + triedCount) % keys.length;
             overloadRetry = 0;
             S.currentKeyIndex = keyIdx;
             updateKeyStatusDots();
-            if (onProgress) onProgress('K' + keyIdx + ' ไม่ตอบสนอง → เปลี่ยนเป็น K' + (keyIdx + 1) + '...');
+            if (onProgress) onProgress('K' + (prevKeyIdx2 + 1) + ' ไม่ตอบสนอง → เปลี่ยนเป็น K' + (keyIdx + 1) + '...');
             return tryFetch();
           }
           throw new Error('เซิร์ฟเวอร์ AI ยุ่งมาก ลองทั้ง ' + keys.length + ' keys แล้ว — รอสักครู่แล้วลองใหม่');
@@ -4085,14 +4087,23 @@ function saveApiKeys() {
 
 function updateKeyStatusDots() {
   var statusEl = document.getElementById('keyRotateStatus');
+  // Dots sit next to the literal K1-K4 input boxes, so they must reflect
+  // those boxes directly — not S.apiKeys[i-1], which is a *compacted* array
+  // (blanks filtered out in saveApiKeys()). If K1 is left blank while K2/K3
+  // are filled, S.apiKeys[0] holds K2's value, so indexing by position lit
+  // up the wrong dot entirely.
   for (var i = 1; i <= 4; i++) {
     var dot = document.getElementById('keyStatus' + i);
     if (!dot) continue;
-    if (S.apiKeys[i-1]) {
-      dot.style.background = (i-1 === S.currentKeyIndex) ? 'var(--green)' : 'var(--blue)';
-      dot.title = i-1 === S.currentKeyIndex ? 'Active' : 'Standby';
+    var inputEl = document.getElementById('apiKey' + i);
+    var val = inputEl ? inputEl.value.trim() : '';
+    if (val) {
+      var isActive = S.apiKeys[S.currentKeyIndex] === val;
+      dot.style.background = isActive ? 'var(--green)' : 'var(--blue)';
+      dot.title = isActive ? 'Active' : 'Standby';
     } else {
       dot.style.background = 'var(--border)';
+      dot.title = '';
     }
   }
   if (statusEl) {
