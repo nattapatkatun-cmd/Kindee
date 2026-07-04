@@ -1619,6 +1619,14 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
       <div><div style="font-size:11px;color:var(--text3);margin-bottom:4px;">ไขมัน (g)</div><input id="favUseFat" type="number" min="0" step="0.1" oninput="onFavMacroInput('macro')" style="width:100%;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:6px 2px;text-align:center;font-size:16px;font-weight:700;color:var(--purple);font-family:inherit;"/></div>
     </div>
     <div style="font-size:11px;color:var(--text3);text-align:right;margin-bottom:12px;">คำนวณจาก macro: <span id="favUseCalcRef" style="color:var(--text2);font-weight:600;">—</span> kcal</div>
+    <div style="display:flex;align-items:center;justify-content:space-between;background:var(--surface2);border-radius:12px;padding:10px 12px;margin-bottom:14px;">
+      <div style="font-size:12px;color:var(--text3);">จำนวน (กินซ้ำ/เพิ่มปริมาณ)</div>
+      <div style="display:flex;align-items:center;gap:12px;">
+        <button onclick="changeFavQty(-1)" style="width:28px;height:28px;border-radius:8px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-size:16px;line-height:1;cursor:pointer;">−</button>
+        <span id="favUseQtyVal" style="font-size:15px;font-weight:700;min-width:20px;text-align:center;">1</span>
+        <button onclick="changeFavQty(1)" style="width:28px;height:28px;border-radius:8px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-size:16px;line-height:1;cursor:pointer;">+</button>
+      </div>
+    </div>
     <div style="font-size:12px;color:var(--text3);margin-bottom:6px;">เลือกมื้อ</div>
     <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px;" id="favUseLabelRow">
       <button class="label-btn" onclick="selFavLabel(this,'มื้อเช้า')">🌅 เช้า</button>
@@ -2468,6 +2476,30 @@ function confirmManual() {
 var _favSaveData = null;
 var _favUseData = null;
 var _favUseLabel = '';
+var _favUseBase = null;
+var _favUseQty = 1;
+
+// เก็บ macro ต้นฉบับ (qty=1) แล้วเซ็ตค่าเริ่มต้นในฟอร์ม ใช้ร่วมกันทั้งจากเมนูโปรดและใช้ซ้ำจากประวัติ
+function setFavUseBase(cal, pro, crb, fat) {
+  _favUseBase = { cal: cal||0, pro: pro||0, crb: crb||0, fat: fat||0 };
+  _favUseQty = 1;
+  document.getElementById('favUseQtyVal').textContent = _favUseQty;
+  applyFavQty();
+}
+function changeFavQty(delta) {
+  if(!_favUseBase) return;
+  _favUseQty = Math.max(1, (_favUseQty||1) + delta);
+  document.getElementById('favUseQtyVal').textContent = _favUseQty;
+  applyFavQty();
+}
+function applyFavQty() {
+  if(!_favUseBase) return;
+  document.getElementById('favUseCal').value = Math.round(_favUseBase.cal * _favUseQty * 100) / 100;
+  document.getElementById('favUsePro').value = Math.round(_favUseBase.pro * _favUseQty * 100) / 100;
+  document.getElementById('favUseCrb').value = Math.round(_favUseBase.crb * _favUseQty * 100) / 100;
+  document.getElementById('favUseFat').value = Math.round(_favUseBase.fat * _favUseQty * 100) / 100;
+  onFavMacroInput('qty');
+}
 
 function openSaveFavoriteModal() {
   if(!curResult) return;
@@ -2517,11 +2549,7 @@ function openUseFavoriteModal(id) {
   _favUseData = fav;
   _favUseLabel = '';
   document.getElementById('favUseName').textContent = fav.foodName;
-  document.getElementById('favUseCal').value = fav.calories;
-  document.getElementById('favUsePro').value = fav.protein;
-  document.getElementById('favUseCrb').value = fav.carbs;
-  document.getElementById('favUseFat').value = fav.fat;
-  onFavMacroInput('mac');
+  setFavUseBase(fav.calories, fav.protein, fav.carbs, fav.fat);
   // auto-select label by time
   var h = new Date().getHours();
   var auto = h<11?'มื้อเช้า':h<15?'มื้อกลางวัน':h<21?'มื้อเย็น':'ของว่าง';
@@ -2535,6 +2563,8 @@ function openUseFavoriteModal(id) {
 function closeFavUseModal() {
   document.getElementById('favUseModal').style.display = 'none';
   _favUseData = null;
+  _favUseBase = null;
+  _favUseQty = 1;
 }
 function selFavLabel(btn, label) {
   document.querySelectorAll('#favUseLabelRow .label-btn').forEach(function(b){ b.classList.remove('active'); });
@@ -2565,6 +2595,7 @@ function confirmUseFavorite() {
     label: _favUseLabel || 'ไม่ระบุมื้อ',
     foodName: _favUseData.foodName,
     description: _favUseData.description,
+    qty: _favUseQty || 1,
     calories: cal,
     protein: pro,
     carbs: crb,
@@ -3733,11 +3764,7 @@ function reuseMeal(id) {
   _favUseData = m;
   _favUseLabel = '';
   document.getElementById('favUseName').textContent = m.foodName;
-  document.getElementById('favUseCal').value = m.calories;
-  document.getElementById('favUsePro').value = m.protein;
-  document.getElementById('favUseCrb').value = m.carbs;
-  document.getElementById('favUseFat').value = m.fat;
-  onFavMacroInput('mac');
+  setFavUseBase(m.calories, m.protein, m.carbs, m.fat);
   var h = new Date().getHours();
   var auto = h<11?'มื้อเช้า':h<15?'มื้อกลางวัน':h<21?'มื้อเย็น':'ของว่าง';
   document.querySelectorAll('#favUseLabelRow .label-btn').forEach(function(b){
@@ -3764,8 +3791,9 @@ function mealHTML(m, showDel) {
     '<span class="context-chip '+((m.carbLoadFlag||'normal')==='high'?'high':(m.carbLoadFlag||'normal')==='normal'?'med':'low')+'">🍚 '+flagLabel(m.carbLoadFlag||'normal','carb')+'</span>' +
     '<span class="context-chip '+chipClassFromRisk(m.retentionRisk||0)+'">💧 '+(m.retentionRisk||0)+'%</span>' +
     '</div>' : '';
+  var qtyTag = (m.qty && m.qty > 1) ? ' <span style="color:var(--accent);">×'+m.qty+'</span>' : '';
   return '<div class="meal-item" onclick="openMealSheet('+m.id+')"><div class="meal-thumb-ph">🍽️</div>'+
-    '<div class="meal-info"><div class="meal-name">'+escapeHTML(m.foodName)+'</div><div class="meal-time">'+escapeHTML(m.label)+' • '+escapeHTML(m.time)+'</div>'+
+    '<div class="meal-info"><div class="meal-name">'+escapeHTML(m.foodName)+qtyTag+'</div><div class="meal-time">'+escapeHTML(m.label)+' • '+escapeHTML(m.time)+'</div>'+
     '<div class="meal-macros"><span class="meal-tag" style="color:var(--blue)">P '+m.protein+'g</span><span class="meal-tag" style="color:var(--green)">C '+m.carbs+'g</span><span class="meal-tag" style="color:var(--purple)">F '+m.fat+'g</span></div>'+chips+'</div>'+
     '<div style="display:flex;flex-direction:column;align-items:flex-end;gap:5px;"><div class="meal-cal">'+m.calories+'<br><span style="font-size:11px;color:var(--text3)">kcal</span></div><div class="meal-chevron">›</div></div></div>';
 }
