@@ -1085,6 +1085,13 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
     <!-- TAB: SLEEP -->
     <div id="ftab-content-sleep" style="display:none;">
       <div class="card">
+        <div class="card-title" style="margin-bottom:8px;">📈 เทรนด์การนอน (14 วันล่าสุด)</div>
+        <div id="sleep-trend-empty" style="text-align:center;padding:18px 0;color:var(--text3);font-size:12px;">ยังไม่มีข้อมูลพอ — บันทึก sleep อย่างน้อย 2 คืนเพื่อดู trend</div>
+        <div id="sleep-trend-wrap" style="display:none;position:relative;height:150px;width:100%;">
+          <canvas id="sleepTrendChart"></canvas>
+        </div>
+      </div>
+      <div class="card">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
           <div style="display:flex;align-items:center;gap:8px;">
             <div style="width:28px;height:28px;border-radius:8px;background:linear-gradient(135deg,#3b82f6,#6366f1);display:flex;align-items:center;justify-content:center;font-size:14px;">😴</div>
@@ -5417,7 +5424,7 @@ function showFitnessTab(tab) {
   if (tab === 'strength') updateStrengthSelectOptions();
   if (tab === 'target') { loadFitnessTarget(); renderTargetDashboard(); }
   if (tab === 'plan') { loadSavedPlan(); renderProgressionOverview(); }
-  if (tab === 'sleep') loadSleepUI();
+  if (tab === 'sleep') { loadSleepUI(); renderSleepTrendChart(); }
   if (tab === 'insights') renderBehaviorInsights();
 }
 
@@ -8423,6 +8430,62 @@ function syncSleepLog(data){
   var cstr=localDateStr(cutoff);
   log=log.filter(function(s){return s.date>=cstr;});
   localStorage.setItem('gd_sleep_log',JSON.stringify(log));
+  if (typeof renderSleepTrendChart === 'function') renderSleepTrendChart();
+}
+
+// ── Sleep trend chart (Sleep tab) — last 14 nights: hours slept (bars) +
+// Sleep Score (line), reusing the same gd_sleep_log the Insights correlations use.
+var _sleepTrendChart = null;
+function renderSleepTrendChart() {
+  var emptyEl = document.getElementById('sleep-trend-empty');
+  var wrapEl = document.getElementById('sleep-trend-wrap');
+  var canvas = document.getElementById('sleepTrendChart');
+  if (!canvas) return;
+  if (typeof Chart === 'undefined') return; // will draw once Chart.js finishes loading + tab reopened
+  var log = []; try { log = JSON.parse(localStorage.getItem('gd_sleep_log') || '[]'); } catch(e) {}
+  log = log.filter(function(e){ return e && e.date; }).sort(function(a,b){ return a.date.localeCompare(b.date); }).slice(-14);
+  if (log.length < 2) {
+    if (emptyEl) emptyEl.style.display = 'block';
+    if (wrapEl) wrapEl.style.display = 'none';
+    return;
+  }
+  if (emptyEl) emptyEl.style.display = 'none';
+  if (wrapEl) wrapEl.style.display = 'block';
+  if (_sleepTrendChart) { _sleepTrendChart.destroy(); _sleepTrendChart = null; }
+  var labels = log.map(function(e){ var d = new Date(e.date); return (d.getMonth()+1)+'/'+d.getDate(); });
+  var hoursData = log.map(function(e){ return (e.hours != null) ? e.hours : null; });
+  var scoreData = log.map(function(e){ return (e.sleepScore != null) ? e.sleepScore : null; });
+  var hourColors = hoursData.map(function(h){
+    if (h == null) return 'rgba(148,163,184,0.3)';
+    return h >= 7 ? 'rgba(34,197,94,0.75)' : h >= 6 ? 'rgba(234,179,8,0.75)' : 'rgba(239,68,68,0.75)';
+  });
+  _sleepTrendChart = new Chart(canvas, {
+    data: {
+      labels: labels,
+      datasets: [
+        { type:'bar', label:'ชั่วโมงนอน', data:hoursData, backgroundColor:hourColors, borderRadius:4, yAxisID:'yHrs', order:2 },
+        { type:'line', label:'Sleep Score', data:scoreData, borderColor:'#8b5cf6', backgroundColor:'rgba(139,92,246,0.12)',
+          borderWidth:2.5, tension:0.3, pointRadius:4, pointBackgroundColor:'#8b5cf6', spanGaps:true, yAxisID:'yScore', order:1 }
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      interaction: { mode:'index', intersect:false },
+      plugins: {
+        legend: { display:true, labels:{ color:'#94a3b8', font:{size:10}, boxWidth:10, padding:8 } },
+        tooltip: { callbacks: { label: function(ctx) {
+          if (ctx.raw === null || ctx.raw === undefined) return null;
+          if (ctx.dataset.yAxisID === 'yHrs') return ' นอน ' + ctx.raw + ' ชม.';
+          return ' Sleep Score ' + ctx.raw;
+        } } }
+      },
+      scales: {
+        x: { ticks:{ color:'#64748b', font:{size:10} }, grid:{ color:'rgba(255,255,255,0.04)' } },
+        yHrs: { position:'left', beginAtZero:true, max:12, ticks:{ color:'#64748b', font:{size:10}, callback:function(v){ return v+'h'; } }, grid:{ color:'rgba(255,255,255,0.04)' } },
+        yScore: { position:'right', beginAtZero:true, max:100, ticks:{ color:'#8b5cf6', font:{size:10} }, grid:{ drawOnChartArea:false } }
+      }
+    }
+  });
 }
 
 // ==================== BEHAVIOR INSIGHTS ====================
@@ -8571,6 +8634,7 @@ try { initFitness(); }  catch(e){ console.error('initFitness failed:', e); }
   if (typeof Chart !== 'undefined') {
     try { if (typeof render === 'function') render(); } catch(e){ console.error(e); }
     try { if (typeof renderFitnessCharts === 'function') renderFitnessCharts(); } catch(e){ console.error(e); }
+    try { if (typeof renderSleepTrendChart === 'function') renderSleepTrendChart(); } catch(e){ console.error(e); }
     return;
   }
   if (tries <= 0) return; // give up quietly after ~10s; app stays fully usable
