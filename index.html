@@ -983,7 +983,7 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
 
       <!-- Step Count -->
       <div class="card" style="margin-bottom:14px;">
-        <div class="card-title">👟 จำนวนก้าววันนี้</div>
+        <div class="card-title" id="ft-steps-title">👟 จำนวนก้าววันนี้</div>
         <div style="display:flex;gap:10px;align-items:center;">
           <input class="input-field" type="number" id="ft-steps-input" placeholder="เช่น 8000" min="0" max="100000"
             style="flex:1;" oninput="saveSteps()"/>
@@ -1002,7 +1002,7 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
       <div class="card">
         <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px;flex-wrap:wrap;">
           <div class="card-title" id="ft-list-title" style="margin-bottom:0;">Workout วันนี้</div>
-          <input class="input-field" type="date" id="ft-list-date" style="width:auto;max-width:160px;padding:6px 8px;font-size:13px;" onchange="updateFitnessUI()"/>
+          <input class="input-field" type="date" id="ft-list-date" style="width:auto;max-width:160px;padding:6px 8px;font-size:13px;" onchange="updateFitnessUI();syncStepsInputToListDate();"/>
         </div>
         <div id="ft-today-list"></div>
         <button id="ft-list-today-btn" class="btn-secondary" style="display:none;width:100%;margin-top:8px;font-size:13px;" onclick="resetListDate()">↩︎ กลับมาวันนี้</button>
@@ -2063,7 +2063,7 @@ function showPage(id) {
   if(id==='dashboard') { updateDash(); renderWeightCalChart(); restoreRecoveryAdj(); detectAnomalies(); renderWeeklyReview(); renderCorrelations(); }
   if(id==='log') renderLog();
   if(id==='history') renderHistory();
-  if(id==='fitness') { loadTodaySteps(); updateFitnessUI(); initLogDate('workout-date'); initLogDate('sleep-date'); }
+  if(id==='fitness') { syncStepsInputToListDate(); updateFitnessUI(); initLogDate('workout-date'); initLogDate('sleep-date'); }
   if(id==='weight') initWeightTab();
   if(id==='settings') syncProfileWeightFromLatestCheckin();
 }
@@ -5261,6 +5261,7 @@ function addWorkout() {
   var listDateEl = document.getElementById('ft-list-date');
   if (listDateEl) listDateEl.value = savedDate;
   updateFitnessUI();
+  syncStepsInputToListDate();
   showToast(
     isBackdated
       ? ('บันทึก workout ย้อนหลังสำเร็จ 🔥 → วันที่ ' + savedDate)
@@ -5309,22 +5310,34 @@ function getNeatCalForDate(date) {
   return calcStepCalories(neatSteps);
 }
 
-function saveSteps() {
-  var steps = parseInt(document.getElementById('ft-steps-input').value) || 0;
+// The step count follows whichever date the workout-list picker (ft-list-date)
+// is showing — previously it always read/wrote today's steps even while the
+// rest of the Fitness tab (burn/duration/workout list) was showing a
+// backdated day, so editing "today's" step box while viewing yesterday
+// silently overwrote today's real step count instead of yesterday's.
+function stepsActiveDate() {
+  var el = document.getElementById('ft-list-date');
+  return (el && el.value) ? el.value : localDateStr();
+}
+function syncStepsInputToListDate() {
+  var date = stepsActiveDate();
   var today = localDateStr();
   var stepData = JSON.parse(localStorage.getItem('gd_steps') || '{}');
-  stepData[today] = steps;
-  localStorage.setItem('gd_steps', JSON.stringify(stepData));
-  updateFitnessUI();
+  var steps = stepData[date] || 0;
+  var input = document.getElementById('ft-steps-input');
+  // Don't stomp on the field while the user is actively typing in it.
+  if (input && document.activeElement !== input) input.value = steps || '';
+  var titleEl = document.getElementById('ft-steps-title');
+  if (titleEl) titleEl.textContent = (date === today) ? '👟 จำนวนก้าววันนี้' : ('👟 จำนวนก้าว วันที่ ' + date);
 }
 
-function loadTodaySteps() {
-  var today = localDateStr();
+function saveSteps() {
+  var steps = parseInt(document.getElementById('ft-steps-input').value) || 0;
+  var date = stepsActiveDate();
   var stepData = JSON.parse(localStorage.getItem('gd_steps') || '{}');
-  var steps = stepData[today] || 0;
-  var el = document.getElementById('ft-steps-input');
-  if (el && steps) el.value = steps;
-  return steps;
+  stepData[date] = steps;
+  localStorage.setItem('gd_steps', JSON.stringify(stepData));
+  updateFitnessUI();
 }
 
 function getTodaySteps() {
@@ -5396,6 +5409,7 @@ function resetListDate() {
   var el = document.getElementById('ft-list-date');
   if (el) el.value = localDateStr();
   updateFitnessUI();
+  syncStepsInputToListDate();
 }
 
 // Toggle the backdated history zone
