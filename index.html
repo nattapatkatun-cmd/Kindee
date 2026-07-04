@@ -1474,10 +1474,11 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
       <div class="input-row">
         <div class="input-group">
           <label class="input-label">⏳ ระยะเวลาเป้าหมาย</label>
-          <select class="input-field" id="ft-target-duration">
+          <select class="input-field" id="ft-target-duration" onchange="updateFeasibilityPreview()">
             <option value="4">4 สัปดาห์</option>
             <option value="8" selected>8 สัปดาห์</option>
             <option value="12">12 สัปดาห์</option>
+            <option value="16">16 สัปดาห์</option>
             <option value="24">6 เดือน</option>
           </select>
         </div>
@@ -1490,6 +1491,7 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
           </select>
         </div>
       </div>
+      <div id="ft-feasibility-banner" style="display:none;font-size:12px;line-height:1.7;margin-bottom:10px;padding:10px 12px;border-radius:10px;"></div>
       <button class="btn-primary" onclick="saveFitnessTarget()">💾 บันทึก Fitness Target</button>
     </div>
     <div class="card">
@@ -3308,6 +3310,44 @@ function refreshCard(btn, fn) {
   }, 80);
 }
 
+// ── Lean-Mass Preservation Guard ─────────────────────────────────
+// Trainer's core check during a cut: are we losing fat or losing muscle?
+// Compares the two most recent InBody logs ≥14 days apart (shorter gaps are
+// dominated by hydration noise). A >1.5% lean drop triggers a warning; if the
+// strength log's e1RM verdicts are also mostly regressing, the drop is treated
+// as real muscle loss rather than device noise.
+function checkLeanMassGuard() {
+  var mode = normalizeGoalMode(profileSafe().goalType);
+  if (mode !== 'fat_loss' && mode !== 'recomp') return null;
+  var logs = getBodyCompLogs().filter(function(x){ return x.source === 'inbody' && x.bf != null && x.weight; });
+  if (logs.length < 2) return null;
+  var last = logs[logs.length-1], prev = null;
+  for (var i = logs.length-2; i >= 0; i--) {
+    if ((new Date(last.date) - new Date(logs[i].date)) / 86400000 >= 14) { prev = logs[i]; break; }
+  }
+  if (!prev) return null;
+  var leanPrev = prev.weight * (1 - prev.bf/100);
+  var leanLast = last.weight * (1 - last.bf/100);
+  if (!leanPrev || leanPrev <= 0) return null;
+  var dropPct = (leanPrev - leanLast) / leanPrev * 100;
+  if (dropPct < 1.5) return null;
+  var verdicts = { up:0, down:0, plateau:0 };
+  try {
+    var ids = {};
+    getStrengthLog().forEach(function(e){ ids[e.exerciseId] = true; });
+    Object.keys(ids).forEach(function(id){ var v = getProgressionVerdict(id); if (v) verdicts[v]++; });
+  } catch(e) {}
+  var checked = verdicts.up + verdicts.down + verdicts.plateau;
+  var strengthConfirms = checked >= 3 && verdicts.down > verdicts.up;
+  return {
+    dropPct:+dropPct.toFixed(1), leanPrev:+leanPrev.toFixed(1), leanLast:+leanLast.toFixed(1),
+    prevDate:prev.date, lastDate:last.date, strengthConfirms:strengthConfirms,
+    msg:'💪 Lean Mass ลด '+dropPct.toFixed(1)+'% ('+leanPrev.toFixed(1)+' → '+leanLast.toFixed(1)+' กก. จาก InBody '+prev.date+' → '+last.date+')'+
+      (strengthConfirms ? ' และ e1RM ส่วนใหญ่ถดถอยพร้อมกัน — มีแนวโน้มเสียกล้ามจริง' : ' — อาจเป็น noise ของเครื่องวัด แต่ควรจับตา')+
+      ' → เพิ่มโปรตีนให้ถึงเป้า / ลด deficit ~150-200 kcal / คง volume ท่า compound หลัก'
+  };
+}
+
 function detectAnomalies() {
   var card = document.getElementById('anomaly-banner-card');
   var body = document.getElementById('anomaly-banner-body');
@@ -3383,6 +3423,10 @@ function detectAnomalies() {
   });
   if (lowProDays.length >= 3) flags.push('🥩 โปรตีนต่ำกว่า 60% ของเป้า ' + lowProDays.length + ' วันติดกัน — ' + Math.round(goalPro*0.6) + 'g+ ต่อวันสำคัญต่อการรักษากล้ามเนื้อ');
 
+  // Flag 5: lean mass dropping during a cut (InBody + strength-log cross-check)
+  var lmGuard = (typeof checkLeanMassGuard === 'function') ? checkLeanMassGuard() : null;
+  if (lmGuard) flags.push(lmGuard.msg);
+
   if (!flags.length) { card.style.display = 'none'; return; }
   card.style.display = 'block';
   body.innerHTML = flags.map(function(f){ return '<div style="margin-bottom:4px;">'+f+'</div>'; }).join('');
@@ -3444,11 +3488,23 @@ function renderWeeklyReview() {
     wTrend=absW<0.1?'Plateau (~'+absW+' kg/wk)':(weightSlope<0?'↓ ':'↑ ')+absW+' kg/สัปดาห์';
   }
   var onTrackMsg='';
-  if(target&&target.weight&&weightSlope!==null){
+  if(target&&weightSlope!==null){
     var currW=weekWeights.length?weekWeights[weekWeights.length-1].weight:null;
-    if(currW&&target.weight<currW&&target.duration){
-      var needed=(currW-target.weight)/target.duration*-1;
-      onTrackMsg=weightSlope<=needed?'<span style="color:var(--green)">✅ On track</span> ต่อ Fitness Target':'<span style="color:var(--yellow)">⚠️ ช้ากว่าแผน</span> ต่อ Fitness Target';
+    // Required rate: prefer the feasibility engine's fat-loss rate (from the real
+    // %BF gap), fall back to the old weight-gap ÷ duration estimate.
+    var reqRate=null;
+    if(target.feasibility&&target.feasibility.direction==='loss'&&target.feasibility.weeklyFatLoss){
+      reqRate=-target.feasibility.weeklyFatLoss;
+    } else if(currW&&target.weight&&target.weight<currW&&target.duration){
+      reqRate=(currW-target.weight)/target.duration*-1;
+    }
+    var bfTrajWR=(typeof getBFTrajectory==='function')?getBFTrajectory(target):null;
+    var recompWR=Math.abs(weightSlope)<0.1&&bfTrajWR&&bfTrajWR.bfPerWeek!==null&&bfTrajWR.bfPerWeek<=-0.05;
+    if(recompWR){
+      onTrackMsg='<span style="color:var(--green)">✅ Recomp on track</span> — %BF ลด '+Math.abs(bfTrajWR.bfPerWeek).toFixed(2)+' จุด/สัปดาห์ แม้น้ำหนักนิ่ง';
+    } else if(reqRate!==null){
+      // On track when hitting ≥60% of the required rate (same tolerance as the analyzer)
+      onTrackMsg=weightSlope<=reqRate*0.6?'<span style="color:var(--green)">✅ On track</span> ต่อ Fitness Target (ต้องการ '+reqRate.toFixed(2)+' กก./wk)':'<span style="color:var(--yellow)">⚠️ ช้ากว่าแผน</span> — ต้องการ '+reqRate.toFixed(2)+' กก./wk (ตอนนี้ '+(weightSlope>=0?'+':'')+weightSlope+')';
     }
   }
   // Water retention note: weight rising but net cal is in deficit
@@ -3463,11 +3519,19 @@ function renderWeeklyReview() {
   else{var sdx=S.sleepData;if(sdx&&sdx.hrv&&days.indexOf(sdx.date)>=0)avgHRV=sdx.hrv+' ms';}
   function pill(label,val,col){return '<div style="background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:10px 12px;flex:1;min-width:0;"><div style="font-size:11px;color:var(--text3);font-weight:500;margin-bottom:4px;">'+label+'</div><div style="font-size:14px;font-weight:800;color:'+(col||'var(--text)')+';">'+val+'</div></div>';}
   if(!daysWithMeals){el.innerHTML='<div style="text-align:center;padding:18px 0;color:var(--text3);font-size:12px;">ยังไม่มีข้อมูลอาหาร 7 วันที่ผ่านมา</div>';return;}
+  // %BF pill — latest body comp vs target
+  var bcAllWR=(typeof getBodyCompLogs==='function')?getBodyCompLogs().filter(function(x){return x.bf!=null;}):[];
+  var latestBFWR=bcAllWR.length?parseFloat(bcAllWR[bcAllWR.length-1].bf):null;
+  var bfPillVal=latestBFWR!==null?(latestBFWR+'%'+(target&&target.bf?' → '+target.bf+'%':'')):'—';
+  var bfPillColor=latestBFWR!==null&&target&&target.bf?(latestBFWR<=parseFloat(target.bf)?'var(--green)':'var(--text)'):'var(--text)';
   var html='<div style="display:flex;gap:8px;margin-bottom:8px;">'+pill('แคล/วัน เฉลี่ย',avgCal+' kcal')+pill('Intake vs Goal',netLabel,netColor)+'</div>'+
     '<div style="display:flex;gap:8px;margin-bottom:8px;">'+pill('โปรตีน/วัน',avgPro+' g')+pill('น้ำหนัก trend',weightSlope!==null?wTrend:'—',wColor)+'</div>'+
-    '<div style="display:flex;gap:8px;margin-bottom:'+(onTrackMsg?'10':'0')+'px;">'+pill('Training Load',trainLabel)+pill('HRV เฉลี่ย',avgHRV||'—')+'</div>';
+    '<div style="display:flex;gap:8px;margin-bottom:8px;">'+pill('%BF vs เป้า',bfPillVal,bfPillColor)+pill('Training Load',trainLabel)+'</div>'+
+    '<div style="display:flex;gap:8px;margin-bottom:'+(onTrackMsg?'10':'0')+'px;">'+pill('HRV เฉลี่ย',avgHRV||'—')+pill('บันทึกอาหาร',daysWithMeals+'/7 วัน')+'</div>';
   if(onTrackMsg)html+='<div style="padding:7px 12px;background:var(--surface2);border-radius:10px;font-size:12px;font-weight:600;margin-bottom:8px;">'+onTrackMsg+'</div>';
-  if(retentionNote)html+='<div style="padding:8px 12px;background:rgba(59,130,246,0.08);border:1px solid rgba(59,130,246,0.2);border-radius:10px;font-size:11px;color:var(--text2);line-height:1.5;">'+retentionNote+'</div>';
+  if(retentionNote)html+='<div style="padding:8px 12px;background:rgba(59,130,246,0.08);border:1px solid rgba(59,130,246,0.2);border-radius:10px;font-size:11px;color:var(--text2);line-height:1.5;margin-bottom:8px;">'+retentionNote+'</div>';
+  var lmgWR=(typeof checkLeanMassGuard==='function')?checkLeanMassGuard():null;
+  if(lmgWR)html+='<div style="padding:8px 12px;background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.25);border-radius:10px;font-size:11px;color:var(--text2);line-height:1.5;">'+lmgWR.msg+'</div>';
   el.innerHTML=html;
 }
 
@@ -3869,15 +3933,42 @@ function buildGoalFromMode(mode, profile, tdee) {
   var gender = profile.gender || 'male';
   var baseTDEE = Math.round(tdee || calcFormulaTDEE(profile) || (S.goals && S.goals.cal) || 2000);
   var floor = gender === 'female' ? 1200 : 1500;
-  var cal = Math.max(Math.round(baseTDEE - cfg.deficit), floor);
+  // Deficit: derive from the Fitness Target's actual fat-mass gap ÷ duration when
+  // available (clamped to a safe 200–600 band), otherwise fall back to the mode preset.
+  var deficit = cfg.deficit, deficitSource = 'mode';
+  var ftForGoal = safeJSON('gd_ft_target', null);
+  if ((mode === 'fat_loss' || mode === 'recomp') && ftForGoal && typeof calcTargetFeasibility === 'function') {
+    var feasG = calcTargetFeasibility(ftForGoal, profile);
+    if (feasG && feasG.direction === 'loss' && feasG.requiredDeficit > 0) {
+      deficit = Math.max(200, Math.min(600, feasG.requiredDeficit));
+      deficitSource = 'target';
+    }
+  }
+  var cal = Math.max(Math.round(baseTDEE - deficit), floor);
+  // Protein: base on Lean Body Mass when %BF is known — at high %BF a per-kg-BW
+  // target overshoots what lean tissue needs; at normal %BF keep the higher of the two.
   var pro = Math.round(weight * cfg.proteinPerKg);
+  var proteinBasis = 'bw';
+  var bfForPro = (ftForGoal && ftForGoal.currBF) ? parseFloat(ftForGoal.currBF) : null;
+  if (!bfForPro && typeof getLatestBodyCompBySource === 'function') {
+    var ibPro = getLatestBodyCompBySource('inbody');
+    if (ibPro && ibPro.bf) bfForPro = parseFloat(ibPro.bf);
+  }
+  if (bfForPro && bfForPro > 3 && bfForPro < 60) {
+    var lbm = weight * (1 - bfForPro/100);
+    var proLBM = Math.round(lbm * (cfg.proteinPerKg + 0.4));
+    var highBF = gender === 'female' ? bfForPro >= 32 : bfForPro >= 25;
+    pro = highBF ? proLBM : Math.max(pro, proLBM);
+    proteinBasis = 'lbm';
+  }
   var fat = Math.max(Math.round(weight * cfg.fatPerKg), Math.round(weight * 0.7));
   var crb = Math.round((cal - (pro*4) - (fat*9)) / 4);
   if (crb < 80) {
     crb = 80;
     fat = Math.max(Math.round(weight*0.7), Math.round((cal - (pro*4) - (crb*4)) / 9));
   }
-  return { cal:Math.round(cal), pro:Math.round(pro), crb:Math.round(crb), fat:Math.round(fat), mode:mode, modeLabel:cfg.label, tdee:baseTDEE };
+  return { cal:Math.round(cal), pro:Math.round(pro), crb:Math.round(crb), fat:Math.round(fat), mode:mode, modeLabel:cfg.label, tdee:baseTDEE,
+           deficit:deficit, deficitSource:deficitSource, proteinBasis:proteinBasis, bfUsed:bfForPro||null };
 }
 function getOfficialCalorieContext() {
   var profile = S.profile || safeJSON('gd_profile', {}) || {};
@@ -3897,7 +3988,7 @@ function getOfficialCalorieContext() {
     modeGoal: modeGoal,
     officialGoal: modeGoal.cal,
     recommendedIntake: modeGoal.cal,
-    expectedWeeklyChange: analyzer && analyzer.expectedWeeklyChange !== undefined && analyzer.expectedWeeklyChange !== null ? analyzer.expectedWeeklyChange : (-(modeCfg.deficit * 7 / 7700)),
+    expectedWeeklyChange: analyzer && analyzer.expectedWeeklyChange !== undefined && analyzer.expectedWeeklyChange !== null ? analyzer.expectedWeeklyChange : (-((modeGoal.deficit != null ? modeGoal.deficit : modeCfg.deficit) * 7 / 7700)),
     confidencePct: analyzer && analyzer.confidencePct,
     statusLabel: analyzer && analyzer.statusLabel,
     goalMode: mode,
@@ -3992,9 +4083,13 @@ function updateGoalModeHint(goal) {
   var recCfg = getRecoveryPriorityConfig(recEl ? recEl.value : p.recoveryPriority);
   var ctx = getOfficialCalorieContext();
   var tdee = goal && goal.tdee ? goal.tdee : ctx.officialTDEE;
+  var hintDeficit = (goal && goal.deficit != null) ? goal.deficit : (ctx.modeGoal && ctx.modeGoal.deficit != null ? ctx.modeGoal.deficit : cfg.deficit);
+  var deficitFromTarget = (goal && goal.deficitSource === 'target') || (!goal && ctx.modeGoal && ctx.modeGoal.deficitSource === 'target');
+  var proFromLBM = (goal && goal.proteinBasis === 'lbm') || (!goal && ctx.modeGoal && ctx.modeGoal.proteinBasis === 'lbm');
   el.innerHTML = '<b style="color:var(--accent)">' + cfg.label + '</b> — ' + cfg.desc +
-    '<br>Nutrition: TDEE ' + (tdee || '—') + ' ' + (cfg.deficit > 0 ? '- ' + cfg.deficit : cfg.deficit < 0 ? '+ ' + Math.abs(cfg.deficit) : '± 0') +
-    ' kcal | Protein ' + cfg.proteinPerKg + 'g/kg | Fat ' + cfg.fatPerKg + 'g/kg | Carb = calories ที่เหลือ' +
+    '<br>Nutrition: TDEE ' + (tdee || '—') + ' ' + (hintDeficit > 0 ? '- ' + hintDeficit : hintDeficit < 0 ? '+ ' + Math.abs(hintDeficit) : '± 0') +
+    ' kcal' + (deficitFromTarget ? ' <b style="color:var(--green)">(คำนวณจาก Fitness Target)</b>' : '') +
+    ' | Protein ' + (proFromLBM ? (cfg.proteinPerKg + 0.4) + 'g/kg Lean Mass' : cfg.proteinPerKg + 'g/kg') + ' | Fat ' + cfg.fatPerKg + 'g/kg | Carb = calories ที่เหลือ' +
     '<br>Workout: <b style="color:var(--blue)">' + trainCfg.label + '</b> | ' + (freqEl ? freqEl.value : (p.weeklyFrequency||4)) + ' วัน/สัปดาห์ | Recovery: ' + recCfg.label;
 }
 function mealsForDate(date) { return (S.meals || []).filter(function(m){ return m.date === date; }); }
@@ -5791,6 +5886,7 @@ function updateLeanMassPreview() {
       (leanDiff !== null ? '  <span style="color:var(--text3)">Δ ไขมัน ' + (fatDiff > 0 ? '+' : '') + fatDiff + ' กก.</span>' : '');
     tpEl.style.display = 'block';
   } else { tpEl.style.display = 'none'; }
+  if (typeof updateFeasibilityPreview === 'function') updateFeasibilityPreview();
 }
 
 function updateMusclePreview() {
@@ -5809,6 +5905,97 @@ function updateMusclePreview() {
   if (tgtM)  parts.push('เป้าหมาย: <b style="color:var(--accent)">' + tgtM + '%</b> (' + muscleCat(tgtM,g) + ')');
   el.innerHTML = '💪 Skeletal Muscle — ' + parts.join('  →  ');
   el.style.display = 'block';
+}
+
+// ── Target Feasibility Engine ────────────────────────────────────
+// Professional-trainer guardrails: derives the fat-mass gap from current/target
+// %BF, converts it to a required weekly fat-loss rate and daily deficit, and
+// grades the target realistic / aggressive / unrealistic against safe limits
+// (≤0.7% BW/wk realistic, ≤1.0% aggressive, intake never below the gender floor).
+// NOTE: must not call getOfficialCalorieContext() — buildGoalFromMode() calls
+// this function, so TDEE is resolved inline to avoid recursion.
+function calcTargetFeasibility(target, profile) {
+  if (!target) return { status:'insufficient' };
+  profile = profile || profileSafe();
+  var currW  = parseFloat(getLatestCheckinWeight() || profile.weight) || null;
+  var currBF = target.currBF != null ? parseFloat(target.currBF) : null;
+  var tgtBF  = target.bf     != null ? parseFloat(target.bf)     : null;
+  var duration = parseInt(target.duration) || 8;
+  var gender = profile.gender || 'male';
+  var essential = gender === 'female' ? 13 : 5;
+  if (!currW || !currBF || !tgtBF || !duration) return { status:'insufficient' };
+
+  var analyzer = (typeof readAnalyzerContext === 'function') ? readAnalyzerContext() : null;
+  var tdee = (analyzer && analyzer.adaptiveTDEE) || calcFormulaTDEE(profile) || (S.goals && S.goals.cal) || 2000;
+  var floor = gender === 'female' ? 1200 : 1500;
+
+  var leanCurr = currW * (1 - currBF/100);
+  var tgtW = target.weight ? parseFloat(target.weight) : (leanCurr / (1 - tgtBF/100));
+  var fatToLose = (currW * currBF/100) - (tgtW * tgtBF/100);
+
+  var res = {
+    status:'ok', currW:currW, currBF:currBF, tgtBF:tgtBF, tgtW:+tgtW.toFixed(1),
+    fatToLose:+fatToLose.toFixed(1), duration:duration, tdee:Math.round(tdee), floor:floor,
+    belowEssential: tgtBF < essential, essential:essential,
+    weeklyFatLoss:0, requiredDeficit:0, pctBWPerWeek:0, intakeAtDeficit:Math.round(tdee), recommendedWeeks:null
+  };
+  if (fatToLose <= 0.2) { res.direction = fatToLose < -0.2 ? 'gain' : 'flat'; return res; }
+
+  res.direction = 'loss';
+  var weeklyFatLoss = fatToLose / duration;
+  var requiredDeficit = Math.round(weeklyFatLoss * 7700 / 7);
+  var pctBW = weeklyFatLoss / currW * 100;
+  res.weeklyFatLoss = +weeklyFatLoss.toFixed(2);
+  res.requiredDeficit = requiredDeficit;
+  res.pctBWPerWeek = +pctBW.toFixed(2);
+  res.intakeAtDeficit = Math.round(tdee - requiredDeficit);
+  // Duration this fat gap would need at a sustainable ~0.6% BW/week
+  res.recommendedWeeks = Math.ceil(fatToLose / Math.max(0.2, currW * 0.006));
+
+  if (pctBW > 1.0 || res.intakeAtDeficit < floor) res.status = 'unrealistic';
+  else if (pctBW > 0.7 || requiredDeficit > tdee * 0.25) res.status = 'aggressive';
+  return res;
+}
+
+function feasibilityBannerHTML(f) {
+  if (!f || f.status === 'insufficient') {
+    return { bg:'var(--surface2)', border:'var(--border)', html:'📐 กรอก %BF ปัจจุบัน + %BF เป้าหมาย เพื่อประเมินความเป็นไปได้ของแผน' };
+  }
+  var lines = [];
+  if (f.direction === 'gain' || f.direction === 'flat') {
+    lines.push('🎯 เป้านี้ไม่ใช่การลดไขมันสุทธิ (' + (f.direction === 'gain' ? 'เน้นเพิ่ม lean mass' : 'รักษาสภาพ') + ') — โฟกัส progressive overload + โปรตีนให้ถึงเป้า');
+    if (f.belowEssential) lines.push('🚨 %BF เป้าหมาย ' + f.tgtBF + '% ต่ำกว่า essential fat (' + f.essential + '%) — อันตรายต่อสุขภาพ ควรตั้งใหม่');
+    return { bg:'rgba(59,130,246,0.08)', border:'rgba(59,130,246,0.25)', html:lines.join('<br>') };
+  }
+  lines.push('📐 ต้องลดไขมัน <b>' + f.fatToLose + ' กก.</b> ใน ' + f.duration + ' สัปดาห์ = <b>' + f.weeklyFatLoss + ' กก./สัปดาห์</b> (' + f.pctBWPerWeek + '% BW/wk)');
+  lines.push('🔥 ต้องการ deficit ~<b>' + f.requiredDeficit + ' kcal/วัน</b> → กินประมาณ ' + f.intakeAtDeficit + ' kcal/วัน (TDEE ' + f.tdee + ')');
+  if (f.status === 'unrealistic') {
+    lines.push('❌ <b>เป้านี้เร็ว/หนักเกินไป</b> — ' + (f.intakeAtDeficit < f.floor ? 'intake จะต่ำกว่า floor ' + f.floor + ' kcal เสี่ยงเสียกล้าม/ฮอร์โมน' : 'เกิน 1% BW/สัปดาห์ เสี่ยงเสียกล้ามสูง') + '<br>💡 แนะนำใช้เวลา <b>' + f.recommendedWeeks + ' สัปดาห์ขึ้นไป</b> หรือขยับ %BF เป้าหมายให้ใกล้ขึ้น');
+  } else if (f.status === 'aggressive') {
+    lines.push('⚠️ <b>ทำได้แต่ตึง</b> — อัตรานี้ต้องเป๊ะทั้งอาหาร/เวท/การนอน ถ้าอยากสบายขึ้นใช้ ' + f.recommendedWeeks + ' สัปดาห์');
+  } else {
+    lines.push('✅ <b>เป้าสมเหตุสมผล</b> — อัตรานี้รักษากล้ามได้ดีถ้าโปรตีนถึงเป้าและเวทต่อเนื่อง');
+  }
+  if (f.belowEssential) lines.push('🚨 %BF เป้าหมาย ' + f.tgtBF + '% ต่ำกว่า essential fat (' + f.essential + '%) — อันตรายต่อสุขภาพ ควรตั้งใหม่');
+  var theme = f.status === 'unrealistic' || f.belowEssential ? { bg:'rgba(239,68,68,0.08)', border:'rgba(239,68,68,0.3)' }
+            : f.status === 'aggressive' ? { bg:'rgba(245,158,11,0.08)', border:'rgba(245,158,11,0.3)' }
+            : { bg:'rgba(34,197,94,0.08)', border:'rgba(34,197,94,0.3)' };
+  return { bg:theme.bg, border:theme.border, html:lines.join('<br>') };
+}
+
+function updateFeasibilityPreview() {
+  var el = document.getElementById('ft-feasibility-banner');
+  if (!el) return;
+  var draft = {
+    currBF:  parseFloat(document.getElementById('ft-curr-bf').value) || null,
+    bf:      parseFloat(document.getElementById('ft-target-bf').value) || null,
+    weight:  parseFloat(document.getElementById('ft-target-weight').value) || null,
+    duration:parseInt(document.getElementById('ft-target-duration').value) || 8
+  };
+  if (!draft.currBF && !draft.bf) { el.style.display = 'none'; return; }
+  var b = feasibilityBannerHTML(calcTargetFeasibility(draft, profileSafe()));
+  el.style.background = b.bg; el.style.border = '1px solid ' + b.border;
+  el.innerHTML = b.html; el.style.display = 'block';
 }
 
 function saveFitnessTarget() {
@@ -5832,11 +6019,32 @@ function saveFitnessTarget() {
   target.startDate = (existing && existing.startDate) ? existing.startDate : localDateStr();
   // Save current weight from weight log for later tracking reference
   target.currWeight = (WT && WT.log && WT.log.length) ? WT.log[WT.log.length-1].weight : null;
+  // Program-start snapshot: currBF/currWeight get overwritten by every new InBody
+  // sync, so without this snapshot the "progress since start" baseline is lost.
+  // Preserved across re-saves like startDate; only resetTargetStartDate() renews it.
+  if (existing && existing.startDate) {
+    target.startWeight   = existing.startWeight   != null ? existing.startWeight   : (existing.currWeight != null ? existing.currWeight : target.currWeight);
+    target.startBF       = existing.startBF       != null ? existing.startBF       : (existing.currBF       != null ? existing.currBF       : currBF);
+    target.startMuscle   = existing.startMuscle   != null ? existing.startMuscle   : (existing.currMuscle   != null ? existing.currMuscle   : currMuscle);
+    target.startVisceral = existing.startVisceral != null ? existing.startVisceral : (existing.currVisceral != null ? existing.currVisceral : currVisceral);
+  } else {
+    target.startWeight = target.currWeight;
+    target.startBF = currBF; target.startMuscle = currMuscle; target.startVisceral = currVisceral;
+  }
+  // Feasibility snapshot — feeds Goal Engine deficit + dashboards
+  var feas = calcTargetFeasibility(target, profileSafe());
+  target.feasibility = (feas && feas.status !== 'insufficient')
+    ? { status:feas.status, direction:feas.direction, requiredDeficit:feas.requiredDeficit, weeklyFatLoss:feas.weeklyFatLoss,
+        pctBWPerWeek:feas.pctBWPerWeek, recommendedWeeks:feas.recommendedWeeks, belowEssential:feas.belowEssential, computedAt:localDateStr() }
+    : null;
   localStorage.setItem('gd_ft_target', JSON.stringify(target));
   window._fitnessTarget = target; // expose for weight log module
   if (window.FB_OK) window.FB.saveSetting('fitnessTarget', target);
   if (S.webhook) { fetch('https://kindee.ojo0308.workers.dev/',{method:'POST',headers:{'Content-Type':'application/json','x-target-url':S.webhook},body:JSON.stringify({action:'saveFitnessTarget',data:target})}).catch(function(){}); }
-  showToast('บันทึก Fitness Target แล้ว ✅','success');
+  updateFeasibilityPreview();
+  if (feas && feas.status === 'unrealistic') showToast('บันทึกแล้ว แต่เป้านี้เร็วเกินไป — ดูคำแนะนำใต้ฟอร์ม ⚠️','error');
+  else if (feas && (feas.status === 'aggressive' || feas.belowEssential)) showToast('บันทึกแล้ว — เป้าค่อนข้างตึง ดูหมายเหตุใต้ฟอร์ม ⚠️','info');
+  else showToast('บันทึก Fitness Target แล้ว ✅','success');
 }
 
 function resetTargetStartDate() {
@@ -5844,6 +6052,16 @@ function resetTargetStartDate() {
   if (!t) return;
   t.startDate = localDateStr();
   t.currWeight = (WT && WT.log && WT.log.length) ? WT.log[WT.log.length-1].weight : null;
+  // New program round → re-snapshot the start baseline from current values
+  t.startWeight = t.currWeight;
+  t.startBF = t.currBF != null ? t.currBF : null;
+  t.startMuscle = t.currMuscle != null ? t.currMuscle : null;
+  t.startVisceral = t.currVisceral != null ? t.currVisceral : null;
+  var feasR = calcTargetFeasibility(t, profileSafe());
+  t.feasibility = (feasR && feasR.status !== 'insufficient')
+    ? { status:feasR.status, direction:feasR.direction, requiredDeficit:feasR.requiredDeficit, weeklyFatLoss:feasR.weeklyFatLoss,
+        pctBWPerWeek:feasR.pctBWPerWeek, recommendedWeeks:feasR.recommendedWeeks, belowEssential:feasR.belowEssential, computedAt:localDateStr() }
+    : null;
   localStorage.setItem('gd_ft_target', JSON.stringify(t));
   window._fitnessTarget = t;
   if (window.FB_OK) window.FB.saveSetting('fitnessTarget', t);
@@ -5869,6 +6087,16 @@ function loadFitnessTarget() {
         if (window.FB_OK) window.FB.saveSetting('fitnessTarget', t);
       }
     }
+    // Legacy targets predate the program-start snapshot: freeze today's values as
+    // the baseline once, so "%BF progress since start" stops drifting with each sync.
+    if (t.startDate && t.startBF == null && t.currBF != null) {
+      t.startBF = t.currBF;
+      if (t.startWeight == null && t.currWeight != null) t.startWeight = t.currWeight;
+      if (t.startMuscle == null && t.currMuscle != null) t.startMuscle = t.currMuscle;
+      if (t.startVisceral == null && t.currVisceral != null) t.startVisceral = t.currVisceral;
+      localStorage.setItem('gd_ft_target', JSON.stringify(t));
+      if (window.FB_OK) window.FB.saveSetting('fitnessTarget', t);
+    }
   } catch(e){}
   if (t.currBF)    { document.getElementById('ft-curr-bf').value = t.currBF; }
   if (t.currMuscle)   { document.getElementById('ft-curr-muscle').value = t.currMuscle; }
@@ -5884,6 +6112,42 @@ function loadFitnessTarget() {
   updateMusclePreview();
   window._fitnessTarget = t; // expose for weight log module
   return t;
+}
+
+// ── %BF trajectory: start → now → target + projection ───────────
+// Rate source priority: (1) regression over body-comp %BF logs since startDate
+// (needs ≥2 points spanning ≥7 days), (2) fallback lean-constant model on the
+// 21-day weight EMA trend (assumes weight change ≈ fat change).
+function getBFTrajectory(target) {
+  if (!target) return null;
+  var tgtBF   = target.bf ? parseFloat(target.bf) : null;
+  var startBF = target.startBF != null ? parseFloat(target.startBF) : (target.currBF ? parseFloat(target.currBF) : null);
+  var currBF  = target.currBF ? parseFloat(target.currBF) : startBF;
+  if (currBF == null && startBF == null) return null;
+  var res = { startBF:startBF, currBF:currBF, tgtBF:tgtBF, bfPerWeek:null, method:null, projWeeks:null };
+  var logs = getBodyCompLogs().filter(function(x){ return x.bf != null && (!target.startDate || x.date >= target.startDate); });
+  if (logs.length >= 2) {
+    var spanD = (new Date(logs[logs.length-1].date) - new Date(logs[0].date)) / 86400000;
+    if (spanD >= 7) {
+      res.bfPerWeek = _linReg(logs.map(function(x){ return { date:x.date, weight:parseFloat(x.bf) }; }));
+      res.method = 'bf-log';
+    }
+  }
+  if (res.bfPerWeek === null && currBF != null) {
+    var wlog = ((typeof WT !== 'undefined' && WT.log) ? WT.log : safeJSON('gd_weight', [])).slice().sort(function(a,b){ return a.date.localeCompare(b.date); });
+    var wkRate = estimateEMATrend(wlog.slice(-21), 21);
+    var latestW = wlog.length ? parseFloat(wlog[wlog.length-1].weight) : null;
+    if (wkRate !== null && latestW) {
+      var w2 = latestW + wkRate, fat2 = latestW * currBF/100 + wkRate;
+      if (w2 > 0 && fat2 >= 0) { res.bfPerWeek = +((fat2 / w2 * 100) - currBF).toFixed(3); res.method = 'weight-trend'; }
+    }
+  }
+  if (res.bfPerWeek !== null && tgtBF != null && currBF != null) {
+    var gap = currBF - tgtBF;
+    if (gap <= 0.2) res.projWeeks = 0;
+    else if (res.bfPerWeek < -0.02) res.projWeeks = Math.ceil(gap / (-res.bfPerWeek));
+  }
+  return res;
 }
 
 function renderTargetDashboard() {
@@ -6049,7 +6313,7 @@ function renderTargetDashboard() {
       .sort(function(a,b){ return a.date > b.date ? 1 : -1; });
     var wtAll   = (WT && WT.log ? WT.log : []).sort(function(a,b){ return a.date > b.date ? 1 : -1; });
 
-    var startW   = target.currWeight || (wtAll.length ? wtAll[0].weight : null);
+    var startW   = target.startWeight || target.currWeight || (wtAll.length ? wtAll[0].weight : null);
     var latestW  = wtAll.length ? wtAll[wtAll.length-1].weight : null;
     var totalChange = (startW && latestW) ? parseFloat((latestW - startW).toFixed(1)) : null;
     var changeInPeriod = (wtSince.length >= 1 && startW) ? parseFloat((wtSince[wtSince.length-1].weight - startW).toFixed(1)) : null;
@@ -6131,6 +6395,11 @@ function renderTargetDashboard() {
     }
 
     // ── C: Trend analysis ──
+    // Recomp blind spot: a flat scale is a WIN when %BF or waist is dropping —
+    // don't tell a recomp'ing user to cut calories.
+    var bfTrajTL = getBFTrajectory(target);
+    var waistTL = getWaistTrend(wtSince);
+    var recompWorking = (bfTrajTL && bfTrajTL.bfPerWeek !== null && bfTrajTL.bfPerWeek <= -0.05) || (waistTL !== null && waistTL <= -0.1);
     if (wtSince.length >= 2 && weeklyRate !== null) {
       var trendDir  = weeklyRate < 0 ? 'ลด' : weeklyRate > 0 ? 'เพิ่ม' : 'คงที่';
       var trendColor= weeklyRate < 0 ? 'var(--green)' : weeklyRate > 0 ? 'var(--accent)' : 'var(--text3)';
@@ -6150,7 +6419,8 @@ function renderTargetDashboard() {
         var stagnant = Math.abs(weeklyRate) < 0.1;
         html += '<div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px;">';
         html += '<span style="color:var(--text3);">On-track?</span>';
-        if (stagnant)  html += '<span style="font-weight:700;color:#eab308;">⚠️ น้ำหนักไม่เปลี่ยน</span>';
+        if (stagnant && recompWorking) html += '<span style="font-weight:700;color:var(--green);">✅ Recomp กำลังทำงาน</span>';
+        else if (stagnant)  html += '<span style="font-weight:700;color:#eab308;">⚠️ น้ำหนักไม่เปลี่ยน</span>';
         else if (onTrack) html += '<span style="font-weight:700;color:var(--green);">✅ ไปในทิศทางที่ถูก</span>';
         else           html += '<span style="font-weight:700;color:var(--accent);">❌ ทิศทางผิด — ต้อง'+needDir+'</span>';
         html += '</div>';
@@ -6166,7 +6436,11 @@ function renderTargetDashboard() {
           html += '<div style="font-size:11px;color:var(--accent);margin-top:4px;">⚠️ trend ปัจจุบันอาจไม่ทันครบ '+target.duration+' สัปดาห์</div>';
         }
       } else if (weeklyRate !== null && Math.abs(weeklyRate) < 0.1 && tgtWeight && latestW && Math.abs(latestW - tgtWeight) > 0.5) {
-        html += '<div style="font-size:11px;color:#eab308;margin-top:4px;">⚠️ น้ำหนักนิ่ง — ลองปรับแคลอรี่หรือเพิ่ม workout</div>';
+        if (recompWorking) {
+          html += '<div style="font-size:11px;color:var(--green);margin-top:4px;">✅ น้ำหนักนิ่งแต่ %BF/รอบเอวกำลังลด — Recomp ทำงานอยู่ อย่าเพิ่งลดแคลอรี่</div>';
+        } else {
+          html += '<div style="font-size:11px;color:#eab308;margin-top:4px;">⚠️ น้ำหนักนิ่ง — ลองปรับแคลอรี่หรือเพิ่ม workout</div>';
+        }
       }
       html += '</div>';
     } else if (wtSince.length === 1) {
@@ -6197,6 +6471,56 @@ function renderTargetDashboard() {
     // Reset button
     html += '<button onclick="resetTargetStartDate()" style="width:100%;padding:6px;background:none;border:1px solid var(--border);border-radius:8px;color:var(--text3);font-family:inherit;font-size:11px;cursor:pointer;">🔄 รีเซ็ตวันเริ่มต้นใหม่</button>';
     html += '</div>';
+
+    // ── 1.6 %BF Trajectory: start → now → target ──
+    if (bfTrajTL && (bfTrajTL.currBF != null || bfTrajTL.startBF != null) && tgtBF) {
+      var bfStart = bfTrajTL.startBF != null ? bfTrajTL.startBF : bfTrajTL.currBF;
+      var bfNow   = bfTrajTL.currBF != null ? bfTrajTL.currBF : bfStart;
+      html += '<div class="target-metric-card" style="background:rgba(249,115,22,0.04);border-color:rgba(249,115,22,0.25);">';
+      html += '<div class="target-metric-header"><span class="target-metric-title">🔥 %BF Progress — เป้าหมายจริงของโปรแกรม</span>';
+      html += '<span class="target-metric-badge" style="background:rgba(249,115,22,0.12);color:var(--accent);">'+tgtBF+'%</span></div>';
+      // start → now → target row
+      html += '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:10px;">';
+      html += '<div style="text-align:center;padding:8px;background:var(--surface2);border-radius:10px;"><div style="font-size:11px;color:var(--text3);">🏁 ตอนเริ่ม</div><div style="font-size:18px;font-weight:700;">'+(bfStart!=null?bfStart+'%':'—')+'</div></div>';
+      html += '<div style="text-align:center;padding:8px;background:var(--surface2);border-radius:10px;"><div style="font-size:11px;color:var(--text3);">📍 ตอนนี้</div><div style="font-size:18px;font-weight:700;color:var(--blue);">'+(bfNow!=null?bfNow+'%':'—')+'</div></div>';
+      html += '<div style="text-align:center;padding:8px;background:var(--surface2);border-radius:10px;"><div style="font-size:11px;color:var(--text3);">🎯 เป้าหมาย</div><div style="font-size:18px;font-weight:700;color:var(--green);">'+tgtBF+'%</div></div>';
+      html += '</div>';
+      // progress within the BF journey
+      if (bfStart != null && bfNow != null && bfStart > tgtBF) {
+        var bfTotalGap = bfStart - tgtBF;
+        var bfDone = Math.max(0, bfStart - bfNow);
+        var bfPct = Math.min(100, Math.round(bfDone / bfTotalGap * 100));
+        html += '<div style="height:10px;background:var(--surface2);border-radius:5px;overflow:hidden;margin-bottom:6px;"><div style="height:100%;width:'+bfPct+'%;background:var(--accent);border-radius:5px;"></div></div>';
+        html += '<div style="font-size:12px;color:var(--text2);margin-bottom:8px;">ลดมาแล้ว <b style="color:var(--accent);">'+bfDone.toFixed(1)+'</b> จาก '+bfTotalGap.toFixed(1)+' จุด ('+bfPct+'%) — เหลืออีก '+Math.max(0,(bfNow-tgtBF)).toFixed(1)+' จุด</div>';
+      }
+      // projection
+      if (bfTrajTL.bfPerWeek !== null) {
+        var srcLabel = bfTrajTL.method === 'bf-log' ? 'จาก %BF logs จริง' : 'ประมาณจาก weight trend (ยังไม่มี %BF log พอ)';
+        html += '<div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px;"><span style="color:var(--text3);">อัตรา %BF ('+srcLabel+')</span><span style="font-weight:700;color:'+(bfTrajTL.bfPerWeek<0?'var(--green)':'var(--accent)')+';">'+(bfTrajTL.bfPerWeek>=0?'+':'')+bfTrajTL.bfPerWeek.toFixed(2)+' จุด/สัปดาห์</span></div>';
+        if (bfTrajTL.projWeeks !== null) {
+          if (bfTrajTL.projWeeks === 0) {
+            html += '<div style="font-size:12px;font-weight:700;color:var(--green);">🎯 ถึง %BF เป้าหมายแล้ว!</div>';
+          } else {
+            var bfEtaColor = bfTrajTL.projWeeks <= weeksRem ? 'var(--green)' : '#eab308';
+            var bfEtaDate = new Date(Date.now() + bfTrajTL.projWeeks*7*86400000).toLocaleDateString('th-TH',{day:'numeric',month:'short',year:'numeric'});
+            html += '<div style="display:flex;justify-content:space-between;font-size:12px;"><span style="color:var(--text3);">คาดถึง '+tgtBF+'% ใน</span><span style="font-weight:700;color:'+bfEtaColor+';">'+bfTrajTL.projWeeks+' สัปดาห์ ('+bfEtaDate+')</span></div>';
+            if (bfTrajTL.projWeeks > weeksRem && !isOver) html += '<div style="font-size:11px;color:#eab308;margin-top:4px;">⚠️ อัตราปัจจุบันจะเลย deadline '+(bfTrajTL.projWeeks-weeksRem)+' สัปดาห์ — เพิ่ม deficit เล็กน้อย / เพิ่ม NEAT หรือขยาย duration</div>';
+          }
+        } else if (bfNow != null && bfNow - tgtBF > 0.2) {
+          html += '<div style="font-size:11px;color:#eab308;margin-top:4px;">⚠️ %BF ยังไม่ลดตาม trend ปัจจุบัน — เช็ค deficit จริงในแท็บ ⚖️ วิเคราะห์</div>';
+        }
+      } else {
+        html += '<div style="font-size:11px;color:var(--text3);">📊 บันทึก Body Composition (InBody/Eufy) อย่างน้อย 2 ครั้ง ห่างกัน ≥1 สัปดาห์ เพื่อดู %BF trend จริง</div>';
+      }
+      // feasibility summary from save-time snapshot
+      if (target.feasibility && target.feasibility.direction === 'loss') {
+        var fz = target.feasibility;
+        var fzColor = fz.status==='unrealistic' ? 'var(--red)' : fz.status==='aggressive' ? '#eab308' : 'var(--green)';
+        var fzLabel = fz.status==='unrealistic' ? '❌ เร็วเกินไป' : fz.status==='aggressive' ? '⚠️ ตึง' : '✅ สมเหตุสมผล';
+        html += '<div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border);font-size:11px;color:var(--text3);">แผนต้องลดไขมัน '+fz.weeklyFatLoss+' กก./สัปดาห์ (deficit ~'+fz.requiredDeficit+' kcal/วัน) — <b style="color:'+fzColor+';">'+fzLabel+'</b>'+(fz.status!=='ok'&&fz.recommendedWeeks?' · แนะนำ '+fz.recommendedWeeks+' สัปดาห์':'')+'</div>';
+      }
+      html += '</div>';
+    }
   }
 
   // ── 2. BMI Bar ──
@@ -6391,6 +6715,25 @@ function generatePlan() {
     if (target.bmi)     targetStr += '\n- BMI เป้าหมาย: '+target.bmi;
     if (target.duration)targetStr += '\n- ระยะเวลา: '+target.duration+' สัปดาห์';
     if (target.level)   targetStr += '\n- ระดับ: '+(levelMap[target.level]||target.level);
+    if (target.feasibility && target.feasibility.direction === 'loss') {
+      targetStr += '\n- อัตราลดไขมันที่ต้องการ: '+target.feasibility.weeklyFatLoss+' กก./สัปดาห์ (deficit ~'+target.feasibility.requiredDeficit+' kcal/วัน, ประเมิน: '+target.feasibility.status+')';
+    }
+  }
+
+  // Periodization context: which week of the program are we in?
+  var progWeek = null, progTotal = null;
+  if (target && target.startDate && target.duration) {
+    progTotal = parseInt(target.duration);
+    var elapsedDays = Math.max(0, Math.floor((new Date() - new Date(target.startDate)) / 86400000));
+    progWeek = Math.min(progTotal, Math.floor(elapsedDays / 7) + 1);
+    targetStr += '\n- ตอนนี้อยู่สัปดาห์ที่ '+progWeek+' จาก '+progTotal+' ของโปรแกรม';
+  }
+  var isLongCut = (goalType === 'fat_loss' || goalType === 'recomp') && progWeek !== null && progWeek > 10;
+
+  // Lean-mass guard context — the plan must protect muscle if it's slipping
+  var lmGuardPlan = (typeof checkLeanMassGuard === 'function') ? checkLeanMassGuard() : null;
+  if (lmGuardPlan) {
+    targetStr += '\n- ⚠️ Lean Mass ลดลง '+lmGuardPlan.dropPct+'% จาก InBody ล่าสุด'+(lmGuardPlan.strengthConfirms?' และ e1RM ถดถอย (น่าจะเสียกล้ามจริง)':'')+' — แผนต้องคง volume ท่า compound หลัก และไม่เพิ่ม cardio จนกิน recovery';
   }
 
   var progressionSummary = buildProgressionSummaryForAI(15);
@@ -6435,7 +6778,13 @@ function generatePlan() {
     'ห้ามสลับออกโดยเด็ดขาด (แผนต้อง reuse ชื่อท่าเดิมเป๊ะเพื่อให้ log ต่อเนื่อง); ท่าที่ "นิ่ง/plateau →" ' +
     'ให้พิจารณาสลับเป็นท่าอื่นในกลุ่มกล้ามเนื้อ/อุปกรณ์ใกล้เคียง แล้วใส่เหตุผลสั้นๆ ใน field "note" ' +
     '(เช่น "นิ่ง 3 ครั้งติด ลองท่านี้กระตุ้นมุมใหม่"); ท่าที่ "ถดถอย ↓" ให้พิจารณาลด volume หรือสลับ พร้อมระบุเหตุผลใน "note"; ' +
-    'ท่าที่ไม่มีข้อมูล (ยังไม่เคย log) ไม่ต้องใส่ note\n' : '')
+    'ท่าที่ไม่มีข้อมูล (ยังไม่เคย log) ไม่ต้องใส่ note\n' : '') +
+    (progWeek !== null ?
+    '9. Periodization: ตอนนี้สัปดาห์ที่ '+progWeek+'/'+progTotal+' — จัดความหนักให้เหมาะกับตำแหน่งในโปรแกรม ' +
+    '(ช่วงแรกเน้น technique + volume ปานกลาง, ช่วงกลาง progressive overload เต็มที่, ช่วงท้ายคุมความล้าเพื่อเก็บผลลัพธ์) ' +
+    'และทุก 4-6 สัปดาห์ควรมี deload 1 สัปดาห์ (ลด volume ~40% คง intensity) — ถ้าสัปดาห์นี้เหมาะเป็น deload ให้จัดเป็น deload และบอกใน summary\n' : '') +
+    (isLongCut ?
+    '10. ผู้ใช้ cut ต่อเนื่องมาเกิน 10 สัปดาห์ — ให้แนะนำใน summary เรื่อง diet break/refeed ที่ maintenance 1-2 สัปดาห์ เพื่อฟื้นฮอร์โมนและ adherence\n' : '')
     ;
 
   geminiCall(key, {
@@ -7725,7 +8074,8 @@ function buildAnalysisHTML(recent) {
   var goalMode = normalizeGoalMode(profileForGoal.goalType);
   var goalCfg = getGoalModeConfig(goalMode);
   var centralGoalForAnalysis = buildGoalFromMode(goalMode, profileForGoal, trueTDEE || calcFormulaTDEE(profileForGoal) || (S.goals && S.goals.cal) || 2000);
-  var requiredDeficit = Math.round(goalCfg.deficit || 0); // positive=cut, 0=maintain, negative=lean gain
+  // Prefer the target-derived deficit from the goal object (falls back to the mode preset)
+  var requiredDeficit = Math.round((centralGoalForAnalysis && centralGoalForAnalysis.deficit != null ? centralGoalForAnalysis.deficit : goalCfg.deficit) || 0); // positive=cut, 0=maintain, negative=lean gain
   var requiredWeeklyLoss = -(requiredDeficit * 7 / 7700); // negative = loss, positive = gain
   var recommendedIntake = centralGoalForAnalysis ? Math.round(centralGoalForAnalysis.cal) : null;
   var targetW = (window._fitnessTarget && window._fitnessTarget.weight) ? parseFloat(window._fitnessTarget.weight) : null;
@@ -8095,6 +8445,7 @@ function runAIWeightDeepDive() {
   var profile=S.profile||{};
   var wtSummary=(d.recent||[]).map(function(e){return e.date+': '+e.weight+'kg';}).join('\n');
   var statusDesc=d.dataError?'Data Error':d.inconsistent?'Inconsistent Data':d.statusLabel||'Unknown';
+  var lmGuardAI=(typeof checkLeanMassGuard==='function')?checkLeanMassGuard():null;
 
   var prompt='You are a weight loss coach. Use ONLY the numbers below. Do NOT recalculate.\n\n'
     +'User: '+(profile.age||'?')+'y '+(profile.gender||'?')+' '+(profile.weight||'?')+'kg '+(profile.height||'?')+'cm\n'
@@ -8116,7 +8467,9 @@ function runAIWeightDeepDive() {
     +'- Waist trend: '+(d.waistPerWeek!==null&&d.waistPerWeek!==undefined?(d.waistPerWeek>=0?'+':'')+d.waistPerWeek.toFixed(2)+' cm/week':'N/A')+'\n'
     +'- EMA 21d trend: '+(d.ema21PerWeek!==null&&d.ema21PerWeek!==undefined?(d.ema21PerWeek>=0?'+':'')+d.ema21PerWeek.toFixed(2)+' kg/week':'N/A')+'\n'
     +'- Source calibration: '+(d.sourceCalibration||'N/A')+'\n'
-    +'- Visual signal: '+(d.visualSignal||'N/A')+'\n\n'
+    +'- Visual signal: '+(d.visualSignal||'N/A')+'\n'
+    +'- Target %BF: '+(ft.bf?ft.currBF+'% now → '+ft.bf+'% goal':'N/A')+(ft.feasibility&&ft.feasibility.direction==='loss'?' (required fat loss '+ft.feasibility.weeklyFatLoss+' kg/wk, feasibility: '+ft.feasibility.status+')':'')+'\n'
+    +'- Lean mass guard: '+(lmGuardAI?('WARNING — lean mass down '+lmGuardAI.dropPct+'% ('+lmGuardAI.leanPrev+'→'+lmGuardAI.leanLast+'kg)'+(lmGuardAI.strengthConfirms?' AND strength e1RM regressing — likely real muscle loss; advise protein/deficit/volume fix':' — possibly device noise')):'OK')+'\n\n'
     +'Weight data:\n'+wtSummary+'\n\n'
     +'IMPORTANT RULES:\n'
     +'1. Forecast ('+d.forecast7d+') = Goal Engine expectation from selected Goal Mode. Scale trend ('+( d.trendPerWeek!==undefined?(d.trendPerWeek>=0?'+':'')+d.trendPerWeek.toFixed(2):'' )+') = separate context, may differ due to water/glycogen.\n'
