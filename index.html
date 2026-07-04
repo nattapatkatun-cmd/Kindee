@@ -914,7 +914,7 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
         <div class="input-group" id="ft-avghr-wrap">
           <label class="input-label">❤️ Avg HR ระหว่าง session (ไม่บังคับ)</label>
           <input class="input-field" type="number" id="ft-avg-hr" placeholder="เช่น 145" min="40" max="220" oninput="onAvgHrInput()"/>
-          <div style="font-size:11px;color:var(--text3);margin-top:4px;" id="ft-hr-zone-info">กรอก avg HR เพื่อปรับ burn ตามความหนัก (±10%) + ช่วยให้ AI Coach แนะนำแม่นขึ้น</div>
+          <div style="font-size:11px;color:var(--text3);margin-top:4px;" id="ft-hr-zone-info">กรอก avg HR เพื่อบอกโซนความหนัก (context ให้ AI Coach เท่านั้น ไม่กระทบ kcal ที่บันทึก)</div>
         </div>
         <div class="input-group" style="margin-top:4px;">
           <label class="input-label">📅 วันที่ของ workout นี้ (เปลี่ยนได้ถ้าบันทึกย้อนหลัง)</label>
@@ -1664,6 +1664,10 @@ function initFirebase() {
     // prevents a single stray undefined (e.g. a cardio workout's empty
     // `exercises` field) from rejecting the whole .set() call.
     try { db.settings({ ignoreUndefinedProperties: true }); } catch(_) {}
+    // Expose the Firestore handle: saveSleep()/generateMorningRecovery() gate
+    // their writes on window.db, which was never assigned before (sleep data
+    // silently stayed localStorage-only).
+    window.db = db;
     var UID = 'nattapat';
     window.FB = {
       saveMeal: function(m){ return db.collection('users').doc(UID).collection('meals').doc(String(m.id)).set(m); },
@@ -1675,6 +1679,7 @@ function initFirebase() {
       delFavorite: function(id){ return db.collection('users').doc(UID).collection('favorites').doc(String(id)).delete(); },
       loadFavorites: function(){ return db.collection('users').doc(UID).collection('favorites').get().then(function(s){ return s.docs.map(function(d){return d.data();}).sort(function(a,b){return b.id-a.id;}); }); },
       saveBodyComp: function(r){ return db.collection('users').doc(UID).collection('bodyComp').doc(String(r.id)).set(r); },
+      savePhotoMeta: function(m){ return db.collection('users').doc(UID).collection('photoMeta').doc(String(m.id)).set(m); },
       loadBodyComps: function(){ return db.collection('users').doc(UID).collection('bodyComp').get().then(function(s){ return s.docs.map(function(d){return d.data();}).sort(function(a,b){return a.date.localeCompare(b.date)||a.id-b.id;}); }); },
       saveDailySummary: function(date, html){ return db.collection('users').doc(UID).collection('dailySummary').doc(date).set({ date: date, html: html, savedAt: Date.now() }); },
       loadDailySummaryByDate: function(date){ return db.collection('users').doc(UID).collection('dailySummary').doc(date).get().then(function(s){ return s.exists ? s.data() : null; }); }
@@ -1831,7 +1836,9 @@ var S = {
   meals: [],
   goals: {cal:1800,pro:120,crb:200,fat:60},
   profile: null,
-  webhook: 'https://script.google.com/macros/s/AKfycby9qLSWIOQRl-gOIsyGbeAtBsLCKPkMYgQK0U_VJns3HW_xmOhRZl77odHgP80X-QpV/exec',
+  // User-saved webhook (testSync writes 'gd_wh') wins over the built-in default;
+  // previously the saved URL was never read back, so edits vanished on reload.
+  webhook: (function(){ try { return localStorage.getItem('gd_wh') || ''; } catch(e){ return ''; } })() || 'https://script.google.com/macros/s/AKfycby9qLSWIOQRl-gOIsyGbeAtBsLCKPkMYgQK0U_VJns3HW_xmOhRZl77odHgP80X-QpV/exec',
   favorites: (function(){ try { return JSON.parse(localStorage.getItem('gd_favorites') || '[]'); } catch(e){ return []; } })(),
   apiKeys: (function(){
     try { return JSON.parse(localStorage.getItem('gd_keys') || '[]'); } catch(e){ return []; }
@@ -1884,7 +1891,7 @@ function init() {
   var now = new Date();
   document.getElementById('todayDate').textContent = now.toLocaleDateString('th-TH',{weekday:'short',day:'numeric',month:'short'});
   var h = now.getHours();
-  var auto = h<10?'มื้อเช้า':h<14?'มื้อกลางวัน':h<19?'มื้อเย็น':'ของว่าง';
+  var auto = h<11?'มื้อเช้า':h<15?'มื้อกลางวัน':h<21?'มื้อเย็น':'ของว่าง';
   document.querySelectorAll('#mealLabels .label-btn').forEach(function(b){
     if(b.textContent.includes(auto.replace('มื้อ',''))){b.classList.add('active');curLabel=auto;}
   });
@@ -2452,7 +2459,7 @@ function openUseFavoriteModal(id) {
   onFavMacroInput('mac');
   // auto-select label by time
   var h = new Date().getHours();
-  var auto = h<11?'มื้อเช้า':h<15?'มื้อกลางวัน':h<20?'มื้อเย็น':'ของว่าง';
+  var auto = h<11?'มื้อเช้า':h<15?'มื้อกลางวัน':h<21?'มื้อเย็น':'ของว่าง';
   document.querySelectorAll('#favUseLabelRow .label-btn').forEach(function(b){
     b.classList.remove('active');
     if(b.textContent.includes(auto.replace('มื้อ',''))){ b.classList.add('active'); _favUseLabel=auto; }
@@ -3331,7 +3338,6 @@ function renderWeeklyReview() {
   var weights  = (typeof WT!=='undefined'&&WT.log&&WT.log.length)?WT.log:JSON.parse(localStorage.getItem('gd_weight')||'[]');
   var calGoal  = S.goals.cal||1800, target = JSON.parse(localStorage.getItem('gd_ft_target')||'null');
   var totalCal=0,totalPro=0,totalNet=0,daysWithMeals=0,daysWithNet=0,totalBurn=0,totalDuration=0,workoutDays=0;
-  var wkg = (S.profile&&S.profile.weight)?parseFloat(S.profile.weight):70;
   days.forEach(function(date) {
     var dm=meals.filter(function(m){return m.date===date;});
     if(dm.length)daysWithMeals++;
@@ -3340,9 +3346,10 @@ function renderWeeklyReview() {
     var dw=workouts.filter(function(w){return w.date===date;});
     var burn=dw.reduce(function(s,w){return s+(parseFloat(w.calories_burned)||0);},0);
     if(dw.length){workoutDays++;totalBurn+=burn;totalDuration+=dw.reduce(function(s,w){return s+(parseFloat(w.duration_min)||0);},0);}
-    var sd2=JSON.parse(localStorage.getItem('gd_steps_'+date)||'null');
-    var stepCal=0;
-    if(sd2&&sd2.steps){var ns=Math.max((parseFloat(sd2.steps)||0)-workouts.filter(function(w){return w.date===date&&w.session_steps;}).reduce(function(s,w){return s+(parseInt(w.session_steps)||0);},0),0);stepCal=Math.round(ns*0.04*(wkg/70));}
+    // Steps live in the shared 'gd_steps' object ({date: steps}) — read via
+    // getNeatCalForDate() which also dedups session steps. (The old code read
+    // a 'gd_steps_<date>' key that never existed, so NEAT was always 0 here.)
+    var stepCal=(typeof getNeatCalForDate==='function')?getNeatCalForDate(date):0;
     // Only accumulate net for days that have meal data (avoid skewing avg with workout-only days)
     if(dm.length){totalNet+=intake-burn-stepCal;daysWithNet++;}
   });
@@ -3421,15 +3428,9 @@ function renderCorrelations() {
     var hrv=null,rhr=null;
     if(slLog2.length){var se=slLog2.filter(function(s){return s.date===date;});if(se.length){hrv=parseFloat(se[0].hrv)||null;rhr=parseFloat(se[0].rhr)||null;}}
     else if(sd3&&sd3.date===date){hrv=parseFloat(sd3.hrv)||null;rhr=parseFloat(sd3.rhr)||null;}
-    // NEAT for this date — dedup session steps same as rest of app
-    var wkgC=(S.profile&&S.profile.weight)?parseFloat(S.profile.weight):70;
-    var stepDataC=JSON.parse(localStorage.getItem('gd_steps_'+date)||'null');
-    var neatCalC=0;
-    if(stepDataC&&stepDataC.steps){
-      var totalStepsC=parseFloat(stepDataC.steps)||0;
-      var sessionStC=dw.filter(function(w){return w.session_steps;}).reduce(function(s,w){return s+(parseInt(w.session_steps)||0);},0);
-      neatCalC=Math.round(Math.max(totalStepsC-sessionStC,0)*0.04*(wkgC/70));
-    }
+    // NEAT for this date — shared 'gd_steps' store via getNeatCalForDate()
+    // (dedups session steps; old code read a nonexistent 'gd_steps_<date>' key)
+    var neatCalC=(typeof getNeatCalForDate==='function')?getNeatCalForDate(date):0;
     dayData[date]={intake:intake,sodium:sodium,protein:protein,strain:burn,neatCal:neatCalC,weight:weight,hrv:hrv,rhr:rhr,hasMeal:intake>0};
   });
   var findings=[];
@@ -3608,7 +3609,7 @@ function reuseMeal(id) {
   document.getElementById('favUseFat').value = m.fat;
   onFavMacroInput('mac');
   var h = new Date().getHours();
-  var auto = h<11?'มื้อเช้า':h<15?'มื้อกลางวัน':h<20?'มื้อเย็น':'ของว่าง';
+  var auto = h<11?'มื้อเช้า':h<15?'มื้อกลางวัน':h<21?'มื้อเย็น':'ของว่าง';
   document.querySelectorAll('#favUseLabelRow .label-btn').forEach(function(b){
     b.classList.remove('active');
     if(b.textContent.includes(auto.replace('มื้อ',''))){ b.classList.add('active'); _favUseLabel=auto; }
@@ -5140,7 +5141,7 @@ function addWorkout() {
   document.getElementById('ft-cal-burn').value = '';
   document.getElementById('ft-session-steps').value = '';
   document.getElementById('ft-avg-hr').value = '';
-  var hrInfo = document.getElementById('ft-hr-zone-info'); if(hrInfo) hrInfo.textContent = 'กรอก avg HR เพื่อปรับ burn ตามความหนัก (±10%) + ช่วยให้ AI Coach แนะนำแม่นขึ้น';
+  var hrInfo = document.getElementById('ft-hr-zone-info'); if(hrInfo) hrInfo.textContent = 'กรอก avg HR เพื่อบอกโซนความหนัก (context ให้ AI Coach เท่านั้น ไม่กระทบ kcal ที่บันทึก)';
   document.getElementById('ft-met-info').textContent = '';
   initLogDate('workout-date');
   document.getElementById('strength-picker-section').style.display = 'none';
@@ -6831,7 +6832,8 @@ function renderWeightCalChart() {
         x: { ticks:{ color:'#64748b', font:{size:10} }, grid:{ color:'rgba(255,255,255,0.04)' } },
         yW: {
           type: 'linear', position: 'left',
-          min: 60,
+          // auto-scale around the data — a fixed min clipped users under 60 kg
+          grace: '5%',
           ticks:{ color:'#8b5cf6', font:{size:10} },
           grid:{ color:'rgba(255,255,255,0.04)' },
           title:{ display:true, text:'กก.', color:'#8b5cf6', font:{size:10} }
@@ -7213,7 +7215,7 @@ function saveProgressPhotoLog(){
       try{ setProgressPhotos(logs); break; } catch(e2){}
     }
     if(logs.length===1){ try{ setProgressPhotos(logs); } catch(e3){ showToast('พื้นที่เต็ม ไม่สามารถบันทึกรูปได้','error'); return; } }
-    showToast('บันทึกสำเร็จ (ลบรูปเก่าออกอัตโนมัติเพราะพื้นที่เต็ม)','warning');
+    showToast('บันทึกสำเร็จ (ลบรูปเก่าออกอัตโนมัติเพราะพื้นที่เต็ม)','error');
   }
   _vpImgB64=null; _vpAnalysis=null;
   var f=document.getElementById('vp-file'); if(f) f.value='';
