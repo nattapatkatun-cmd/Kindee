@@ -141,7 +141,7 @@ body{font-family:'Sarabun',sans-serif;background:var(--bg);color:var(--text);min
 .ex-filter-row::-webkit-scrollbar{display:none;}
 .ex-pill{background:var(--surface2);border:1px solid var(--border);border-radius:20px;padding:5px 13px;font-size:12px;font-weight:500;color:var(--text2);cursor:pointer;white-space:nowrap;flex-shrink:0;transition:all .18s;font-family:inherit;}
 .ex-pill.active{background:var(--accent-dim);border-color:var(--accent);color:var(--accent);font-weight:700;}
-.ex-search{width:100%;background:var(--surface2);border:1px solid var(--border-md);border-radius:11px;color:var(--text);font-family:inherit;font-size:13px;padding:8px 12px;margin-bottom:8px;box-sizing:border-box;}
+.ex-search{width:100%;background:var(--surface2);border:1px solid var(--border-md);border-radius:11px;color:var(--text);font-family:inherit;font-size:16px;padding:8px 12px;margin-bottom:8px;box-sizing:border-box;}
 .ex-search:focus{outline:none;border-color:var(--accent);}
 .ex-list{display:flex;flex-direction:column;gap:6px;max-height:320px;overflow-y:auto;}
 .ex-row{display:flex;align-items:center;gap:10px;background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:10px 12px;cursor:pointer;transition:all .15s;}
@@ -246,7 +246,7 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
 
 /* ── Clarify ── */
 .clarify-box{background:rgba(20,184,166,0.07);border:1px solid rgba(20,184,166,0.25);border-radius:14px;padding:14px;margin-top:12px;display:none;}
-.clarify-input{width:100%;background:var(--surface);border:1px solid var(--border-md);border-radius:var(--radius-sm);padding:10px 14px;color:var(--text);font-family:inherit;font-size:13px;resize:none;outline:none;}
+.clarify-input{width:100%;background:var(--surface);border:1px solid var(--border-md);border-radius:var(--radius-sm);padding:10px 14px;color:var(--text);font-family:inherit;font-size:16px;resize:none;outline:none;}
 .clarify-input:focus{border-color:var(--accent);}
 
 /* ── Ring (Dashboard) ── */
@@ -374,7 +374,7 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
 /* ── Alert popup ── */
 .alert-popup{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.72);z-index:998;align-items:center;justify-content:center;padding:20px;}
 .alert-box{background:var(--surface);border:1px solid var(--border-md);border-radius:22px;padding:26px;max-width:340px;width:100%;text-align:center;}
-.input-field-sm{width:100%;background:var(--surface2);border:1px solid var(--border-md);border-radius:var(--radius-sm);padding:9px 12px;color:var(--text);font-family:inherit;font-size:13px;outline:none;margin-bottom:8px;-webkit-appearance:none;}
+.input-field-sm{width:100%;background:var(--surface2);border:1px solid var(--border-md);border-radius:var(--radius-sm);padding:9px 12px;color:var(--text);font-family:inherit;font-size:16px;outline:none;margin-bottom:8px;-webkit-appearance:none;}
 .input-field-sm:focus{border-color:var(--accent);}
 
 /* ── AI DAILY SUMMARY ── */
@@ -723,7 +723,7 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
         <input type="file" id="fileInput" accept="image/*" style="display:none" onchange="handleFile(event)"/>
         <div style="margin-top:12px;">
           <label style="font-size:12px;color:var(--text2);display:block;margin-bottom:6px;">📝 คำอธิบายเพิ่มเติม <span style="color:var(--text3);">(ไม่บังคับ) — เช่น ปริมาณ, วิธีปรุง, ส่วนประกอบ</span></label>
-          <textarea id="photoDesc" rows="2" class="input-field" placeholder="เช่น ข้าวผัดหมู 1 จาน น้ำมันน้อย ไม่ใส่ไข่" style="resize:none;font-size:13px;"></textarea>
+          <textarea id="photoDesc" rows="2" class="input-field" placeholder="เช่น ข้าวผัดหมู 1 จาน น้ำมันน้อย ไม่ใส่ไข่" style="resize:none;font-size:16px;"></textarea>
         </div>
       </div>
       <button class="btn-primary" id="analyzeBtn" onclick="analyzePhoto(document.getElementById('photoDesc').value.trim())" disabled>🔍 วิเคราะห์จากรูป</button>
@@ -741,28 +741,28 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
         <div class="card-title">ป้อนโภชนาการเอง</div>
         <div style="margin-bottom:10px;">
           <label style="font-size:12px;color:var(--text2);display:block;margin-bottom:4px;">ชื่อเมนู / อาหาร <span style="color:var(--accent);">*</span></label>
-          <input id="manualName" class="input-field" type="text" placeholder="เช่น ข้าวผัดหมู, สลัดไก่, Protein Bar" style="font-size:14px;"/>
+          <input id="manualName" class="input-field" type="text" placeholder="เช่น ข้าวผัดหมู, สลัดไก่, Protein Bar" style="font-size:16px;"/>
         </div>
         <div style="margin-bottom:10px;">
           <label style="font-size:12px;color:var(--text2);display:block;margin-bottom:4px;">รายละเอียด <span style="color:var(--text3);">(ไม่บังคับ)</span></label>
-          <input id="manualDesc" class="input-field" type="text" placeholder="เช่น 1 จาน, 100g, จากแอปอื่น" style="font-size:13px;"/>
+          <input id="manualDesc" class="input-field" type="text" placeholder="เช่น 1 จาน, 100g, จากแอปอื่น" style="font-size:16px;"/>
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:4px;">
           <div>
             <label style="font-size:12px;color:var(--text2);display:block;margin-bottom:4px;">แคลอรี่ (kcal) <span style="color:var(--accent);">*</span></label>
-            <input id="manualCal" class="input-field" type="number" min="0" placeholder="0" style="font-size:14px;font-weight:700;color:var(--accent);"/>
+            <input id="manualCal" class="input-field" type="number" min="0" placeholder="0" style="font-size:16px;font-weight:700;color:var(--accent);"/>
           </div>
           <div>
             <label style="font-size:12px;color:var(--text2);display:block;margin-bottom:4px;">โปรตีน (g) <span style="color:var(--accent);">*</span></label>
-            <input id="manualPro" class="input-field" type="number" min="0" step="0.1" placeholder="0" style="font-size:14px;color:var(--blue);"/>
+            <input id="manualPro" class="input-field" type="number" min="0" step="0.1" placeholder="0" style="font-size:16px;color:var(--blue);"/>
           </div>
           <div>
             <label style="font-size:12px;color:var(--text2);display:block;margin-bottom:4px;">คาร์บ (g) <span style="color:var(--accent);">*</span></label>
-            <input id="manualCrb" class="input-field" type="number" min="0" step="0.1" placeholder="0" style="font-size:14px;color:var(--green);"/>
+            <input id="manualCrb" class="input-field" type="number" min="0" step="0.1" placeholder="0" style="font-size:16px;color:var(--green);"/>
           </div>
           <div>
             <label style="font-size:12px;color:var(--text2);display:block;margin-bottom:4px;">ไขมัน (g) <span style="color:var(--accent);">*</span></label>
-            <input id="manualFat" class="input-field" type="number" min="0" step="0.1" placeholder="0" style="font-size:14px;color:var(--purple);"/>
+            <input id="manualFat" class="input-field" type="number" min="0" step="0.1" placeholder="0" style="font-size:16px;color:var(--purple);"/>
           </div>
         </div>
         <div id="manualCalcHint" style="font-size:11px;color:var(--text3);text-align:right;margin-top:2px;"></div>
@@ -1049,7 +1049,7 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
         </div>
         <div class="input-group" style="margin-bottom:12px;">
           <label class="input-label">🛌 วันที่ต้องการพัก / ไม่สะดวกออกกำลังกาย</label>
-          <textarea class="input-field" id="plan-rest-days" rows="2" placeholder="เช่น วันพุธ, วันอาทิตย์ หรือ Wednesday, Sunday" style="resize:none;font-size:13px;line-height:1.5;"></textarea>
+          <textarea class="input-field" id="plan-rest-days" rows="2" placeholder="เช่น วันพุธ, วันอาทิตย์ หรือ Wednesday, Sunday" style="resize:none;font-size:16px;line-height:1.5;"></textarea>
           <div style="font-size:11px;color:var(--text3);margin-top:5px;line-height:1.5;">AI จะล็อกวันที่ระบุเป็น Rest / Recovery และกระจายเวท + คาร์ดิโอไปวันอื่น โดยยังยึด Goal Mode เดิม</div>
         </div>
         <button class="btn-primary" id="planBtn" onclick="generatePlan()">✨ สร้างแผนสัปดาห์นี้</button>
@@ -1554,7 +1554,7 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
     <div style="font-size:16px;font-weight:700;margin-bottom:4px;">⭐ บันทึกเมนูโปรด</div>
     <div style="font-size:12px;color:var(--text2);margin-bottom:14px;" id="favSaveMenuName"></div>
     <div style="font-size:12px;color:var(--text3);margin-bottom:6px;">แก้ไขชื่อเมนู (ถ้าต้องการ)</div>
-    <input id="favSaveName" style="width:100%;padding:10px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:10px;color:var(--text);font-family:inherit;font-size:13px;box-sizing:border-box;margin-bottom:16px;" placeholder="ชื่อเมนู">
+    <input id="favSaveName" style="width:100%;padding:10px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:10px;color:var(--text);font-family:inherit;font-size:16px;box-sizing:border-box;margin-bottom:16px;" placeholder="ชื่อเมนู">
     <div style="display:flex;gap:8px;">
       <button onclick="closeFavSaveModal()" style="flex:1;padding:11px;background:var(--surface2);border:1px solid var(--border);border-radius:12px;color:var(--text2);font-family:inherit;font-size:14px;cursor:pointer;">ยกเลิก</button>
       <button onclick="saveFavorite()" style="flex:2;padding:11px;background:linear-gradient(135deg,#f59e0b,#d97706);border:none;border-radius:12px;color:white;font-family:inherit;font-size:14px;font-weight:700;cursor:pointer;">⭐ บันทึก</button>
