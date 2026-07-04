@@ -18,6 +18,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-storage-compat.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <style>
 :root{
@@ -1694,6 +1695,10 @@ function initFirebase() {
     // silently stayed localStorage-only).
     window.db = db;
     var UID = 'nattapat';
+    // Storage may not be enabled/reachable even when Firestore is — keep it
+    // optional so a Storage hiccup never breaks the rest of Firebase init.
+    var storage = null;
+    try { storage = firebase.storage(); } catch(_) {}
     window.FB = {
       saveMeal: function(m){ return db.collection('users').doc(UID).collection('meals').doc(String(m.id)).set(m); },
       delMeal: function(id){ return db.collection('users').doc(UID).collection('meals').doc(String(id)).delete(); },
@@ -1705,6 +1710,20 @@ function initFirebase() {
       loadFavorites: function(){ return db.collection('users').doc(UID).collection('favorites').get().then(function(s){ return s.docs.map(function(d){return d.data();}).sort(function(a,b){return b.id-a.id;}); }); },
       saveBodyComp: function(r){ return db.collection('users').doc(UID).collection('bodyComp').doc(String(r.id)).set(r); },
       savePhotoMeta: function(m){ return db.collection('users').doc(UID).collection('photoMeta').doc(String(m.id)).set(m); },
+      // Progress photos: upload the actual image bytes to Storage and keep
+      // only a metadata record (with the resulting URL) in Firestore/localStorage
+      // — previously the full compressed JPEG was base64-encoded straight into
+      // localStorage for every one of up to 20 photos (~3-5MB total), crowding
+      // out quota that gd_meals/gd_workouts need and had no error handling for.
+      uploadProgressPhoto: function(id, blob){
+        if (!storage) return Promise.reject(new Error('Firebase Storage ไม่พร้อมใช้งาน'));
+        return storage.ref('users/'+UID+'/progressPhotos/'+id+'.jpg').put(blob)
+          .then(function(snap){ return snap.ref.getDownloadURL(); });
+      },
+      deleteProgressPhotoBlob: function(id){
+        if (!storage) return Promise.resolve();
+        return storage.ref('users/'+UID+'/progressPhotos/'+id+'.jpg').delete().catch(function(){});
+      },
       loadBodyComps: function(){ return db.collection('users').doc(UID).collection('bodyComp').get().then(function(s){ return s.docs.map(function(d){return d.data();}).sort(function(a,b){return a.date.localeCompare(b.date)||a.id-b.id;}); }); },
       saveDailySummary: function(date, html){ return db.collection('users').doc(UID).collection('dailySummary').doc(date).set({ date: date, html: html, savedAt: Date.now() }); },
       loadDailySummaryByDate: function(date){ return db.collection('users').doc(UID).collection('dailySummary').doc(date).get().then(function(s){ return s.exists ? s.data() : null; }); }
@@ -7333,32 +7352,65 @@ function handleProgressPhotoFile(e){
   };
   reader.readAsDataURL(file);
 }
+function base64ToBlob(b64, mime){
+  var byteChars = atob(b64);
+  var bytes = new Uint8Array(byteChars.length);
+  for (var i = 0; i < byteChars.length; i++) bytes[i] = byteChars.charCodeAt(i);
+  return new Blob([bytes], { type: mime || 'image/jpeg' });
+}
 function saveProgressPhotoLog(){
   if(!_vpImgB64){ showToast('กรุณาเลือกรูปก่อน','error'); return; }
   var now=new Date();
-  var row={ id:Date.now(), date:localDateStr(now), time:now.toLocaleTimeString('th-TH',{hour:'2-digit',minute:'2-digit'}), angle:(document.getElementById('vp-angle')||{}).value||'front', note:(document.getElementById('vp-note')||{}).value||'', imageB64:_vpImgB64, imageType:'image/jpeg', analysis:_vpAnalysis||null };
-  var logs=getProgressPhotos();
-  // Keep max 20 photos to avoid localStorage overflow
-  logs.push(row); if(logs.length>20) logs=logs.slice(logs.length-20);
-  try{
-    setProgressPhotos(logs);
-    if (window.FB_OK) { var meta = Object.assign({}, row); delete meta.imageB64; window.FB.savePhotoMeta(meta).catch(function(){}); }
-    if (S.webhook) { var pmeta = Object.assign({}, row); delete pmeta.imageB64; fetch('https://kindee.ojo0308.workers.dev/',{method:'POST',headers:{'Content-Type':'application/json','x-target-url':S.webhook},body:JSON.stringify({action:'addPhotoMeta',data:pmeta})}).catch(function(){}); }
-  } catch(e){
-    // Quota exceeded — remove oldest photos until it fits
-    while(logs.length>1){
-      logs.shift();
-      try{ setProgressPhotos(logs); break; } catch(e2){}
+  var id=Date.now();
+  var meta={ id:id, date:localDateStr(now), time:now.toLocaleTimeString('th-TH',{hour:'2-digit',minute:'2-digit'}), angle:(document.getElementById('vp-angle')||{}).value||'front', note:(document.getElementById('vp-note')||{}).value||'', imageType:'image/jpeg', analysis:_vpAnalysis||null };
+  var b64=_vpImgB64;
+
+  function finalizeSave(row){
+    var logs=getProgressPhotos();
+    logs.push(row);
+    // Keep max 20 photos — evict the oldest and clean up their Storage blob (if any)
+    if(logs.length>20){
+      var evicted=logs.slice(0, logs.length-20);
+      logs=logs.slice(logs.length-20);
+      evicted.forEach(function(ev){ if(ev.imageUrl && window.FB.deleteProgressPhotoBlob) window.FB.deleteProgressPhotoBlob(ev.id); });
     }
-    if(logs.length===1){ try{ setProgressPhotos(logs); } catch(e3){ showToast('พื้นที่เต็ม ไม่สามารถบันทึกรูปได้','error'); return; } }
-    showToast('บันทึกสำเร็จ (ลบรูปเก่าออกอัตโนมัติเพราะพื้นที่เต็ม)','error');
+    try{
+      setProgressPhotos(logs);
+    } catch(e){
+      // Only the legacy base64 (offline/upload-failed) path can hit quota —
+      // an imageUrl-backed entry is just a few bytes. Trim oldest until it fits.
+      while(logs.length>1){
+        logs.shift();
+        try{ setProgressPhotos(logs); break; } catch(e2){}
+      }
+      if(logs.length===1){ try{ setProgressPhotos(logs); } catch(e3){ showToast('พื้นที่เต็ม ไม่สามารถบันทึกรูปได้','error'); return; } }
+      showToast('บันทึกสำเร็จ (ลบรูปเก่าออกอัตโนมัติเพราะพื้นที่เต็ม)','error');
+    }
+    if (window.FB_OK) window.FB.savePhotoMeta(row).catch(function(){});
+    if (S.webhook) { fetch('https://kindee.ojo0308.workers.dev/',{method:'POST',headers:{'Content-Type':'application/json','x-target-url':S.webhook},body:JSON.stringify({action:'addPhotoMeta',data:row})}).catch(function(){}); }
+    _vpImgB64=null; _vpAnalysis=null;
+    var f=document.getElementById('vp-file'); if(f) f.value='';
+    var p=document.getElementById('vp-preview'); if(p){p.src='';p.style.display='none';}
+    var ar=document.getElementById('vp-ai-result'); if(ar){ar.style.display='none';ar.innerHTML='';}
+    renderProgressPhotoSummary(); localStorage.removeItem('gd_wt_analysis'); localStorage.removeItem('gd_daily_summary');
+    showToast('บันทึกรูป Progress แล้ว ✅','success');
   }
-  _vpImgB64=null; _vpAnalysis=null;
-  var f=document.getElementById('vp-file'); if(f) f.value='';
-  var p=document.getElementById('vp-preview'); if(p){p.src='';p.style.display='none';}
-  var ar=document.getElementById('vp-ai-result'); if(ar){ar.style.display='none';ar.innerHTML='';}
-  renderProgressPhotoSummary(); localStorage.removeItem('gd_wt_analysis'); localStorage.removeItem('gd_daily_summary');
-  showToast('บันทึกรูป Progress แล้ว ✅','success');
+
+  if (window.FB_OK && window.FB.uploadProgressPhoto) {
+    // Upload the actual image to Storage — only a small metadata record
+    // (with the resulting URL) ever touches localStorage/Firestore.
+    showToast('กำลังอัปโหลดรูป...', 'info');
+    window.FB.uploadProgressPhoto(id, base64ToBlob(b64, 'image/jpeg')).then(function(url){
+      finalizeSave(Object.assign({}, meta, { imageUrl: url }));
+    }).catch(function(err){
+      console.warn('Progress photo upload failed, keeping it local only:', err);
+      showToast('อัปโหลดรูปไม่สำเร็จ — เก็บไว้ในเครื่องแทน', 'error');
+      finalizeSave(Object.assign({}, meta, { imageB64: b64 }));
+    });
+  } else {
+    // Offline — keep the photo locally (still bounded to 20 entries) until Storage is reachable again
+    finalizeSave(Object.assign({}, meta, { imageB64: b64 }));
+  }
 }
 function renderProgressPhotoSummary(){
   var el=document.getElementById('vp-summary'); if(!el) return;
@@ -7366,7 +7418,11 @@ function renderProgressPhotoSummary(){
   if(!logs.length){ el.innerHTML='<div style="font-size:12px;color:var(--text3);padding:10px;background:var(--surface2);border-radius:12px;">ยังไม่มีรูป progress — แนะนำถ่าย weekly front/side/back ในแสงเดิม</div>'; return; }
   var latest=logs[logs.length-1];
   var ai=latest.analysis;
-  el.innerHTML='<div style="background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:10px;font-size:12px;color:var(--text2);line-height:1.6;">รูปล่าสุด: <b style="color:var(--accent);">'+latest.date+' · '+latest.angle+'</b><br>'+(ai?('Visual: '+escapeHTML(ai.summary||ai.visualTrend||'มีผลวิเคราะห์แล้ว')):'ยังไม่ได้วิเคราะห์ AI')+'<br>ทั้งหมด '+logs.length+' รูป</div>';
+  var thumb = latest.imageUrl
+    ? '<img src="'+escapeAttr(latest.imageUrl)+'" alt="progress photo" style="width:44px;height:44px;object-fit:cover;border-radius:10px;flex-shrink:0;">'
+    : '<div style="width:44px;height:44px;border-radius:10px;background:var(--surface3);display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;">📷</div>';
+  el.innerHTML='<div style="background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:10px;font-size:12px;color:var(--text2);line-height:1.6;display:flex;gap:10px;align-items:flex-start;">'+thumb+
+    '<div style="min-width:0;">รูปล่าสุด: <b style="color:var(--accent);">'+latest.date+' · '+latest.angle+'</b><br>'+(ai?('Visual: '+escapeHTML(ai.summary||ai.visualTrend||'มีผลวิเคราะห์แล้ว')):'ยังไม่ได้วิเคราะห์ AI')+'<br>ทั้งหมด '+logs.length+' รูป</div></div>';
 }
 function getLatestVisualAnalysis(){
   var logs=getProgressPhotos().filter(function(x){ return x.analysis; });
