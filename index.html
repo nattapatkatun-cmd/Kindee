@@ -179,7 +179,7 @@ body{font-family:'Sarabun',sans-serif;background:var(--bg);color:var(--text);min
 .rest-timer-label{font-size:11px;color:var(--text2);font-weight:600;}
 .rest-timer-time{font-size:21px;font-weight:800;color:var(--accent);letter-spacing:-0.3px;line-height:1;}
 .rest-timer-actions{display:flex;gap:6px;flex-shrink:0;}
-.rest-timer-btn{background:var(--surface);border:1px solid var(--border-md);border-radius:10px;padding:7px 10px;font-size:12px;font-weight:600;color:var(--text2);cursor:pointer;font-family:inherit;touch-action:manipulation;}
+.rest-timer-btn{background:var(--surface);border:1px solid var(--border-md);border-radius:10px;padding:11px 13px;font-size:13px;font-weight:600;color:var(--text2);cursor:pointer;font-family:inherit;touch-action:manipulation;user-select:none;-webkit-user-select:none;}
 .e1rm-badge{display:inline-flex;align-items:center;gap:5px;background:var(--accent-dim);border:1px solid var(--accent);border-radius:10px;padding:4px 10px;font-size:12px;font-weight:700;color:var(--accent);}
 .pr-badge{background:linear-gradient(135deg,#f59e0b,#ef4444);color:#fff;border-radius:6px;padding:1px 6px;font-size:11px;font-weight:800;}
 .str-exercise-select{width:100%;background:var(--surface2);border:1px solid var(--border-md);border-radius:10px;color:var(--text);font-family:inherit;font-size:16px;padding:8px 10px;margin-bottom:12px;}
@@ -977,9 +977,9 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
                 <span class="rest-timer-time" id="rest-timer-time">01:30</span>
               </div>
               <div class="rest-timer-actions">
-                <button type="button" class="rest-timer-btn" onclick="adjustRestTimer(-15)">−15s</button>
-                <button type="button" class="rest-timer-btn" onclick="adjustRestTimer(15)">+15s</button>
-                <button type="button" class="rest-timer-btn" onclick="skipRestTimer()">ข้าม</button>
+                <button type="button" class="rest-timer-btn" data-rest-action="-15">−15s</button>
+                <button type="button" class="rest-timer-btn" data-rest-action="15">+15s</button>
+                <button type="button" class="rest-timer-btn" data-rest-action="skip">ข้าม</button>
               </div>
             </div>
             <div id="ex-sheet-msg" style="display:none;text-align:center;font-size:12px;font-weight:600;border-radius:8px;padding:7px 10px;margin-bottom:8px;"></div>
@@ -1062,6 +1062,24 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
     <div id="ftab-content-target" style="display:none;">
       <div id="ft-target-dashboard">
         <div class="empty-state"><div class="empty-icon">🎯</div><div class="empty-text">ยังไม่มี Fitness Target</div><div class="empty-sub">ไปที่ ⚙️ ตั้งค่า → Fitness Target เพื่อกรอกข้อมูล</div></div>
+      </div>
+      <!-- Per-category trend: kept OUTSIDE ft-target-dashboard so the chart
+           canvas survives that card's innerHTML re-renders -->
+      <div class="card" id="target-trend-card" style="margin-top:14px;">
+        <div class="card-title" style="margin-bottom:8px;">📈 เทรนด์ตามหมวด</div>
+        <select class="input-field" id="target-trend-select" onchange="renderTargetTrendChart()" style="margin-bottom:10px;">
+          <option value="weight">⚖️ น้ำหนัก (กก.)</option>
+          <option value="bf">🔥 % Body Fat</option>
+          <option value="muscle">💪 Skeletal Muscle %</option>
+          <option value="visceral">🫀 Visceral Fat</option>
+          <option value="bmi">📊 BMI</option>
+          <option value="lean">🦾 Lean Mass (กก.)</option>
+        </select>
+        <div id="target-trend-empty" style="display:none;text-align:center;padding:16px 0;color:var(--text3);font-size:12px;">ยังไม่มีข้อมูลหมวดนี้พอ — บันทึกน้ำหนัก/Body Composition อย่างน้อย 2 ครั้งเพื่อดู trend</div>
+        <div id="target-trend-wrap" style="position:relative;height:180px;width:100%;">
+          <canvas id="targetTrendChart"></canvas>
+        </div>
+        <div id="target-trend-note" style="font-size:11px;color:var(--text3);margin-top:6px;text-align:center;">🟢 เส้นประ = เป้าหมายจาก Fitness Target</div>
       </div>
     </div>
 
@@ -1666,8 +1684,14 @@ function sanitizeHTML(html) {
   // DOM-based sanitizer: parse then strip dangerous elements/attributes
   var tmp = document.createElement('div');
   tmp.innerHTML = String(html);
-  var dangerous = tmp.querySelectorAll('script,style,iframe,object,embed,form,base,link,meta,svg,math');
+  var dangerous = tmp.querySelectorAll('script,style,iframe,object,embed,form,base,link,meta,math');
   dangerous.forEach(function(el){ el.parentNode && el.parentNode.removeChild(el); });
+  // SVG: keep plain presentational markup (the sleep-score ring is an inline
+  // <svg><circle>), but strip anything interactive/embedding inside it. The
+  // old blanket svg removal was what erased the ring on the Sleep page while
+  // the dashboard (unsanitized path) kept it.
+  var svgBad = tmp.querySelectorAll('svg script,svg foreignObject,svg use,svg a,svg image,svg animate,svg set,svg animateTransform,svg animateMotion');
+  svgBad.forEach(function(el){ el.parentNode && el.parentNode.removeChild(el); });
   var allEls = tmp.querySelectorAll('*');
   allEls.forEach(function(el){
     for (var i = el.attributes.length - 1; i >= 0; i--) {
@@ -2812,6 +2836,9 @@ function generateMorningRecovery() {
     S.sleepData.scoreLabel       = r.scoreLabel;
     S.sleepData.recoveryHeadline = r.headline;
     S.sleepData.recoveryRec      = r.recommendation;
+    // Keep the full analysis object so the result can be re-rendered with
+    // CURRENT markup later (cached HTML strings go stale across app versions)
+    S.sleepData.recoveryData     = r;
     // Sanitize once here so both the live render and every cached restore
     // path (localStorage, dashboard, past-date view) get the same safe HTML —
     // this embeds free-text fields straight from the Gemini response.
@@ -4390,16 +4417,31 @@ function checkAlert() {
     localStorage.setItem('gd_alerted', JSON.stringify(alerted));
     showAlertPopup('🚨','กินเกินเป้าหมายแล้ว!',
       'กิน '+eaten+' kcal / เป้า '+goal+' kcal — เกินเป้า '+Math.abs(rem)+' kcal\nnet '+Math.round(net)+' kcal (หักกิจกรรม)');
-    if (typeof Notification !== 'undefined' && Notification.permission==='granted')
-      new Notification('🚨 กินเกินเป้าแล้ว!', {body:'เกินเป้า '+Math.abs(rem)+' kcal'});
+    showSystemNotification('🚨 กินเกินเป้าแล้ว!', {body:'เกินเป้า '+Math.abs(rem)+' kcal'});
 
   } else if (pct >= 0.8 && pct < 1 && !alerted[today+'_near']) {
     alerted[today+'_near'] = true;
     localStorage.setItem('gd_alerted', JSON.stringify(alerted));
     showAlertPopup('⚠️','ใกล้ถึงเป้าหมายแล้ว!',
       'กิน '+eaten+' kcal / เป้า '+goal+' kcal — เหลืออีก '+rem+' kcal\nnet '+Math.round(net)+' kcal (หักกิจกรรม)');
-    if (typeof Notification !== 'undefined' && Notification.permission==='granted')
-      new Notification('⚠️ ใกล้เป้าแล้ว!', {body:'เหลืออีก '+rem+' kcal'});
+    showSystemNotification('⚠️ ใกล้เป้าแล้ว!', {body:'เหลืออีก '+rem+' kcal'});
+  }
+}
+
+// System notification that works in both contexts: pages with an active
+// service worker (Android Chrome REQUIRES reg.showNotification — calling
+// `new Notification()` there throws) and plain pages (fallback).
+function showSystemNotification(title, opts) {
+  if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
+  opts = opts || {};
+  if (!opts.icon) opts.icon = 'icons/icon-192.png';
+  if (navigator.serviceWorker && navigator.serviceWorker.getRegistration) {
+    navigator.serviceWorker.getRegistration().then(function(reg) {
+      if (reg && reg.showNotification) reg.showNotification(title, opts);
+      else try { new Notification(title, opts); } catch(e) {}
+    }).catch(function(){ try { new Notification(title, opts); } catch(e) {} });
+  } else {
+    try { new Notification(title, opts); } catch(e) {}
   }
 }
 
@@ -4652,6 +4694,44 @@ function rebuildCustomExercisesFromLog() {
   });
   if (changed) saveCustomExercises(list);
 }
+// Idempotent migration: AI plans used to emit Thai exercise names, creating
+// custom-<thai> exercises whose history was split from the English DB entries
+// the user had already logged under. Fold them into their English match so
+// PRs/trends/last-session all read from one place.
+function migrateThaiExercisesToEnglish() {
+  var customs = getCustomExercises();
+  if (!customs.length) return;
+  var moves = {}; // thai custom id -> english exercise id
+  customs.forEach(function(c) {
+    if (!/[ก-๙]/.test(c.name || '')) return;
+    var targetId = (typeof matchExerciseId === 'function') ? matchExerciseId(c.name) : null;
+    if (!targetId || targetId === c.id) return;
+    var target = getExById(targetId);
+    if (!target || /[ก-๙]/.test(target.name || '')) return; // never merge Thai→Thai
+    moves[c.id] = targetId;
+  });
+  var ids = Object.keys(moves);
+  if (!ids.length) return;
+  var log = getStrengthLog(), changed = [];
+  log.forEach(function(e) {
+    var to = moves[e.exerciseId];
+    if (!to) return;
+    var ex = getExById(to);
+    e.exerciseId = to;
+    if (ex) { e.exerciseName = ex.name; e.muscle = ex.muscle; }
+    changed.push(e);
+  });
+  saveStrengthLog(log);
+  saveCustomExercises(customs.filter(function(c){ return !moves[c.id]; }));
+  if (window.FB_OK && changed.length) {
+    var db = firebase.firestore();
+    changed.forEach(function(e) {
+      db.collection('users').doc('nattapat').collection('strengthLog').doc(String(e.id)).set(e).catch(function(){});
+    });
+  }
+  var names = ids.map(function(id){ var ex = getExById(moves[id]); return ex ? ex.name : moves[id]; });
+  showToast('🔄 รวมประวัติท่าชื่อไทย '+ids.length+' ท่าเข้ากับท่าอังกฤษ: '+names.join(', '), 'info');
+}
 var ST = {curExercise:null, sets:[], sessionExercises:[], curFilter:'all'};
 
 function calcE1RM(weight, reps) {
@@ -4665,6 +4745,20 @@ function getExPR(exerciseId) {
   var log = getStrengthLog().filter(function(e){ return e.exerciseId === exerciseId; });
   if (!log.length) return null;
   return log.reduce(function(b,e){ return e.e1RM > b.e1RM ? e : b; }, log[0]);
+}
+// PR baselines from days strictly BEFORE `date`: today's own rows must not
+// become the baseline the moment they're saved (that hid the 🏆 on re-open
+// and on same-day re-saves).
+function getExPRBefore(exerciseId, date) {
+  var log = getStrengthLog().filter(function(e){ return e.exerciseId === exerciseId && e.date < date; });
+  if (!log.length) return null;
+  return log.reduce(function(b,e){ return e.e1RM > b.e1RM ? e : b; }, log[0]);
+}
+// Bodyweight moves have e1RM 0, so they PR on reps instead of estimated 1RM.
+function getExRepPRBefore(exerciseId, date) {
+  return getStrengthLog().reduce(function(b,e){
+    return (e.exerciseId === exerciseId && e.date < date && !(+e.weight > 0)) ? Math.max(b, +e.reps || 0) : b;
+  }, 0);
 }
 function getExLastSession(exerciseId) {
   var log = getStrengthLog().filter(function(e){ return e.exerciseId === exerciseId; });
@@ -4977,46 +5071,81 @@ function toggleSetDone(i) {
 }
 
 // ── Rest timer (between sets) ──────────────────────────────────
-var REST_TIMER = { remaining: 0, interval: null, running: false };
+// Counts against wall-clock time (endAt), not interval ticks: background tabs
+// and locked screens throttle/suspend setInterval, which froze the countdown.
+var REST_TIMER = { endAt: 0, interval: null, running: false, wakeLock: null };
 function fmtRestTimer(s) {
   s = Math.max(0, Math.round(s));
   var m = Math.floor(s / 60), sec = s % 60;
   return String(m).padStart(2, '0') + ':' + String(sec).padStart(2, '0');
+}
+function restTimerRemaining() {
+  return Math.max(0, Math.round((REST_TIMER.endAt - Date.now()) / 1000));
 }
 function renderRestTimer() {
   var bar = document.getElementById('rest-timer-bar');
   if (!bar) return;
   bar.style.display = REST_TIMER.running ? 'flex' : 'none';
   var timeEl = document.getElementById('rest-timer-time');
-  if (timeEl && REST_TIMER.running) timeEl.textContent = fmtRestTimer(REST_TIMER.remaining);
+  if (timeEl && REST_TIMER.running) timeEl.textContent = fmtRestTimer(restTimerRemaining());
+}
+// Screen Wake Lock while resting: vibration + a visible countdown both need
+// the screen awake; the lock auto-releases when the page is hidden, so it is
+// re-acquired from the visibilitychange handler below.
+function acquireRestWakeLock() {
+  if (!('wakeLock' in navigator) || document.hidden) return;
+  navigator.wakeLock.request('screen').then(function(wl) {
+    releaseRestWakeLock();
+    if (!REST_TIMER.running) { try { wl.release(); } catch(e) {} return; }
+    REST_TIMER.wakeLock = wl;
+  }).catch(function(){});
+}
+function releaseRestWakeLock() {
+  if (REST_TIMER.wakeLock) { try { REST_TIMER.wakeLock.release(); } catch(e) {} REST_TIMER.wakeLock = null; }
 }
 function stopRestTimer() {
   if (REST_TIMER.interval) { clearInterval(REST_TIMER.interval); REST_TIMER.interval = null; }
   REST_TIMER.running = false;
+  releaseRestWakeLock();
+  renderRestTimer();
+}
+function finishRestTimer() {
+  stopRestTimer();
+  if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
+  showToast('⏱ หมดเวลาพัก — เริ่มเซ็ตถัดไปได้เลย', 'info');
+  // Page hidden (screen off / another app): vibrate is ignored, so fall back
+  // to a system notification via the service worker (Android; needs permission).
+  if (document.hidden)
+    showSystemNotification('⏱ หมดเวลาพักแล้ว', {body:'เริ่มเซ็ตถัดไปได้เลย 💪', vibrate:[200,100,200], tag:'rest-timer'});
+}
+function tickRestTimer() {
+  if (!REST_TIMER.running) return;
+  if (restTimerRemaining() <= 0) { finishRestTimer(); return; }
   renderRestTimer();
 }
 function startRestTimer(seconds) {
   stopRestTimer();
-  REST_TIMER.remaining = seconds || 90;
+  REST_TIMER.endAt = Date.now() + (seconds || 90) * 1000;
   REST_TIMER.running = true;
   renderRestTimer();
-  REST_TIMER.interval = setInterval(function() {
-    REST_TIMER.remaining--;
-    if (REST_TIMER.remaining <= 0) {
-      stopRestTimer();
-      if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
-      showToast('⏱ หมดเวลาพัก — เริ่มเซ็ตถัดไปได้เลย', 'info');
-      return;
-    }
-    renderRestTimer();
-  }, 1000);
+  acquireRestWakeLock();
+  // Sub-second tick keeps the display accurate right after resume/adjust.
+  REST_TIMER.interval = setInterval(tickRestTimer, 500);
 }
 function adjustRestTimer(deltaSeconds) {
-  if (!REST_TIMER.running) return;
-  REST_TIMER.remaining = Math.max(0, REST_TIMER.remaining + deltaSeconds);
+  // +15 on a just-finished timer restarts it instead of silently doing nothing
+  if (!REST_TIMER.running) { if (deltaSeconds > 0) startRestTimer(deltaSeconds); return; }
+  REST_TIMER.endAt += deltaSeconds * 1000;
+  if (restTimerRemaining() <= 0) { finishRestTimer(); return; }
   renderRestTimer();
 }
 function skipRestTimer() { stopRestTimer(); }
+document.addEventListener('visibilitychange', function() {
+  if (!document.hidden && REST_TIMER.running) {
+    tickRestTimer();          // catch up instantly; fires end handling if overdue
+    acquireRestWakeLock();    // wake lock is auto-released on hide
+  }
+});
 function addSetRow() {
   // Capture current typed values first so nothing is lost on rebuild
   syncSetsFromDOM();
@@ -5044,14 +5173,24 @@ function removeSetRow(i) {
   renderSetRows();
 }
 function updateE1RMDisplay() {
-  var best = 0;
-  ST.sets.forEach(function(s){ var e = calcE1RM(s.weight,s.reps); if (e > best) best = e; });
+  var best = 0, bestReps = 0;
+  ST.sets.forEach(function(s){
+    var e = calcE1RM(s.weight,s.reps); if (e > best) best = e;
+    if (+s.reps > bestReps) bestReps = +s.reps;
+  });
   var el = document.getElementById('ex-e1rm-display');
   if (!el) return;
+  var exId = ST.curExercise ? ST.curExercise.id : null;
+  var today = localDateStr();
   if (best > 0) {
-    var pr = getExPR(ST.curExercise ? ST.curExercise.id : null);
+    // Baseline = previous days only, same rule as confirmExerciseFromSheet
+    var pr = getExPRBefore(exId, today);
     var isPR = !pr || best > pr.e1RM;
     el.innerHTML = '<span class="e1rm-badge">e1RM '+best+'kg'+(isPR?' <span class="pr-badge">🏆 PR!</span>':'')+'</span>';
+  } else if (bestReps > 0) {
+    // Bodyweight (no weight typed): rep-based PR
+    var isRepPR = bestReps > getExRepPRBefore(exId, today);
+    el.innerHTML = '<span class="e1rm-badge">Best '+bestReps+' reps'+(isRepPR?' <span class="pr-badge">🏆 PR!</span>':'')+'</span>';
   } else { el.innerHTML = ''; }
 }
 function confirmExerciseFromSheet() {
@@ -5066,15 +5205,31 @@ function confirmExerciseFromSheet() {
     .map(function(s){ var w = parseFloat(s.weight); return {weight:(w > 0 ? w : 0), reps:s.reps, done:s.done}; });
   if (!validSets.length) { showExMsg('ใส่ reps อย่างน้อย 1 set (น้ำหนักเว้นว่างได้สำหรับ bodyweight)','error'); return; }
   var bestE1RM = validSets.reduce(function(b,s){ var e=calcE1RM(s.weight,s.reps); return e>b?e:b; }, 0);
-  // Index of the single set that achieved bestE1RM (first occurrence on ties)
-  var bestSetIdx = -1;
-  validSets.forEach(function(s, i){ if (bestSetIdx < 0 && calcE1RM(s.weight,s.reps) === bestE1RM) bestSetIdx = i; });
-  var pr = getExPR(ST.curExercise.id);
-  var isPR = bestE1RM > 0 && (!pr || bestE1RM > pr.e1RM);
   var today = localDateStr();
+  // PR compares against previous days only. Bodyweight session (no weight on
+  // any set → e1RM 0) PRs on best reps instead of e1RM.
+  var bwMode = bestE1RM <= 0;
+  var bestReps = validSets.reduce(function(b,s){ return Math.max(b, s.reps); }, 0);
+  var isPR;
+  if (bwMode) {
+    isPR = bestReps > 0 && bestReps > getExRepPRBefore(ST.curExercise.id, today);
+  } else {
+    var pr = getExPRBefore(ST.curExercise.id, today);
+    isPR = !pr || bestE1RM > pr.e1RM;
+  }
+  // Index of the single set that achieved the PR metric (first occurrence on ties)
+  var bestSetIdx = -1;
+  validSets.forEach(function(s, i){
+    if (bestSetIdx < 0 && (bwMode ? s.reps === bestReps : calcE1RM(s.weight,s.reps) === bestE1RM)) bestSetIdx = i;
+  });
+  // Re-saving the same exercise today REPLACES today's rows — appending made
+  // the first save the PR baseline for the second and double-counted volume.
   var log = getStrengthLog();
+  var exId = ST.curExercise.id;
+  var replacedRows = log.filter(function(e){ return e.exerciseId === exId && e.date === today; });
+  log = log.filter(function(e){ return !(e.exerciseId === exId && e.date === today); });
   validSets.forEach(function(s, i) {
-    log.push({id:Date.now()+i, date:today, exerciseId:ST.curExercise.id,
+    log.push({id:Date.now()+i, date:today, exerciseId:exId,
       exerciseName:ST.curExercise.name, muscle:ST.curExercise.muscle,
       set:i+1, weight:s.weight, reps:s.reps,
       e1RM:calcE1RM(s.weight,s.reps), isPR:isPR&&i===bestSetIdx});
@@ -5082,6 +5237,9 @@ function confirmExerciseFromSheet() {
   saveStrengthLog(log);
   if (window.FB_OK) {
     var db = firebase.firestore();
+    replacedRows.forEach(function(e) {
+      db.collection('users').doc('nattapat').collection('strengthLog').doc(String(e.id)).delete().catch(function(){});
+    });
     validSets.forEach(function(s, i) {
       var entry = log[log.length - validSets.length + i];
       db.collection('users').doc('nattapat').collection('strengthLog').doc(String(entry.id)).set(entry);
@@ -5205,10 +5363,26 @@ var PRESETS = [
   {name:'อื่นๆ',icon:'🤸',met:4.0}
 ];
 
+// touchend fires on the element the touch STARTED on even if the sheet/viewport
+// shifted mid-tap (keyboard closing), where the synthesized click gets dropped.
+// preventDefault on touchend suppresses that click, so the handler runs once.
+function bindFastTap(el, fn) {
+  if (!el) return;
+  var moved = false;
+  el.addEventListener('touchstart', function(){ moved = false; }, {passive:true});
+  el.addEventListener('touchmove', function(){ moved = true; }, {passive:true});
+  el.addEventListener('touchend', function(e){ if (moved) return; e.preventDefault(); fn(); });
+  el.addEventListener('click', function(){ fn(); });
+}
 function initFitness() {
   renderPresets();
   loadFitnessTarget();
   rebuildCustomExercisesFromLog();
+  migrateThaiExercisesToEnglish();
+  document.querySelectorAll('#rest-timer-bar .rest-timer-btn').forEach(function(btn) {
+    var action = btn.getAttribute('data-rest-action');
+    bindFastTap(btn, action === 'skip' ? skipRestTimer : function(){ adjustRestTimer(parseInt(action, 10)); });
+  });
   // Init the workout-list date picker to today (caps at today)
   var ld = document.getElementById('ft-list-date');
   if (ld) { ld.value = localDateStr(); ld.max = localDateStr(); }
@@ -5647,7 +5821,7 @@ function showFitnessTab(tab) {
   if (tab === 'today') { if (typeof renderTodayPlanCard === 'function') renderTodayPlanCard(); }
   if (tab === 'chart') renderFitnessCharts();
   if (tab === 'strength') updateStrengthSelectOptions();
-  if (tab === 'target') { loadFitnessTarget(); renderTargetDashboard(); }
+  if (tab === 'target') { loadFitnessTarget(); renderTargetDashboard(); renderTargetTrendChart(); }
   if (tab === 'plan') { loadSavedPlan(); renderProgressionOverview(); }
   if (tab === 'sleep') { loadSleepUI(); renderSleepTrendChart(); }
   if (tab === 'insights') renderBehaviorInsights();
@@ -6195,6 +6369,84 @@ function getBFTrajectory(target) {
     else if (res.bfPerWeek < -0.02) res.projWeeks = Math.ceil(gap / (-res.bfPerWeek));
   }
   return res;
+}
+
+// ── Target-tab per-category trend chart ────────────────────────
+var _targetTrendChart = null;
+// Builds {dates, vals, target, suffix} for one dropdown category from the
+// weight log (gd_weight) + body-composition logs (gd_body_comp_logs).
+function targetTrendSeries(cat) {
+  var target = JSON.parse(localStorage.getItem('gd_ft_target')||'null') || {};
+  var profile = S.profile || {};
+  var height = parseFloat(profile.height) || null;
+  if (!WT.log.length) WT.log = JSON.parse(localStorage.getItem('gd_weight')||'[]');
+  var bc = getBodyCompLogs();
+  var byDate = {}; // one point per date; later entries win
+  function put(d, v){ if (d && v != null && isFinite(v)) byDate[d] = v; }
+  var tgt = null, suffix = '';
+  if (cat === 'weight') {
+    WT.log.forEach(function(e){ put(e.date, parseFloat(e.weight)); });
+    bc.forEach(function(e){ if (e.weight) put(e.date, parseFloat(e.weight)); });
+    tgt = parseFloat(target.weight) || null; suffix = ' กก.';
+  } else if (cat === 'bmi') {
+    if (height) {
+      var h2 = (height/100)*(height/100);
+      WT.log.forEach(function(e){ var w = parseFloat(e.weight); if (w) put(e.date, +(w/h2).toFixed(1)); });
+      tgt = parseFloat(target.bmi) || (parseFloat(target.weight) ? +(parseFloat(target.weight)/h2).toFixed(1) : null);
+    }
+  } else if (cat === 'bf') {
+    bc.forEach(function(e){ if (e.bf != null) put(e.date, parseFloat(e.bf)); });
+    tgt = parseFloat(target.bf) || null; suffix = '%';
+  } else if (cat === 'muscle') {
+    bc.forEach(function(e){ if (e.smmPct != null) put(e.date, parseFloat(e.smmPct)); });
+    tgt = parseFloat(target.muscle) || null; suffix = '%';
+  } else if (cat === 'visceral') {
+    bc.forEach(function(e){ if (e.visceral != null) put(e.date, parseFloat(e.visceral)); });
+    tgt = parseFloat(target.visceral) || null;
+  } else if (cat === 'lean') {
+    bc.forEach(function(e){
+      if (e.bf != null && e.weight) put(e.date, +((e.weight)*(1-parseFloat(e.bf)/100)).toFixed(1));
+    });
+    var tw = parseFloat(target.weight), tb = parseFloat(target.bf);
+    tgt = (tw && tb) ? +(tw*(1-tb/100)).toFixed(1) : null; suffix = ' กก.';
+  }
+  var dates = Object.keys(byDate).sort();
+  return { dates: dates, vals: dates.map(function(d){ return byDate[d]; }), target: tgt, suffix: suffix };
+}
+function renderTargetTrendChart() {
+  var canvas = document.getElementById('targetTrendChart');
+  var emptyEl = document.getElementById('target-trend-empty');
+  var wrapEl = document.getElementById('target-trend-wrap');
+  var noteEl = document.getElementById('target-trend-note');
+  if (!canvas || typeof Chart === 'undefined') return;
+  var sel = document.getElementById('target-trend-select');
+  var s = targetTrendSeries(sel ? sel.value : 'weight');
+  if (_targetTrendChart) { _targetTrendChart.destroy(); _targetTrendChart = null; }
+  if (s.dates.length < 2) {
+    if (emptyEl) emptyEl.style.display = 'block';
+    if (wrapEl) wrapEl.style.display = 'none';
+    if (noteEl) noteEl.style.display = 'none';
+    return;
+  }
+  if (emptyEl) emptyEl.style.display = 'none';
+  if (wrapEl) wrapEl.style.display = 'block';
+  if (noteEl) noteEl.style.display = s.target != null ? 'block' : 'none';
+  var datasets = [{ data:s.vals, borderColor:'#8b5cf6', backgroundColor:'rgba(139,92,246,0.1)',
+    borderWidth:2.5, fill:true, tension:0.3, pointRadius:3.5, pointBackgroundColor:'#8b5cf6' }];
+  if (s.target != null) {
+    datasets.push({ data:s.dates.map(function(){ return s.target; }), borderColor:'#22c55e',
+      borderDash:[6,4], borderWidth:1.5, pointRadius:0, fill:false });
+  }
+  _targetTrendChart = new Chart(canvas, {
+    type:'line',
+    data:{ labels:s.dates.map(function(d){ return d.slice(5); }), datasets:datasets },
+    options:{ responsive:true, maintainAspectRatio:false,
+      plugins:{ legend:{display:false}, tooltip:{callbacks:{label:function(c){ return ' '+c.parsed.y+(s.suffix||''); }}} },
+      scales:{
+        x:{ticks:{color:'#888',font:{size:10}},grid:{color:'rgba(255,255,255,0.05)'}},
+        y:{ticks:{color:'#888',font:{size:10}},grid:{color:'rgba(255,255,255,0.05)'}}
+      }}
+  });
 }
 
 function renderTargetDashboard() {
@@ -6805,7 +7057,7 @@ function generatePlan() {
     'รูปแบบที่ต้องการ: ' +
     '{"summary":"อธิบาย 2-3 ประโยคว่าแผนนี้ช่วยบรรลุเป้าหมายอย่างไร",' +
     '"days":[{"day":"วันอาทิตย์","theme":"ชื่อ session","exercises":[' +
-    '{"name":"ท่าออกกำลังกาย","type":"strength","sets":3,"reps":12,"intensity":"ปานกลาง","cal":80,"note":"เหตุผลสั้นๆ เฉพาะถ้าเปลี่ยนท่านี้จากสัปดาห์ก่อน เว้นว่าง (\\"\\") ถ้าไม่เปลี่ยน"},' +
+    '{"name":"Dumbbell Bench Press","type":"strength","sets":3,"reps":12,"intensity":"ปานกลาง","cal":80,"note":"เหตุผลสั้นๆ เฉพาะถ้าเปลี่ยนท่านี้จากสัปดาห์ก่อน เว้นว่าง (\\"\\") ถ้าไม่เปลี่ยน"},' +
     '{"name":"วิ่ง","type":"cardio","duration_min":30,"intensity":"ปานกลาง","cal":240}' +
     ']}]}\n' +
     'กฎสำคัญ:\n' +
@@ -6816,10 +7068,13 @@ function generatePlan() {
     '2.2 ถ้าระบุวันพักหลายวัน ให้กระจาย volume ไปวันอื่นอย่างสมเหตุสมผล ไม่ชดเชยหนักเกินจน recovery พัง\n' +
     '3. Strength/Weight training: ใช้ field "sets" และ "reps"\n' +
     '4. Cardio (วิ่ง, ปั่นจักรยาน, ว่ายน้ำ, HIIT, กระโดดเชือก ฯลฯ): ใช้ field "duration_min" แทน sets/reps\n' +
-    '5. ตอบภาษาไทย, ชื่อท่าเป็นภาษาไทย\n' +
+    '5. ตอบภาษาไทย ยกเว้น field "name" ของท่า strength ต้องเป็นภาษาอังกฤษเท่านั้น ' +
+    '(แอปเก็บประวัติ/PR ใต้ชื่อท่าภาษาอังกฤษ — ชื่อไทยจะทำให้ประวัติแยกขาด) ' +
+    'ให้เลือกชื่อจากรายการนี้ก่อนเสมอถ้ามีท่าที่ต้องการ: ' + EXERCISE_DB.map(function(e){ return e.name; }).join(', ') + ' ' +
+    '— ถ้าท่าที่ต้องการไม่อยู่ในรายการ ใช้ชื่ออังกฤษมาตรฐานของท่านั้น; ส่วนชื่อท่า cardio ใช้ภาษาไทยได้ (เช่น "วิ่ง" "ปั่นจักรยาน")\n' +
     '6. แผนต้อง align กับ Goal Mode, macro และ Training Focus ข้างต้น ห้ามสร้างแผน generic\\n' +
-    '7. Strength: ชื่อท่าต้องระบุอุปกรณ์เสมอ เช่น "บาร์เบลสควอท" "ดัมเบลเบนช์เพรส" "เคเบิลโรว์" ' +
-    'ห้ามใช้ชื่อสั้นกำกวมเช่น "สควอท" "โรว์" "เคิร์ล" เฉยๆ โดยไม่ระบุอุปกรณ์\n' +
+    '7. Strength: ถ้าตั้งชื่อท่าเองนอกเหนือจากรายการในข้อ 5 ต้องระบุอุปกรณ์เสมอ เช่น "Barbell Squat" "Dumbbell Bench Press" "Cable Row" ' +
+    'ห้ามใช้ชื่อสั้นกำกวมเช่น "Squat" "Row" "Curl" เฉยๆ โดยไม่ระบุอุปกรณ์\n' +
     (progressionSummary ?
     '8. อ้างอิง "สถานะความก้าวหน้าแต่ละท่า" ด้านบนเสมอเวลาสลับท่า: ท่าที่ "กำลังโต ↑" ต้องคงไว้ในแผนเดิม ' +
     'ห้ามสลับออกโดยเด็ดขาด (แผนต้อง reuse ชื่อท่าเดิมเป๊ะเพื่อให้ log ต่อเนื่อง); ท่าที่ "นิ่ง/plateau →" ' +
@@ -8680,7 +8935,6 @@ function buildResultHTML(r, em) {
             '<span style="font-size:25px;font-weight:800;color:'+scColor+';line-height:1;">'+(sc!==undefined?sc:'—')+'</span>' +
             '<span style="font-size:9px;color:var(--text3);font-weight:700;white-space:nowrap;margin-top:1px;">/ 100</span>' +
         '</div>' +
-        '</div>' +
       '</div>' +
       '<div style="flex:1;min-width:0;">' +
         '<div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;flex-wrap:wrap;">' +
@@ -8716,6 +8970,24 @@ function buildResultHTML(r, em) {
       return '<div style="margin-top:10px;background:rgba(168,85,247,0.07);border:1px solid rgba(168,85,247,0.2);border-radius:10px;padding:10px 12px;"><div style="font-size:11px;font-weight:700;color:#a855f7;margin-bottom:8px;text-transform:uppercase;letter-spacing:0.5px;">🛌 เพื่อให้คะแนนดีขึ้นคืนนี้</div>' + rows + '</div>';
     })()
   );
+}
+
+// Recovery-result HTML for display: always rebuild from the stored data fields
+// so the markup is current (cached HTML strings from older app versions kept
+// stale layouts — e.g. the missing sleep-score ring). The cached string is only
+// a last resort for entries that predate the calculated-score fields.
+function recoveryResultHTMLFor(entry) {
+  if (!entry) return null;
+  if (entry.recoveryData || entry.recoveryScore || entry.sleepScore) {
+    var base = entry.recoveryData || {
+      headline: entry.recoveryHeadline || null,
+      recommendation: entry.recoveryRec || entry.recommendation || null
+    };
+    var r = normalizeRecoveryResult(base, entry);
+    // Same sanitize step as the live render — recoveryData embeds AI free text
+    return sanitizeHTML(buildResultHTML(r, entry.recoveryEmoji || r.emoji || '🟡'));
+  }
+  return entry.recoveryResultHTML || null;
 }
 
 function updateDashRecoveryCard(d) {
@@ -8836,7 +9108,8 @@ function onSleepDateChange(dateStr) {
     if(d && d.date===today){
       _fillSleepForm(d);
       document.getElementById('sleep-saved-badge').style.display='block';
-      if(d.recoveryResultHTML&&recovEl){recovEl.style.display='block';recovEl.innerHTML=d.recoveryResultHTML;}
+      var todayHTML=recoveryResultHTMLFor(d);
+      if(todayHTML&&recovEl){recovEl.style.display='block';recovEl.innerHTML=todayHTML;}
     } else {
       _fillSleepForm(null);
       // pre-fill hints from last saved
@@ -8858,7 +9131,8 @@ function onSleepDateChange(dateStr) {
   if(entry){
     _fillSleepForm(entry);
     document.getElementById('sleep-saved-badge').style.display='block';
-    if(entry.recoveryResultHTML&&recovEl){recovEl.style.display='block';recovEl.innerHTML=entry.recoveryResultHTML;}
+    var pastHTML=recoveryResultHTMLFor(entry);
+    if(pastHTML&&recovEl){recovEl.style.display='block';recovEl.innerHTML=pastHTML;}
     _setSleepReadOnly(true);
   } else {
     _fillSleepForm(null);
@@ -8883,9 +9157,10 @@ function loadSleepUI() {
   _fillSleepForm(d);
   document.getElementById('sleep-saved-badge').style.display='block';
   _setSleepReadOnly(false);
-  if(d.recoveryResultHTML){
+  var recovHTML=recoveryResultHTMLFor(d);
+  if(recovHTML){
     var el=document.getElementById('morning-recovery-result');
-    if(el){el.style.display='block';el.innerHTML=d.recoveryResultHTML;}
+    if(el){el.style.display='block';el.innerHTML=recovHTML;}
   }
 }
 
@@ -8941,7 +9216,7 @@ function syncSleepLog(data){
     rhr:data.rhr,hrv:data.hrv,hrvBaseline:data.hrvBaseline,respRate:data.respRate||null,
     bedtime:data.bedtime,wakeTime:data.wakeTime,consistency:data.consistency,sleepScore:data.sleepScore||null,
     scoreLabel:data.scoreLabel||null,recoveryScore:data.recoveryScore||null,recoveryEmoji:data.recoveryEmoji||null,
-    recoveryResultHTML:data.recoveryResultHTML||null,recommendation:data.recoveryRec||null,
+    recoveryResultHTML:data.recoveryResultHTML||null,recoveryData:data.recoveryData||null,recommendation:data.recoveryRec||null,
     polarStrain:data.polarStrain||null,polarTolerance:data.polarTolerance||null};
   var i=log.findIndex(function(s){return s.date===data.date;});
   if(i>=0){ // merge, never overwrite existing values with null
@@ -8950,6 +9225,8 @@ function syncSleepLog(data){
     if(rec.recoveryScore==null && log[i].recoveryScore!=null) rec.recoveryScore=log[i].recoveryScore;
     if(rec.recoveryEmoji==null && log[i].recoveryEmoji!=null) rec.recoveryEmoji=log[i].recoveryEmoji;
     if(rec.recommendation==null && log[i].recommendation!=null) rec.recommendation=log[i].recommendation;
+    if(rec.recoveryData==null && log[i].recoveryData!=null) rec.recoveryData=log[i].recoveryData;
+    if(rec.recoveryResultHTML==null && log[i].recoveryResultHTML!=null) rec.recoveryResultHTML=log[i].recoveryResultHTML;
     log[i]=rec;
   } else log.push(rec);
   log.sort(function(a,b){return a.date<b.date?-1:1;});
