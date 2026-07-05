@@ -7305,6 +7305,7 @@ function matchExerciseId(rawName) {
     'สควอท':'squat','สควอต':'squat','ย่อขา':'squat',
     'เบนช์':'bench press','เบนช์เพรส':'bench press','ดันอก':'bench press',
     'เดดลิฟท์':'deadlift','เดดลิฟต์':'deadlift',
+    'อาร์ดีแอล':'romanian deadlift',
     'โอเวอร์เฮด':'overhead press','ดันบ่า':'overhead press','ดันไหล่':'overhead press',
     'ลันจ์':'lunges','ลันจ':'lunges','ย่อขาเดิน':'lunges',
     'พูลอัพ':'pull up','โหนบาร์':'pull up','ดึงข้อ':'pull up',
@@ -7314,17 +7315,23 @@ function matchExerciseId(rawName) {
     'เคิร์ล':'curl','งอแขน':'curl','ม้วนแขน':'curl',
     'ฮิปทรัส':'hip thrust','สะโพก':'hip thrust',
     'แลตพูลดาวน์':'lat pulldown','ดึงหลัง':'lat pulldown',
-    'เลกเพรส':'leg press','เลกเคิร์ล':'leg curl','เลกเอ็กซ์เทนชั่น':'leg extension',
-    'น่อง':'calf raise','ครันช์':'crunch','รัสเซียนทวิสต์':'russian twist',
+    'เลก':'leg','เลกเพรส':'leg press','เลกเคิร์ล':'leg curl','เลกเอ็กซ์เทนชั่น':'leg extension',
+    'น่อง':'calf raise','คาล์ฟเรส':'calf raise','คาล์ฟ':'calf',
+    'ครันช์':'crunch','รัสเซียนทวิสต์':'russian twist',
     'แฮมสตริง':'hamstring leg','ต้นขาหลัง':'hamstring leg','หลังขา':'hamstring leg'
   };
   // Thai equipment qualifiers -> English (help disambiguate barbell vs dumbbell)
   var TH_EQUIP = { 'ดัมเบล':'dumbbell','ดัมเบล์':'dumbbell','บาร์เบล':'barbell','บาร์เบล์':'barbell','เคเบิล':'cable','อินไคลน์':'incline' };
+  // Thai has no spaces between words, but the AI sometimes emits a space
+  // between transliterated syllables (e.g. "เลก เคิร์ล" instead of
+  // "เลกเคิร์ล"). Match aliases against a whitespace-collapsed copy so
+  // spacing quirks don't break the lookup.
+  var targetFlat = target.replace(/\s+/g,'');
   Object.keys(TH_EQUIP).forEach(function(th){
-    if (target.indexOf(th) >= 0) target += ' ' + TH_EQUIP[th];
+    if (targetFlat.indexOf(th) >= 0) target += ' ' + TH_EQUIP[th];
   });
   Object.keys(TH_ALIAS).forEach(function(th){
-    if (target.indexOf(th) >= 0) target += ' ' + TH_ALIAS[th];
+    if (targetFlat.indexOf(th) >= 0) target += ' ' + TH_ALIAS[th];
   });
   // Muscle-name aliases (EN) -> map to the muscle group token used to disambiguate
   // generic move names like "Curl" / "Extension" (e.g. hamstring curl != bicep curl)
