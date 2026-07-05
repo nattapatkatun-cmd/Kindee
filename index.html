@@ -9579,9 +9579,7 @@ function buildChatContext(){
   var nut = meals.reduce(function(a,m){ return {cal:a.cal+(m.calories||0),pro:a.pro+(m.protein||0),crb:a.crb+(m.carbs||0),fat:a.fat+(m.fat||0)}; }, {cal:0,pro:0,crb:0,fat:0});
   var netCal = nut.cal - workoutBurn - neatCal;
 
-  var calCtx = (typeof getOfficialCalorieContext === 'function') ? getOfficialCalorieContext() : {};
-  var central = (typeof getCentralGoalProfile === 'function') ? getCentralGoalProfile() : {goal:S.goals};
-  var goals = (central && central.goal) ? central.goal : S.goals;
+  var goals = S.goals; // User's manually set/saved goal — same source as dashboard & generateDailySummary, never override with engine
 
   // Body composition: latest entry
   var bcLogs = (typeof getBodyCompLogs === 'function') ? getBodyCompLogs() : safeJSON('gd_body_comp_logs', []);
