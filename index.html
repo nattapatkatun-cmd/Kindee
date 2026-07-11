@@ -1398,7 +1398,7 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
         <div id="goal-mode-hint" style="font-size:11px;color:var(--text3);margin-top:7px;line-height:1.6;background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:8px 10px;">เลือก mode แล้วกดคำนวณ เพื่อ sync กับ Analyzer / AI / Workout Plan</div>
       </div>
       <div class="input-group"><label class="input-label">Training Focus / โฟกัสการซ้อม</label>
-        <select class="input-field" id="s-training-focus" onchange="updateGoalModeHint()">
+        <select class="input-field" id="s-training-focus" onchange="updateGoalModeHint();persistTrainingPrefs()">
           <option value="hybrid" selected>Hybrid: เวท + คาร์ดิโอ</option>
           <option value="hypertrophy">Hypertrophy: เพิ่มกล้าม/รูปร่าง</option>
           <option value="strength">Strength: แรงและ compound lift</option>
@@ -1408,14 +1408,14 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
       </div>
       <div class="input-row">
         <div class="input-group"><label class="input-label">Recovery Priority</label>
-          <select class="input-field" id="s-recovery-priority" onchange="updateGoalModeHint()">
+          <select class="input-field" id="s-recovery-priority" onchange="updateGoalModeHint();persistTrainingPrefs()">
             <option value="normal" selected>Normal</option>
             <option value="recovery_first">Recovery First</option>
             <option value="aggressive">Aggressive / Push</option>
           </select>
         </div>
         <div class="input-group"><label class="input-label">Weekly Training</label>
-          <select class="input-field" id="s-weekly-frequency" onchange="updateGoalModeHint()">
+          <select class="input-field" id="s-weekly-frequency" onchange="updateGoalModeHint();persistTrainingPrefs()">
             <option value="3">3 วัน/สัปดาห์</option>
             <option value="4" selected>4 วัน/สัปดาห์</option>
             <option value="5">5 วัน/สัปดาห์</option>
@@ -2898,12 +2898,13 @@ function generateDailySummary() {
   var steps = (typeof getTodaySteps === 'function') ? getTodaySteps() : 0;
   var neatCal = (typeof getNeatCalForDate === 'function') ? getNeatCalForDate(today) : 0;
   var workoutBurn = workouts.reduce(function(a, w) { return a + w.calories_burned; }, 0);
+  var creditedBurn = creditedBurnSum(workouts);
 
   // Aggregate nutrition
   var nut = meals.reduce(function(a, m) {
     return { cal: a.cal + m.calories, pro: a.pro + m.protein, crb: a.crb + m.carbs, fat: a.fat + m.fat };
   }, { cal: 0, pro: 0, crb: 0, fat: 0 });
-  var netCal = nut.cal - workoutBurn - neatCal;
+  var netCal = nut.cal - creditedBurn - neatCal;
 
   // Gaps
   var proGap = nut.pro - goals.pro;
@@ -3698,7 +3699,7 @@ function updateDash() {
   // Adaptive TDEE รวม workout+NEAT ไว้แล้ว → กินตามเป้า gross ไม่ต้องบวกกิจกรรมเพิ่ม
   var today = viewDate;
   var neatCal = getNeatCalForDate ? getNeatCalForDate(today) : 0;
-  var totalBurnToday = FT.workouts.filter(function(w){return w.date===viewDate;}).reduce(function(a,w){return a+w.calories_burned;},0);
+  var totalBurnToday = creditedBurnSum(FT.workouts.filter(function(w){return w.date===viewDate;}));
   var netEaten = t.cal - totalBurnToday - neatCal; // ข้อมูลเสริม: deficit จริง
   var grossRem = g.cal - t.cal;                    // primary: เหลือกินได้เท่าไหร่
   var isUnderGoal = grossRem >= 0; // true = ยังไม่เกินเป้ากิน (ดี), false = กินเกิน
@@ -4169,8 +4170,24 @@ function updateGoalModeHint(goal) {
 function mealsForDate(date) { return (S.meals || []).filter(function(m){ return m.date === date; }); }
 function workoutsForDate(date) { return (typeof FT !== 'undefined' && FT.workouts ? FT.workouts : []).filter(function(w){ return w.date === date; }); }
 function getSessionStepsForMetrics(date) { return workoutsForDate(date).reduce(function(a,w){ return a + (+w.session_steps || 0); }, 0); }
-function getDailyMetrics(date, opts) {
-  opts = opts || {};
+// Discount logged workout burn toward net-calorie / TDEE math (never toward the raw
+// number shown on the workout log itself). Two independent reasons to discount, by source:
+// - 'met' (app's own MET formula, cal_source unset/legacy = 'met'): MET is gross energy and
+//   already includes the resting cost the TDEE baseline counts separately, so only the
+//   "extra" portion above resting should count. Strength entries are logged by total session
+//   duration (including inter-set rest), which overstates true active burn even more than
+//   steady cardio does.
+// - 'override' (user typed a different number than the app computed — e.g. copying a
+//   smartwatch reading): optical-HR / device calorie estimates are commonly inflated.
+function getWorkoutBurnCredit(w) {
+  if (!w) return 0.75;
+  if (w.cal_source === 'override') return 0.50;
+  return (w.exercises && w.exercises.length) ? 0.60 : 0.80;
+}
+function creditedBurnSum(workouts) {
+  return (workouts || []).reduce(function(a,w){ return a + (+w.calories_burned || 0) * getWorkoutBurnCredit(w); }, 0);
+}
+function getDailyMetrics(date) {
   var meals = mealsForDate(date), workouts = workoutsForDate(date);
   var intake = meals.reduce(function(a,m){ return a + (+m.calories || 0); }, 0);
   var protein = meals.reduce(function(a,m){ return a + (+m.protein || 0); }, 0);
@@ -4182,15 +4199,14 @@ function getDailyMetrics(date, opts) {
   if (typeof getTodaySteps === 'function' && date === localDateStr()) steps = getTodaySteps();
   var sessionSteps = getSessionStepsForMetrics(date);
   var neatCal = (typeof calcStepCalories === 'function') ? calcStepCalories(Math.max(steps - sessionSteps, 0)) : 0;
-  var workoutCredit = opts.workoutCredit === undefined ? 1 : opts.workoutCredit;
-  var creditedWorkoutBurn = workoutBurn * workoutCredit;
+  var creditedWorkoutBurn = creditedBurnSum(workouts);
   var retention = (typeof getDailyRetentionContext === 'function') ? getDailyRetentionContext(date) : {score:0};
   return { date:date, meals:meals, workouts:workouts, intake:intake, protein:protein, carbs:carbs, fat:fat, workoutBurn:workoutBurn, creditedWorkoutBurn:creditedWorkoutBurn, steps:steps, sessionSteps:sessionSteps, neatCal:neatCal, totalBurn:workoutBurn+neatCal, netCal:intake-creditedWorkoutBurn-neatCal, retentionScore:retention.score, retention:retention };
 }
-function getDateRangeMetrics(startDate, endDate, opts) {
+function getDateRangeMetrics(startDate, endDate) {
   var out = []; var cur = startDate;
   while (cur <= endDate) {
-    out.push(getDailyMetrics(cur, opts));
+    out.push(getDailyMetrics(cur));
     var d = new Date(cur + 'T12:00:00'); d.setDate(d.getDate() + 1);
     cur = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
   }
@@ -4198,6 +4214,20 @@ function getDateRangeMetrics(startDate, endDate, opts) {
 }
 
 // Settings
+// Training Focus / Recovery / Frequency drive the AI workout-plan prompt directly
+// (getCentralGoalProfile reads them off S.profile) — persist on change so a plan
+// generated without pressing คำนวณเป้าหมาย first still uses the current dropdown value.
+function persistTrainingPrefs() {
+  if (!S.profile) return;
+  var focusEl = document.getElementById('s-training-focus');
+  var recEl = document.getElementById('s-recovery-priority');
+  var freqEl = document.getElementById('s-weekly-frequency');
+  if (focusEl) S.profile.trainingFocus = focusEl.value;
+  if (recEl) S.profile.recoveryPriority = recEl.value;
+  if (freqEl) S.profile.weeklyFrequency = freqEl.value;
+  localStorage.setItem('gd_profile', JSON.stringify(S.profile));
+  if (window.FB_OK) window.FB.saveSetting('profile', S.profile);
+}
 function calcGoal() {
   var age=+document.getElementById('s-age').value, weight=getLatestCheckinWeight();
   var height=+document.getElementById('s-height').value, gender=document.getElementById('s-gender').value;
@@ -4392,7 +4422,7 @@ function checkAlert() {
   // The trigger itself must use gross intake vs goal — Adaptive TDEE already
   // bakes activity into the goal number, so gating on net here would silently
   // let a heavy-workout day go over the gross target without ever alerting.
-  var workoutBurn = (typeof todayWorkouts==='function') ? todayWorkouts().reduce(function(a,w){return a+(+w.calories_burned||0);},0) : 0;
+  var workoutBurn = (typeof todayWorkouts==='function') ? creditedBurnSum(todayWorkouts()) : 0;
   var neatCal = (typeof getNeatCalForDate==='function') ? getNeatCalForDate(localDateStr()) : 0;
   var net = eaten - workoutBurn - neatCal;
 
@@ -5565,6 +5595,12 @@ function addWorkout() {
   var now = new Date();
   var sessionSteps = parseInt(document.getElementById('ft-session-steps').value) || 0;
   var avgHR = parseInt(document.getElementById('ft-avg-hr').value) || 0;
+  // Detect the kcal source: if the saved number still matches the app's own MET formula
+  // for this preset/duration/weight, it's the app's estimate; if the user typed a
+  // different number (e.g. copied from a smartwatch), treat it as an external override —
+  // net-calorie math credits the two differently (see getWorkoutBurnCredit).
+  var expectedMetKcal = FT.curPreset ? calcBurnKcal(FT.curPreset.met, min) : null;
+  var calSource = (expectedMetKcal !== null && Math.abs(calBurn - expectedMetKcal) <= 1) ? 'met' : 'override';
   var w = {
     id: Date.now(),
     date: readLogDate('workout-date'),
@@ -5573,6 +5609,7 @@ function addWorkout() {
     icon: FT.curPreset ? FT.curPreset.icon : '🤸',
     duration_min: min,
     calories_burned: calBurn,
+    cal_source: calSource,
     met: FT.curPreset ? FT.curPreset.met : 4.0,
     session_steps: sessionSteps,
     avg_hr: avgHR
@@ -6461,7 +6498,7 @@ function renderTargetDashboard() {
   }
   var currWeight = profile ? parseFloat(profile.weight) : null;
   var height     = profile ? parseFloat(profile.height) : null;
-  var gender     = profile ? profile.gender : 'male';
+  var gender     = (profile && profile.gender) || 'male';
   var currBF     = target.currBF ? parseFloat(target.currBF) : null;
   var currMuscle  = target.currMuscle   ? parseFloat(target.currMuscle)   : null;
   var currVisceral= target.currVisceral ? parseFloat(target.currVisceral) : null;
@@ -6989,7 +7026,7 @@ function generatePlan() {
   var weight   = profile && profile.weight ? parseFloat(profile.weight) : 65;
   var height   = profile && profile.height ? parseFloat(profile.height) : 170;
   var age      = profile && profile.age    ? parseInt(profile.age)      : 30;
-  var gender   = profile && profile.gender === 'male' ? 'ชาย' : 'หญิง';
+  var gender   = (profile && profile.gender === 'female') ? 'หญิง' : 'ชาย'; // default male, matching buildGoalFromMode
   var goalType = normalizeGoalMode(profile && profile.goalType ? profile.goalType : 'recomp');
   var goalText = getGoalModeConfig(goalType).label;
 
@@ -8239,13 +8276,18 @@ function buildAnalysisHTML(recent) {
   var waistPerWeek = getWaistTrend(recent);
 
   // Net cal data — centralized daily metrics: food + workout + deduped NEAT/steps
-  var metricsDays = getDateRangeMetrics(cutoffStr, todayStr, { workoutCredit: 1.0 });
+  var metricsDays = getDateRangeMetrics(cutoffStr, todayStr);
   var netByDate = {};
   metricsDays.forEach(function(m){
-    // Keep all days in range so logRate does not exceed 100%; days without intake still count as zero-intake tracking days.
+    // Only count days where food was actually logged. Padding unlogged days in as
+    // zero-intake silently crashes the average toward zero and made logRate always
+    // read ~100% (it was computed over this same all-days list), so the "irregular
+    // logging" quality gate below could never fire.
+    if (!m.meals || !m.meals.length) return;
     netByDate[m.date] = {
       intake: m.intake,
       burn: m.workoutBurn,
+      creditedBurn: m.creditedWorkoutBurn,
       neat: m.neatCal,
       steps: m.steps,
       sessionSteps: m.sessionSteps,
@@ -8261,28 +8303,28 @@ function buildAnalysisHTML(recent) {
   var logRate    = Math.min(rawLogRate, 1.0);
   var dataError  = rawLogRate > 1.05; // >105% = likely duplicate logs
 
-  // Average intake / burn / NEAT
-  var avgIntake=0, avgBurn=0, avgNEAT=0;
+  // Average intake / burn / NEAT (over days with food logged only — see filter above)
+  var avgIntake=0, avgBurn=0, avgEffectiveBurn=0, avgNEAT=0;
   if(calDays.length>0){
     avgIntake=calDays.reduce(function(s,d){return s+(netByDate[d].intake||0);},0)/calDays.length;
     avgBurn  =calDays.reduce(function(s,d){return s+(netByDate[d].burn||0);},0)/calDays.length;
+    avgEffectiveBurn=calDays.reduce(function(s,d){return s+(netByDate[d].creditedBurn||0);},0)/calDays.length;
     avgNEAT  =calDays.reduce(function(s,d){return s+(netByDate[d].neat||0);},0)/calDays.length;
   } else {
     avgIntake=S.goals&&S.goals.cal?S.goals.cal:0;
     avgBurn=0;
+    avgEffectiveBurn=0;
     avgNEAT=0;
   }
 
-  // For analysis: discount workout burn because watches/apps often overestimate.
-  // This keeps TRUE TDEE closer to real baseline and prevents 3000+ spikes.
-  var burnCredit = 0.50;
-  var avgEffectiveBurn = avgBurn * burnCredit;
+  // Workout burn credit is now applied per-workout by source (getWorkoutBurnCredit),
+  // shared with the dashboard/daily-summary/chat net-calorie readouts.
   var avgNetCal = avgIntake - avgEffectiveBurn - avgNEAT;
 
   // Intake variance uses adjusted net, not raw intake
   var calVariance=0;
   if(calDays.length>1){
-    var netVals=calDays.map(function(d){return (netByDate[d].intake||0)-(((netByDate[d].burn||0)*burnCredit)+(netByDate[d].neat||0));});
+    var netVals=calDays.map(function(d){return (netByDate[d].intake||0)-((netByDate[d].creditedBurn||0)+(netByDate[d].neat||0));});
     var avgNet=netVals.reduce(function(s,x){return s+x;},0)/netVals.length;
     calVariance=Math.sqrt(netVals.reduce(function(s,x){return s+Math.pow(x-avgNet,2);},0)/netVals.length);
   }
@@ -8340,7 +8382,12 @@ function buildAnalysisHTML(recent) {
     maxTDEE = bmr * Math.min(Math.max(activityMult+0.20, 1.45), 1.85);
   }
 
-  // TRUE TDEE (baseline, net-calorie compatible)
+  // TRUE TDEE — total/maintenance calories (this is what Goal Engine, Settings, and the
+  // Workout Plan prompt all treat "TDEE" as — a flat number compared against GROSS intake).
+  // Reconciled from gross avgIntake + the trend-implied deficit/surplus, which is the
+  // classic reverse-TDEE method: the weight trend already reflects true total expenditure
+  // (BMR + NEAT + exercise) regardless of how much was logged, so no activity should be
+  // subtracted out of the intake side here — that's what avgNetCal (below) is for instead.
   var trueTDEE=null, tdeeIsEstimate=false;
   if(calDays.length>=3&&daySpan>=5){
     // Use regression trend, not first-last raw change. Negative trend = deficit.
@@ -8353,7 +8400,7 @@ function buildAnalysisHTML(recent) {
     trendKgPerDay=Math.max(-0.10, Math.min(0.10, trendKgPerDay));
 
     var deficitFromTrend = -(trendKgPerDay*7700); // positive if losing
-    var estimatedTDEE = avgNetCal + deficitFromTrend;
+    var estimatedTDEE = avgIntake + deficitFromTrend;
 
     // Physiological clamp from profile. If clamp is used, mark as estimate.
     if(bmr!==null){
@@ -8372,7 +8419,9 @@ function buildAnalysisHTML(recent) {
     }
   }
 
-  // Actual Deficit = baseline TDEE - adjusted net calories
+  // Actual Deficit = total TDEE - net calories (net of credited activity) — bigger on
+  // days/periods with more logged exercise, since that activity is real added expenditure
+  // on top of the same flat total-TDEE baseline.
   var actualDeficit=trueTDEE!==null?Math.round(trueTDEE-avgNetCal):null;
   if(actualDeficit!==null){
     actualDeficit=Math.max(-1000, Math.min(1000, actualDeficit));
@@ -8625,7 +8674,7 @@ function buildAnalysisHTML(recent) {
   html+='• Adaptive TDEE: <strong>'+(trueTDEE?trueTDEE+(tdeeIsEstimate?' (est.)':''):'ข้อมูลไม่พอ')+'</strong><br>';
   html+='• Avg intake: <strong>'+(calDays.length>0?Math.round(avgIntake)+' kcal':'—')+'</strong><br>';
   html+='• Avg burn (workout): <strong>'+(calDays.length>0?Math.round(avgBurn)+' kcal':'0 kcal (assumed)')+'</strong><br>';
-  if(avgBurn>0) html+='• Burn credited in TDEE calc: <strong>'+Math.round(avgEffectiveBurn)+' kcal</strong><br>';
+  if(avgBurn>0) html+='• Burn credited in Net Cal calc: <strong>'+Math.round(avgEffectiveBurn)+' kcal</strong><br>';
   html+='• Avg NEAT from steps: <strong>'+Math.round(avgNEAT)+' kcal</strong><br>';
   html+='• Net Cal: <strong>'+Math.round(avgNetCal)+' kcal</strong><br>';
   html+='• Estimated Deficit: <strong>'+(actualDeficit!==null?Math.round(actualDeficit)+(inconsistent?' ⚠️ (ขัดกับ trend)':'')+' kcal/วัน':'—')+'</strong><br>';
@@ -9576,8 +9625,9 @@ function buildChatContext(){
   var steps = (typeof getTodaySteps === 'function') ? getTodaySteps() : 0;
   var neatCal = (typeof getNeatCalForDate === 'function') ? getNeatCalForDate(today) : 0;
   var workoutBurn = workouts.reduce(function(a,w){ return a + (w.calories_burned||0); }, 0);
+  var creditedBurn = creditedBurnSum(workouts);
   var nut = meals.reduce(function(a,m){ return {cal:a.cal+(m.calories||0),pro:a.pro+(m.protein||0),crb:a.crb+(m.carbs||0),fat:a.fat+(m.fat||0)}; }, {cal:0,pro:0,crb:0,fat:0});
-  var netCal = nut.cal - workoutBurn - neatCal;
+  var netCal = nut.cal - creditedBurn - neatCal;
 
   var goals = S.goals; // User's manually set/saved goal — same source as dashboard & generateDailySummary, never override with engine
 
