@@ -729,6 +729,7 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
       <div class="card">
         <div class="card-title">อัปโหลดรูปอาหาร</div>
         <img id="previewImg" class="preview-img" src="" alt="preview"/>
+        <button class="btn-secondary" id="changePhotoBtn" type="button" onclick="document.getElementById('fileInput').click()" style="display:none;margin-bottom:12px;">🔄 เปลี่ยนรูป</button>
         <div class="upload-area" id="uploadArea" onclick="document.getElementById('fileInput').click()">
           <div style="font-size:36px;margin-bottom:8px;">📷</div>
           <div style="font-size:15px;font-weight:600;">แตะเพื่ออัปโหลดรูปภาพ</div>
@@ -2171,9 +2172,11 @@ function handleFile(e) {
   var reader = new FileReader();
   reader.onload = function(ev){
     curImg = ev.target.result.split(',')[1];
+    curResult = null;
     var img = document.getElementById('previewImg');
     img.src = ev.target.result; img.style.display = 'block';
     document.getElementById('uploadArea').style.display = 'none';
+    document.getElementById('changePhotoBtn').style.display = 'block';
     document.getElementById('analyzeBtn').disabled = false;
     document.getElementById('resultCard').style.display = 'none';
     document.getElementById('clarifyBox').style.display = 'none';
@@ -2440,6 +2443,7 @@ function saveMeal() {
 function resetAnalyze() {
   curImg=null; curResult=null;
   document.getElementById('previewImg').style.display = 'none';
+  document.getElementById('changePhotoBtn').style.display = 'none';
   document.getElementById('uploadArea').style.display = 'block';
   document.getElementById('analyzeBtn').disabled = true;
   document.getElementById('resultCard').style.display = 'none';
