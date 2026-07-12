@@ -8268,7 +8268,14 @@ function saveProgressPhotoLog(){
     // Upload the actual image to Storage — only a small metadata record
     // (with the resulting URL) ever touches localStorage/Firestore.
     showToast('กำลังอัปโหลดรูป...', 'info');
-    window.FB.uploadProgressPhoto(id, base64ToBlob(b64, 'image/jpeg')).then(function(url){
+    // A stalled/misconfigured Storage request can hang forever (neither resolves
+    // nor rejects), which used to leave the save stuck mid-upload with the old
+    // photo/summary still on screen. Race it against a timeout so the save
+    // always completes locally even if Storage never responds.
+    var uploadTimeout = new Promise(function(_, reject){
+      setTimeout(function(){ reject(new Error('หมดเวลาอัปโหลด')); }, 12000);
+    });
+    Promise.race([window.FB.uploadProgressPhoto(id, base64ToBlob(b64, 'image/jpeg')), uploadTimeout]).then(function(url){
       finalizeSave(Object.assign({}, meta, { imageUrl: url }));
     }).catch(function(err){
       console.warn('Progress photo upload failed, keeping it local only:', err);
