@@ -1269,6 +1269,10 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
 
       <button class="btn-primary" onclick="handleSaveWeight()">💾 บันทึก Check-in</button>
       <div id="bc-source-summary" style="margin-top:10px;"></div>
+      <details id="bc-log-list-details" style="margin-top:8px;">
+        <summary style="cursor:pointer;font-size:12px;color:var(--text3);">📋 ดู/แก้ไขแหล่งข้อมูลย้อนหลัง</summary>
+        <div id="bc-log-list" style="margin-top:8px;"></div>
+      </details>
     </div>
 
     <!-- Compare Card -->
@@ -1814,6 +1818,9 @@ function drainFBQueue() {
       } else if (item.type === 'weight') {
         if (item.op === 'save' && window.FB.saveWeight) { window.FB.saveWeight(item.data); count++; }
         else if (item.op === 'del' && window.FB.delWeight) { window.FB.delWeight(item.data); count++; }
+      } else if (item.type === 'bodycomp') {
+        if (item.op === 'save' && window.FB.saveBodyComp) { window.FB.saveBodyComp(item.data); count++; }
+        else if (item.op === 'del' && window.FB.delBodyComp) { window.FB.delBodyComp(item.data); count++; }
       }
     } catch(e) { console.warn('drainFBQueue error:', e); }
   });
@@ -1939,7 +1946,7 @@ var curImg = null, curImgType = 'image/jpeg', curLabel = '', curResult = null, c
 var menuItems = [], menuId = 0;
 
 // Goal-centered sync version: clears stale cached AI text when logic changes
-var APP_LOGIC_VERSION = 'v23_25_bodycomp_outlier_filter_2026_07_12';
+var APP_LOGIC_VERSION = 'v23_27_bodycomp_offline_sync_fix_2026_07_12';
 try {
   if (localStorage.getItem('gd_logic_version') !== APP_LOGIC_VERSION) {
     localStorage.removeItem('gd_daily_summary');
@@ -2024,8 +2031,12 @@ function init() {
       localStorage.setItem('gd_favorites', JSON.stringify(S.favorites));
       if(fbBodyComps.length){
         var local = safeJSON('gd_body_comp_logs', []);
+        // Exclude ids with a still-pending offline delete — otherwise the Firestore
+        // copy (not yet caught up) resurrects a row the user just deleted locally.
+        var pendingBcDelIds = {};
+        safeJSON('gd_pending_fb', []).forEach(function(item){ if(item.type==='bodycomp' && item.op==='del') pendingBcDelIds[item.data]=true; });
         var byId = {};
-        fbBodyComps.concat(local).forEach(function(e){ if(e && e.id) byId[e.id]=e; });
+        fbBodyComps.concat(local).forEach(function(e){ if(e && e.id && !pendingBcDelIds[e.id]) byId[e.id]=e; });
         var merged = Object.keys(byId).map(function(k){ return byId[k]; }).sort(function(a,b){ return a.date.localeCompare(b.date)||a.id-b.id; });
         localStorage.setItem('gd_body_comp_logs', JSON.stringify(merged));
       }
@@ -7779,6 +7790,12 @@ function handleSaveWeight() {
   if (document.getElementById('wt-waist')) document.getElementById('wt-waist').value = '';
   if (document.getElementById('wt-note')) document.getElementById('wt-note').value = '';
   ['bc-bf','bc-smm','bc-smm-pct','bc-vf','bc-bmr'].forEach(function(id){ var el=document.getElementById(id); if(el) el.value=''; });
+  // bc-source used to be left as-is after save — if a real InBody scan was
+  // logged once, every later Eufy check-in in the same session silently
+  // inherited source:'inbody' too (stale <select> value), corrupting the
+  // InBody-only calibration sync + outlier detection. Reset to the safe
+  // default every time; a real InBody re-scan requires reselecting it.
+  var srcElReset = document.getElementById('bc-source'); if (srcElReset) srcElReset.value = 'eufy';
   _renderWeightTab();
   showToast((existingIdx !== -1 ? '✅ อัปเดต Check-in แล้ว' : '✅ บันทึก Check-in แล้ว') + (bcSaved ? ' + Body Composition' : '') ,'success');
 }
@@ -7964,14 +7981,14 @@ function deleteBodyCompLogEntry(id){
   var deleted = logs.find(function(x){ return x.id === id; });
   logs = logs.filter(function(x){ return x.id !== id; });
   setBodyCompLogs(logs);
-  if (window.FB_OK && window.FB.delBodyComp) window.FB.delBodyComp(id);
+  if (window.FB_OK && window.FB.delBodyComp) window.FB.delBodyComp(id); else queueFBWrite('bodycomp','del',id);
   renderBodyCompSummary();
   if (typeof renderBodyCompOutlierBanner === 'function') renderBodyCompOutlierBanner();
   if (typeof renderTargetTrendChart === 'function') renderTargetTrendChart();
   localStorage.removeItem('gd_wt_analysis'); localStorage.removeItem('gd_daily_summary');
   showUndoToast('ลบ Body Composition log แล้ว', function(){
     setBodyCompLogs(backup);
-    if (window.FB_OK && window.FB.saveBodyComp && deleted) window.FB.saveBodyComp(deleted);
+    if (window.FB_OK && window.FB.saveBodyComp && deleted) window.FB.saveBodyComp(deleted); else if(deleted) queueFBWrite('bodycomp','save',deleted);
     renderBodyCompSummary();
     if (typeof renderBodyCompOutlierBanner === 'function') renderBodyCompOutlierBanner();
     if (typeof renderTargetTrendChart === 'function') renderTargetTrendChart();
@@ -8056,7 +8073,7 @@ function saveBodyCompLogFromCheckin(entry, showEmptyToast){
   logs.push(row);
   logs.sort(function(a,b){ return (a.date+String(a.id)).localeCompare(b.date+String(b.id)); });
   setBodyCompLogs(logs);
-  if (window.FB_OK) window.FB.saveBodyComp(row);
+  if (window.FB_OK) window.FB.saveBodyComp(row); else queueFBWrite('bodycomp','save',row);
   if (S.webhook) { fetch('https://kindee.ojo0308.workers.dev/',{method:'POST',headers:{'Content-Type':'application/json','x-target-url':S.webhook},body:JSON.stringify({action:'addBodyComp',data:row})}).catch(function(){}); }
   renderBodyCompSummary();
   if (typeof renderBodyCompOutlierBanner === 'function') renderBodyCompOutlierBanner();
@@ -8107,7 +8124,7 @@ function renderBodyCompSummary(){
   var el=document.getElementById('bc-source-summary'); if(!el) return;
   var logs=getBodyCompLogs();
   var cd=document.getElementById('checkin-date'); if(cd && !cd.value) cd.value = localDateStr();
-  if(!logs.length){ el.innerHTML='<div style="font-size:12px;color:var(--text3);padding:10px;background:var(--surface2);border-radius:12px;">ยังไม่มี body composition log — ถ้ามี InBody ให้กรอกเป็น calibration source</div>'; return; }
+  if(!logs.length){ el.innerHTML='<div style="font-size:12px;color:var(--text3);padding:10px;background:var(--surface2);border-radius:12px;">ยังไม่มี body composition log — ถ้ามี InBody ให้กรอกเป็น calibration source</div>'; renderBodyCompLogList(); return; }
   var c=getBodyCompCalibration();
   var latest=logs[logs.length-1];
   var prefLabel = (c.preferred && c.source && BODY_SOURCE_CONF[c.source]) ? BODY_SOURCE_CONF[c.source].label : (c.source || 'Manual');
@@ -8116,6 +8133,44 @@ function renderBodyCompSummary(){
     '<div style="background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:10px;"><div style="font-size:11px;color:var(--text3);">Preferred Calibration</div><div style="font-size:13px;font-weight:700;color:var(--accent);">'+(c.preferred?(prefLabel+' · '+c.preferred.date):'—')+'</div><div style="font-size:11px;color:var(--text2);">BF '+(c.bf||'—')+'% · SMM '+(c.smm||'—')+'kg · VF '+(c.visceral||'—')+'</div></div>'+
     '<div style="background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:10px;"><div style="font-size:11px;color:var(--text3);">Latest Log</div><div style="font-size:13px;font-weight:700;color:var(--blue);">'+latestLabel+' · '+latest.date+'</div><div style="font-size:11px;color:var(--text2);">ทั้งหมด '+logs.length+' records</div></div>'+
     '</div>';
+  renderBodyCompLogList();
+}
+// Re-tag a mislabeled log entry's source (e.g. an Eufy reading that got
+// saved as 'inbody' due to a stale dropdown — see handleSaveWeight fix).
+// Re-runs InBody calibration sync + outlier detection + every dependent
+// render afterward, so the fix propagates everywhere immediately.
+function updateBodyCompLogSource(id, newSource){
+  var logs = getBodyCompLogsRaw();
+  var row = logs.find(function(x){ return x.id === id; });
+  if (!row) return;
+  row.source = newSource;
+  row.confidence = BODY_SOURCE_CONF[newSource] || BODY_SOURCE_CONF.manual;
+  setBodyCompLogs(logs);
+  if (window.FB_OK) window.FB.saveBodyComp(row); else queueFBWrite('bodycomp','save',row);
+  localStorage.removeItem('gd_wt_analysis'); localStorage.removeItem('gd_daily_summary');
+  if (typeof loadFitnessTarget === 'function') loadFitnessTarget(); // re-pull latest InBody now that tags changed
+  if (typeof renderTargetDashboard === 'function') renderTargetDashboard();
+  if (typeof renderTargetTrendChart === 'function') renderTargetTrendChart();
+  renderBodyCompSummary();
+  showToast('อัปเดตแหล่งข้อมูลแล้ว ✅','success');
+}
+function renderBodyCompLogList(){
+  var el = document.getElementById('bc-log-list');
+  if (!el) return;
+  var raw = getBodyCompLogsRaw().slice().sort(function(a,b){ return b.date.localeCompare(a.date) || b.id-a.id; });
+  if (!raw.length) { el.innerHTML = '<div style="font-size:11px;color:var(--text3);">ยังไม่มี log</div>'; return; }
+  var flags = detectBodyCompOutliers(raw);
+  var opts = ['eufy','inbody','manual'];
+  el.innerHTML = raw.map(function(r){
+    var flaggedRow = flags[r.id+'_bf'] || flags[r.id+'_smmPct'] || flags[r.id+'_visceral'] || flags[r.id+'_weight'];
+    var selectHtml = '<select onchange="updateBodyCompLogSource('+r.id+',this.value)" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:8px;font-size:11px;padding:3px 6px;">'+
+      opts.map(function(o){ return '<option value="'+o+'"'+(r.source===o?' selected':'')+'>'+(BODY_SOURCE_CONF[o]?BODY_SOURCE_CONF[o].label:o)+'</option>'; }).join('')+
+      '</select>';
+    return '<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-top:1px solid rgba(255,255,255,0.08);font-size:11px;">'+
+      '<span style="color:var(--text2);">'+(flaggedRow?'⚠️ ':'')+r.date+' · BF '+(r.bf!=null?r.bf+'%':'—')+' · SMM '+(r.smmPct!=null?r.smmPct+'%':'—')+' · VF '+(r.visceral!=null?r.visceral:'—')+'</span>'+
+      selectHtml+
+    '</div>';
+  }).join('');
 }
 function estimateEMATrend(entries, spanDays){
   entries = (entries||[]).filter(function(e){ return e.weight!==null && e.weight!==undefined; }).sort(function(a,b){ return a.date.localeCompare(b.date); });
