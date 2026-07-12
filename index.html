@@ -1814,6 +1814,9 @@ function drainFBQueue() {
       } else if (item.type === 'weight') {
         if (item.op === 'save' && window.FB.saveWeight) { window.FB.saveWeight(item.data); count++; }
         else if (item.op === 'del' && window.FB.delWeight) { window.FB.delWeight(item.data); count++; }
+      } else if (item.type === 'bodycomp') {
+        if (item.op === 'save' && window.FB.saveBodyComp) { window.FB.saveBodyComp(item.data); count++; }
+        else if (item.op === 'del' && window.FB.delBodyComp) { window.FB.delBodyComp(item.data); count++; }
       }
     } catch(e) { console.warn('drainFBQueue error:', e); }
   });
@@ -2024,8 +2027,12 @@ function init() {
       localStorage.setItem('gd_favorites', JSON.stringify(S.favorites));
       if(fbBodyComps.length){
         var local = safeJSON('gd_body_comp_logs', []);
+        // Exclude ids with a still-pending offline delete — otherwise the Firestore
+        // copy (not yet caught up) resurrects a row the user just deleted locally.
+        var pendingBcDelIds = {};
+        safeJSON('gd_pending_fb', []).forEach(function(item){ if(item.type==='bodycomp' && item.op==='del') pendingBcDelIds[item.data]=true; });
         var byId = {};
-        fbBodyComps.concat(local).forEach(function(e){ if(e && e.id) byId[e.id]=e; });
+        fbBodyComps.concat(local).forEach(function(e){ if(e && e.id && !pendingBcDelIds[e.id]) byId[e.id]=e; });
         var merged = Object.keys(byId).map(function(k){ return byId[k]; }).sort(function(a,b){ return a.date.localeCompare(b.date)||a.id-b.id; });
         localStorage.setItem('gd_body_comp_logs', JSON.stringify(merged));
       }
@@ -7964,14 +7971,14 @@ function deleteBodyCompLogEntry(id){
   var deleted = logs.find(function(x){ return x.id === id; });
   logs = logs.filter(function(x){ return x.id !== id; });
   setBodyCompLogs(logs);
-  if (window.FB_OK && window.FB.delBodyComp) window.FB.delBodyComp(id);
+  if (window.FB_OK && window.FB.delBodyComp) window.FB.delBodyComp(id); else queueFBWrite('bodycomp','del',id);
   renderBodyCompSummary();
   if (typeof renderBodyCompOutlierBanner === 'function') renderBodyCompOutlierBanner();
   if (typeof renderTargetTrendChart === 'function') renderTargetTrendChart();
   localStorage.removeItem('gd_wt_analysis'); localStorage.removeItem('gd_daily_summary');
   showUndoToast('ลบ Body Composition log แล้ว', function(){
     setBodyCompLogs(backup);
-    if (window.FB_OK && window.FB.saveBodyComp && deleted) window.FB.saveBodyComp(deleted);
+    if (window.FB_OK && window.FB.saveBodyComp && deleted) window.FB.saveBodyComp(deleted); else if(deleted) queueFBWrite('bodycomp','save',deleted);
     renderBodyCompSummary();
     if (typeof renderBodyCompOutlierBanner === 'function') renderBodyCompOutlierBanner();
     if (typeof renderTargetTrendChart === 'function') renderTargetTrendChart();
@@ -8056,7 +8063,7 @@ function saveBodyCompLogFromCheckin(entry, showEmptyToast){
   logs.push(row);
   logs.sort(function(a,b){ return (a.date+String(a.id)).localeCompare(b.date+String(b.id)); });
   setBodyCompLogs(logs);
-  if (window.FB_OK) window.FB.saveBodyComp(row);
+  if (window.FB_OK) window.FB.saveBodyComp(row); else queueFBWrite('bodycomp','save',row);
   if (S.webhook) { fetch('https://kindee.ojo0308.workers.dev/',{method:'POST',headers:{'Content-Type':'application/json','x-target-url':S.webhook},body:JSON.stringify({action:'addBodyComp',data:row})}).catch(function(){}); }
   renderBodyCompSummary();
   if (typeof renderBodyCompOutlierBanner === 'function') renderBodyCompOutlierBanner();
