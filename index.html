@@ -8166,9 +8166,10 @@ function renderBodyCompLogList(){
     var selectHtml = '<select onchange="updateBodyCompLogSource('+r.id+',this.value)" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:8px;font-size:11px;padding:3px 6px;">'+
       opts.map(function(o){ return '<option value="'+o+'"'+(r.source===o?' selected':'')+'>'+(BODY_SOURCE_CONF[o]?BODY_SOURCE_CONF[o].label:o)+'</option>'; }).join('')+
       '</select>';
-    return '<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-top:1px solid rgba(255,255,255,0.08);font-size:11px;">'+
+    var delHtml = '<button type="button" onclick="deleteBodyCompLogEntry('+r.id+')" style="background:none;border:1px solid var(--border);color:var(--red);border-radius:8px;padding:3px 8px;font-size:11px;cursor:pointer;">ลบ</button>';
+    return '<div style="display:flex;justify-content:space-between;align-items:center;gap:6px;padding:6px 0;border-top:1px solid rgba(255,255,255,0.08);font-size:11px;">'+
       '<span style="color:var(--text2);">'+(flaggedRow?'⚠️ ':'')+r.date+' · BF '+(r.bf!=null?r.bf+'%':'—')+' · SMM '+(r.smmPct!=null?r.smmPct+'%':'—')+' · VF '+(r.visceral!=null?r.visceral:'—')+'</span>'+
-      selectHtml+
+      '<span style="display:flex;align-items:center;gap:6px;flex-shrink:0;">'+selectHtml+delHtml+'</span>'+
     '</div>';
   }).join('');
 }
