@@ -8178,14 +8178,27 @@ function renderBodyCompLogList(){
   }).join('');
 }
 function estimateEMATrend(entries, spanDays){
+  // Exponentially-weighted linear regression → kg/week. Recent entries count more
+  // (same recency bias as an EMA) but a weighted-least-squares slope stays unbiased
+  // for a real linear trend. The previous endpoint method compared the final EMA —
+  // which lags ~(span-1)/2 days behind — against the first RAW weight over the full
+  // span, diluting real trends by up to ~50% and letting one noisy first entry skew
+  // the whole estimate.
   entries = (entries||[]).filter(function(e){ return e.weight!==null && e.weight!==undefined; }).sort(function(a,b){ return a.date.localeCompare(b.date); });
   if(entries.length<3) return null;
   spanDays = spanDays || Math.min(21, entries.length);
   var alpha = 2/(spanDays+1);
-  var ema = parseFloat(entries[0].weight), emaStart=ema;
-  for(var i=1;i<entries.length;i++){ ema = alpha*parseFloat(entries[i].weight) + (1-alpha)*ema; }
-  var days = Math.max(1, (new Date(entries[entries.length-1].date)-new Date(entries[0].date))/86400000);
-  return ((ema-emaStart)/days)*7;
+  var n = entries.length;
+  var t0 = new Date(entries[0].date).getTime();
+  var sw=0,sx=0,sy=0,sxx=0,sxy=0;
+  for(var i=0;i<n;i++){
+    var w = Math.pow(1-alpha, n-1-i); // newest entry = 1, older decay like EMA weights
+    var x = (new Date(entries[i].date).getTime()-t0)/86400000;
+    var y = parseFloat(entries[i].weight);
+    sw+=w; sx+=w*x; sy+=w*y; sxx+=w*x*x; sxy+=w*x*y;
+  }
+  var den = sw*sxx - sx*sx;
+  return den<=0 ? 0 : ((sw*sxy - sx*sy)/den)*7;
 }
 function getSourceAwareStatusText(){
   var c=getBodyCompCalibration();
@@ -8386,7 +8399,7 @@ function analyzeProgressPhotoAI(){
 function runWeightAnalysis() {
   var resultEl = document.getElementById('wt-analysis-result');
   var today = localDateStr();
-  var CACHE_VER = 'v17_source_visual_recomp'; // final: realistic profile-based TDEE floor/ceiling + net-cal model
+  var CACHE_VER = 'v18_ema_blend_trend'; // unbiased EMA trend (weighted regression) + retention-weighted trend blend
 
   // Restore from cache only if same day AND same version
   var cached = JSON.parse(localStorage.getItem('gd_wt_analysis') || 'null');
@@ -8565,12 +8578,31 @@ function buildAnalysisHTML(recent) {
   var trueTDEE=null, tdeeIsEstimate=false;
   if(calDays.length>=3&&daySpan>=5){
     // Use regression trend, not first-last raw change. Negative trend = deficit.
-    var trendForTDEE = (highRetention && ema21PerWeek !== null) ? ema21PerWeek : trendPerWeek;
-    if (visualAnalysis && visualAnalysis.retentionSignal && ema21PerWeek !== null) trendForTDEE = ema21PerWeek;
+    // Blend the short-term regression with the 21d EMA trend by retention severity
+    // instead of hard-switching at the highRetention cutoff — the old binary switch
+    // flipped the trend source overnight when high-risk days crossed 2, making
+    // Adaptive TDEE jump hundreds of kcal in a single day.
+    var trendForTDEE = trendPerWeek;
+    if (ema21PerWeek !== null) {
+      // 0 → pure short-term trend, 1 → pure 21d EMA. Reaches full EMA a bit above
+      // the old thresholds (avgScore 55 / highDays 2) so the transition is gradual.
+      var emaWeight = Math.max(
+        Math.min(retentionRange.avgScore / 70, 1),
+        Math.min(retentionRange.highDays / 4, 1)
+      );
+      if (visualAnalysis && visualAnalysis.retentionSignal) emaWeight = 1;
+      trendForTDEE = emaWeight * ema21PerWeek + (1 - emaWeight) * trendPerWeek;
+    }
     var trendKgPerDay = trendForTDEE / 7;
 
     // Ignore tiny scale noise; cap unrealistic fat-change signal.
-    if(Math.abs(trendKgPerDay)<0.015) trendKgPerDay=0;
+    // Soft ramp instead of a hard zero-cutoff: a hard deadzone made the implied
+    // deficit jump ~115+ kcal the day the trend crossed ±0.105 kg/wk. Below DEAD
+    // it's still 0; between DEAD and 2×DEAD it ramps up linearly; beyond, untouched.
+    var DEAD=0.015;
+    var absTrend=Math.abs(trendKgPerDay);
+    if(absTrend<DEAD) trendKgPerDay=0;
+    else if(absTrend<2*DEAD) trendKgPerDay=(trendKgPerDay>0?1:-1)*(absTrend-DEAD)*2;
     trendKgPerDay=Math.max(-0.10, Math.min(0.10, trendKgPerDay));
 
     var deficitFromTrend = -(trendKgPerDay*7700); // positive if losing
