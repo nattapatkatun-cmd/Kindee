@@ -571,6 +571,7 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
           <div class="hybrid-cal-big" id="dash-cal">0</div>
           <div style="font-size:12px;font-weight:600;color:var(--accent);margin-top:2px;" id="dash-rem"></div>
           <div style="font-size:10px;font-weight:500;margin-top:2px;color:var(--text3);" id="dash-net-note"></div>
+          <div style="font-size:10px;font-weight:600;margin-top:2px;color:var(--green);display:none;" id="dash-daytype-note"></div>
         </div>
       </div>
       <div class="macro-chips">
@@ -2909,7 +2910,7 @@ function generateDailySummary() {
   var today = localDateStr();
   var meals = todayMeals();
   var profile = S.profile;
-  var goals = S.goals;
+  var goals = getEffectiveGoalToday(); // rest-day / recovery-adjusted target for today, not the raw saved goal
   var target = JSON.parse(localStorage.getItem('gd_ft_target') || 'null');
   var workouts = (typeof todayWorkouts === 'function') ? todayWorkouts() : [];
   var steps = (typeof getTodaySteps === 'function') ? getTodaySteps() : 0;
@@ -2932,7 +2933,9 @@ function generateDailySummary() {
   var calCtx = getOfficialCalorieContext();
   var centralGoal = getCentralGoalProfile();
   var tdee = calCtx.officialTDEE || goals.cal;
-  var manualGoal = { cal: S.goals.cal, pro: S.goals.pro, crb: S.goals.crb, fat: S.goals.fat }; // User's manually set goal — never override with engine
+  var manualGoal = { cal: goals.cal, pro: goals.pro, crb: goals.crb, fat: goals.fat }; // User's manually set goal, adjusted for today's rest/recovery status — never override with the engine's TDEE recommendation
+  var dayTypeNote = goals._dayType === 'rest' ? 'วันนี้เป็นวันพักตามแผน — เป้าคาร์บ/แคลถูกลดจากปกติอัตโนมัติ (' + goals._carbCutKcal + ' kcal, ' + Math.round(goals._carbCutKcal/4) + 'g carb)' :
+                     (goals._adj ? 'วันนี้ใช้เป้าที่ปรับจาก Recovery แล้ว: ' + goals._adj.reason : '');
 
   // Meal list string
   var mealStr = meals.length
@@ -3013,6 +3016,7 @@ function generateDailySummary() {
     'Official Goal Mode: ' + (calCtx.goalModeLabel || '-') + '\n' +
     'Training Focus: ' + centralGoal.trainingFocusLabel + ' | Weekly Frequency: ' + centralGoal.weeklyFrequency + ' days/week | Recovery Priority: ' + centralGoal.recoveryPriorityLabel + '\n' +
     'User Manual Goal: ' + manualGoal.cal + ' kcal | P:' + manualGoal.pro + 'g C:' + manualGoal.crb + 'g F:' + manualGoal.fat + 'g (this is the goal the user set themselves — compare intake against THIS)\n' +
+    (dayTypeNote ? dayTypeNote + '\n' : '') +
     'Goal Engine Recommendation: ' + centralGoal.goal.cal + ' kcal | P:' + centralGoal.goal.pro + 'g C:' + centralGoal.goal.crb + 'g F:' + centralGoal.goal.fat + 'g (calculated from TDEE + goal mode — for context only, user may not have applied this)\n' +
     targetStr + '\n' +
     'Body Composition Calibration: ' + (typeof getSourceAwareStatusText === 'function' ? getSourceAwareStatusText() : 'N/A') + '\n' +
@@ -3225,7 +3229,7 @@ function renderDailySummary(r) {
     if (r.nutrition) {
       var meals2 = (typeof todayMeals==='function')?todayMeals():[];
       var nut2 = meals2.reduce(function(a,m){return{cal:a.cal+(m.calories||0),pro:a.pro+(m.protein||0)};},{cal:0,pro:0});
-      var g2 = S.goals;
+      var g2 = getEffectiveGoalToday();
       var proGap2 = Math.round(nut2.pro - g2.pro);
       reasons.push('Nutrition — Intake ' + Math.round(nut2.cal) + ' kcal, Protein gap ' + (proGap2>=0?'+':'') + proGap2 + 'g vs goal');
     }
@@ -3391,6 +3395,38 @@ function restoreRecoveryAdj() {
   var today = localDateStr();
   var adj = null; try { adj = JSON.parse(localStorage.getItem('gd_recovery_adj') || 'null'); } catch(e) {}
   if (adj && adj.date === today) updateRecoveryAdjBanner(adj);
+}
+
+// ── Day-Type Adjusted Goal (rest day vs training day, from the AI Workout Plan) ──
+// Rest day = today's slot in the saved AI Workout Plan has no exercises, and no
+// workout has actually been logged today (logging one flips it back to a training day).
+// Training day, or no plan saved at all → keep the current baseline goal untouched.
+var REST_DAY_CARB_CUT_PCT = 0.25;
+function isTodayRestDayByPlan() {
+  var plan = (typeof getSavedPlanObj === 'function') ? getSavedPlanObj() : null;
+  if (!plan || !Array.isArray(plan.days)) return false;
+  var todayName = PLAN_DAY_NAMES[appTodayWeekday()];
+  var day = plan.days.filter(function(d){ return d.day === todayName; })[0];
+  if (!day) return false;
+  return !day.exercises || day.exercises.length === 0 || (day.theme && day.theme.toLowerCase().indexOf('พัก') !== -1);
+}
+function getDayTypeAdjGoal() {
+  if (!isTodayRestDayByPlan()) return null;
+  var workoutsToday = (typeof todayWorkouts === 'function') ? todayWorkouts() : [];
+  if (workoutsToday.length) return null; // trained anyway today — treat as a training day
+  var base = S.goals || {};
+  var baseCrb = parseFloat(base.crb) || 0;
+  var crb = Math.round(baseCrb * (1 - REST_DAY_CARB_CUT_PCT));
+  var carbCutKcal = (baseCrb - crb) * 4;
+  var cal = Math.round((parseFloat(base.cal) || 0) - carbCutKcal);
+  return { cal: cal, pro: base.pro, crb: crb, fat: base.fat, _dayType: 'rest', _carbCutKcal: carbCutKcal };
+}
+// Single source of truth for "today's" live target — dashboard ring, over-goal
+// alert, AI Daily Coach, and AI chat must all compare intake against this same
+// number so a rest day reads as a rest day everywhere, not just on one screen.
+// Priority: explicit Recovery-Adjusted Apply click > automatic rest-day carb cut > raw saved goal.
+function getEffectiveGoalToday() {
+  return getRecoveryAdjGoals() || getDayTypeAdjGoal() || S.goals;
 }
 
 // ── Anomaly Detection ─────────────────────────────────────────────
@@ -3710,7 +3746,16 @@ function updateDash() {
 
   var meals = S.meals.filter(function(m){return m.date===viewDate;});
   var t = meals.reduce(function(a,m){return{cal:a.cal+m.calories,pro:a.pro+m.protein,crb:a.crb+m.carbs,fat:a.fat+m.fat};},{cal:0,pro:0,crb:0,fat:0});
-  var g = getRecoveryAdjGoals() || S.goals; // uses adjusted goals only if user explicitly confirmed via Apply button
+  var g = getEffectiveGoalToday();
+  var dtNoteEl = document.getElementById('dash-daytype-note');
+  if (dtNoteEl) {
+    if (g._dayType === 'rest') {
+      dtNoteEl.style.display = 'block';
+      dtNoteEl.textContent = '😴 วันพักตามแผน — ลดคาร์บ ' + Math.round(REST_DAY_CARB_CUT_PCT*100) + '% (' + Math.round(g._carbCutKcal/4) + 'g / ' + g._carbCutKcal + ' kcal)';
+    } else {
+      dtNoteEl.style.display = 'none';
+    }
+  }
 
   // ── Logic: Gross Intake เป็น primary (สิ่งที่ควบคุมได้จริง) ──
   // Adaptive TDEE รวม workout+NEAT ไว้แล้ว → กินตามเป้า gross ไม่ต้องบวกกิจกรรมเพิ่ม
@@ -4443,7 +4488,7 @@ function checkAlert() {
   var neatCal = (typeof getNeatCalForDate==='function') ? getNeatCalForDate(localDateStr()) : 0;
   var net = eaten - workoutBurn - neatCal;
 
-  var goal = S.goals.cal;
+  var goal = getEffectiveGoalToday().cal;
   var pct  = eaten / goal;
   var rem  = goal - eaten;
   var today = localDateStr();
@@ -5782,8 +5827,9 @@ function updateFitnessUI() {
   document.getElementById('ft-eaten').textContent = eaten;
   document.getElementById('ft-burned').textContent = totalBurn;
   document.getElementById('ft-step-cal').textContent = Math.round(neatCal);
-  document.getElementById('ft-goal-disp').textContent = S.goals.cal;
-  var grossRemain = S.goals.cal - eaten;
+  var ftGoalCal = isToday ? getEffectiveGoalToday().cal : S.goals.cal;
+  document.getElementById('ft-goal-disp').textContent = ftGoalCal;
+  var grossRemain = ftGoalCal - eaten;
   var netEl = document.getElementById('ft-net-val');
   netEl.textContent = Math.abs(Math.round(grossRemain));
   document.querySelector('#ft-net-card .ft-net-sub').textContent = grossRemain >= 0 ? 'kcal คงเหลือ' : 'kcal เกินเป้า';
@@ -9835,7 +9881,7 @@ function buildChatContext(){
   var nut = meals.reduce(function(a,m){ return {cal:a.cal+(m.calories||0),pro:a.pro+(m.protein||0),crb:a.crb+(m.carbs||0),fat:a.fat+(m.fat||0)}; }, {cal:0,pro:0,crb:0,fat:0});
   var netCal = nut.cal - creditedBurn - neatCal;
 
-  var goals = S.goals; // User's manually set/saved goal — same source as dashboard & generateDailySummary, never override with engine
+  var goals = getEffectiveGoalToday(); // same rest-day/recovery-adjusted target as the dashboard & generateDailySummary
 
   // Body composition: latest entry
   var bcLogs = (typeof getBodyCompLogs === 'function') ? getBodyCompLogs() : safeJSON('gd_body_comp_logs', []);
@@ -9863,7 +9909,8 @@ function buildChatContext(){
     if (ft.duration) c += '  \u2022 \u0e23\u0e30\u0e22\u0e30\u0e40\u0e27\u0e25\u0e32: '                  + ft.duration + ' \u0e2a\u0e31\u0e1b\u0e14\u0e32\u0e2b\u0e4c\n';
     if (ft.currBF)   c += '  \u2022 %BF \u0e1b\u0e31\u0e08\u0e08\u0e38\u0e1a\u0e31\u0e19: '              + ft.currBF   + '%\n';
   }
-  c += 'เป้าหมายวันนี้: ' + goals.cal + ' kcal | โปรตีน ' + goals.pro + 'g | คาร์บ ' + goals.crb + 'g | ไขมัน ' + goals.fat + 'g\n';
+  c += 'เป้าหมายวันนี้: ' + goals.cal + ' kcal | โปรตีน ' + goals.pro + 'g | คาร์บ ' + goals.crb + 'g | ไขมัน ' + goals.fat + 'g' +
+    (goals._dayType === 'rest' ? ' (วันพักตามแผน — ลดคาร์บ/แคลจากปกติแล้ว)' : (goals._adj ? ' (ปรับตาม Recovery แล้ว)' : '')) + '\n';
   c += 'มื้ออาหารวันนี้:\n';
   c += meals.length ? meals.map(function(m){ return '  • ' + m.label + ': ' + m.foodName + ' (' + m.calories + ' kcal | P:' + m.protein + ' C:' + m.carbs + ' F:' + m.fat + ')'; }).join('\n') + '\n' : '  • ยังไม่มีมื้ออาหาร\n';
   c += 'รวมที่กิน: ' + nut.cal + ' kcal | P:' + Math.round(nut.pro) + 'g C:' + Math.round(nut.crb) + 'g F:' + Math.round(nut.fat) + 'g\n';
