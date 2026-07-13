@@ -571,6 +571,7 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
           <div class="hybrid-cal-big" id="dash-cal">0</div>
           <div style="font-size:12px;font-weight:600;color:var(--accent);margin-top:2px;" id="dash-rem"></div>
           <div style="font-size:10px;font-weight:500;margin-top:2px;color:var(--text3);" id="dash-net-note"></div>
+          <div style="font-size:10px;font-weight:600;margin-top:2px;color:var(--green);display:none;" id="dash-daytype-note"></div>
         </div>
       </div>
       <div class="macro-chips">
@@ -3393,6 +3394,31 @@ function restoreRecoveryAdj() {
   if (adj && adj.date === today) updateRecoveryAdjBanner(adj);
 }
 
+// ── Day-Type Adjusted Goal (rest day vs training day, from the AI Workout Plan) ──
+// Rest day = today's slot in the saved AI Workout Plan has no exercises, and no
+// workout has actually been logged today (logging one flips it back to a training day).
+// Training day, or no plan saved at all → keep the current baseline goal untouched.
+var REST_DAY_CARB_CUT_PCT = 0.25;
+function isTodayRestDayByPlan() {
+  var plan = (typeof getSavedPlanObj === 'function') ? getSavedPlanObj() : null;
+  if (!plan || !Array.isArray(plan.days)) return false;
+  var todayName = PLAN_DAY_NAMES[appTodayWeekday()];
+  var day = plan.days.filter(function(d){ return d.day === todayName; })[0];
+  if (!day) return false;
+  return !day.exercises || day.exercises.length === 0 || (day.theme && day.theme.toLowerCase().indexOf('พัก') !== -1);
+}
+function getDayTypeAdjGoal() {
+  if (!isTodayRestDayByPlan()) return null;
+  var workoutsToday = (typeof todayWorkouts === 'function') ? todayWorkouts() : [];
+  if (workoutsToday.length) return null; // trained anyway today — treat as a training day
+  var base = S.goals || {};
+  var baseCrb = parseFloat(base.crb) || 0;
+  var crb = Math.round(baseCrb * (1 - REST_DAY_CARB_CUT_PCT));
+  var carbCutKcal = (baseCrb - crb) * 4;
+  var cal = Math.round((parseFloat(base.cal) || 0) - carbCutKcal);
+  return { cal: cal, pro: base.pro, crb: crb, fat: base.fat, _dayType: 'rest', _carbCutKcal: carbCutKcal };
+}
+
 // ── Anomaly Detection ─────────────────────────────────────────────
 function refreshCard(btn, fn) {
   var orig = btn.innerHTML;
@@ -3710,7 +3736,18 @@ function updateDash() {
 
   var meals = S.meals.filter(function(m){return m.date===viewDate;});
   var t = meals.reduce(function(a,m){return{cal:a.cal+m.calories,pro:a.pro+m.protein,crb:a.crb+m.carbs,fat:a.fat+m.fat};},{cal:0,pro:0,crb:0,fat:0});
-  var g = getRecoveryAdjGoals() || S.goals; // uses adjusted goals only if user explicitly confirmed via Apply button
+  // Recovery adj (explicit user Apply click) wins if active; otherwise auto-apply the
+  // rest-day carb cut when today is a scheduled rest day with nothing logged yet.
+  var g = getRecoveryAdjGoals() || getDayTypeAdjGoal() || S.goals;
+  var dtNoteEl = document.getElementById('dash-daytype-note');
+  if (dtNoteEl) {
+    if (g._dayType === 'rest') {
+      dtNoteEl.style.display = 'block';
+      dtNoteEl.textContent = '😴 วันพักตามแผน — ลดคาร์บ ' + Math.round(REST_DAY_CARB_CUT_PCT*100) + '% (' + Math.round(g._carbCutKcal/4) + 'g / ' + g._carbCutKcal + ' kcal)';
+    } else {
+      dtNoteEl.style.display = 'none';
+    }
+  }
 
   // ── Logic: Gross Intake เป็น primary (สิ่งที่ควบคุมได้จริง) ──
   // Adaptive TDEE รวม workout+NEAT ไว้แล้ว → กินตามเป้า gross ไม่ต้องบวกกิจกรรมเพิ่ม
