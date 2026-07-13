@@ -2942,17 +2942,22 @@ function generateDailySummary() {
     ? meals.map(function(m) { return '• ' + m.label + ': ' + m.foodName + ' (' + m.calories + ' kcal | P:' + m.protein + 'g C:' + m.carbs + 'g F:' + m.fat + 'g)'; }).join('\n')
     : '• ยังไม่มีข้อมูลมื้ออาหาร';
 
-  // Workout list string
+  // Workout list string — each line tagged with modality (STRENGTH vs CARDIO)
+  // so the AI doesn't have to guess it from the name. HR-zone context is
+  // labeled "reference only" on strength lines — see CRITICAL RULES below.
   var workoutStr = workouts.length
     ? workouts.map(function(w) {
-        var s = '• ' + w.name + ' ' + w.duration_min + ' นาที (~' + w.calories_burned + ' kcal, MET=' + w.met + ')';
+        var isStrengthW = !!(w.exercises && w.exercises.length);
+        var s = '• [' + (isStrengthW ? 'STRENGTH' : 'CARDIO') + '] ' + w.name + ' ' + w.duration_min + ' นาที (~' + w.calories_burned + ' kcal, MET=' + w.met + ')';
         if (w.avg_hr && +w.avg_hr > 0) {
           var hrr = calcHRR(w.avg_hr); var z = hrrToZone(hrr);
-          if (z) s += ' | Avg HR ' + w.avg_hr + ' bpm = Zone ' + z.zone + ' ' + z.label + ' (' + Math.round(hrr*100) + '% HRR)';
+          if (z) s += ' | Avg HR ' + w.avg_hr + ' bpm = Zone ' + z.zone + ' ' + z.label + ' (' + Math.round(hrr*100) + '% HRR)' + (isStrengthW ? ' [reference only — do NOT use to judge strength intensity]' : '');
         }
         return s;
       }).join('\n')
     : '• ไม่มีการออกกำลังกายวันนี้';
+
+  var strengthVolumeSummary = (typeof buildTodayStrengthVolumeSummary === 'function') ? buildTodayStrengthVolumeSummary() : null;
 
   // Fitness target context
   var targetStr = '';
@@ -3009,6 +3014,7 @@ function generateDailySummary() {
     '- Every recommendation must be directly justified by the numbers\n' +
     '- Identify the 1 most important thing to fix or maintain — don\'t dilute with too many points\n' +
     '- Use Retention Context to explain possible water/glycogen fluctuation; do not call fat gain from one high sodium/high carb day.\n' +
+    '- For the "strain" verdict: judge STRENGTH/resistance sessions by Total Volume Load (tonnage) vs the user\'s own rolling average and e1RM trend (up/plateau/down) — never by avg HR/%HRR zone. Inter-set rest suppresses mean HR during lifting regardless of true effort, so a low HR zone on a strength session does NOT mean low intensity; a long duration alone also does not automatically mean higher intensity. Only use %HRR zone to judge CARDIO sessions (running, cycling, swimming, HIIT, walking). If a day mixes both, assess each modality on its own terms in the detail text.\n' +
     '- Tone: professional coach, direct and confident, not cheerful chatbot\n\n' +
     'User Profile: ' + profileStr + '\n' +
     'Calorie Context: ' + formatCalorieContextLine(calCtx) + '\n' +
@@ -3043,6 +3049,7 @@ function generateDailySummary() {
     'Meals:\n' + mealStr + '\n' +
     'Total Intake (gross, before activity deduction): ' + nut.cal + ' kcal | P:' + nut.pro + 'g C:' + nut.crb + 'g F:' + nut.fat + 'g\n' +
     'Workouts:\n' + workoutStr + '\n' +
+    (strengthVolumeSummary ? '\nStrength Volume Load (today, from strength log — the correct intensity signal for STRENGTH sessions, NOT avg HR):\n' + strengthVolumeSummary + '\n' : '') +
     'Workout Burn: ' + workoutBurn + ' kcal | Steps: ' + steps + ' ก้าว | NEAT: ' + Math.round(neatCal) + ' kcal\n' +
     'Net Calories (intake minus activity — for information only, NOT the primary comparison): ' + Math.round(netCal) + ' kcal\n' +
     'User Calorie Goal (compare intake against THIS): ' + manualGoal.cal + ' kcal | Intake vs Goal: ' + (nut.cal > manualGoal.cal ? '+' : '') + (nut.cal - manualGoal.cal) + ' kcal\n' +
@@ -4961,6 +4968,45 @@ function buildProgressionSummaryForAI(limit) {
                 r.verdict === 'down' ? 'ถดถอย ↓' : 'นิ่ง/plateau → (พิจารณาสลับ)';
     return '- ' + r.ex.name + ': e1RM ' + trend + 'kg — ' + label;
   }).join('\n');
+}
+
+// Today's strength Training Load, for the Daily Coach "strain" verdict.
+// Avg HR / %HRR is a cardio-calibrated metric — inter-set rest suppresses
+// mean HR during lifting regardless of true effort, so it cannot judge
+// resistance-training intensity. The correct signal is Volume Load (tonnage
+// = Σ weight×reps) compared against the user's own rolling average, plus
+// e1RM trend — both already tracked in the strength log.
+function buildTodayStrengthVolumeSummary() {
+  var today = localDateStr();
+  var todayRows = getStrengthLog().filter(function(e){ return e.date === today; });
+  if (!todayRows.length) return null;
+  var byEx = {};
+  todayRows.forEach(function(e){ (byEx[e.exerciseId] = byEx[e.exerciseId] || []).push(e); });
+  var totalVolume = 0, totalSets = 0;
+  var exIds = Object.keys(byEx);
+  var lines = exIds.map(function(id) {
+    var rows = byEx[id];
+    var ex = getExById(id);
+    var vol = rows.reduce(function(a,r){ return a + (+r.weight || 0) * (+r.reps || 0); }, 0);
+    var bestE1RM = rows.reduce(function(b,r){ return r.e1RM > b ? r.e1RM : b; }, 0);
+    totalVolume += vol; totalSets += rows.length;
+    var sessions = getExerciseSessions(id, 4); // newest..oldest, sessions[0] = today
+    var prior = sessions.slice(1, 4);
+    var trendStr = '';
+    if (prior.length) {
+      var priorAvgVol = prior.reduce(function(a,s){
+        return a + s.sets.reduce(function(b,st){ return b + (+st.weight || 0) * (+st.reps || 0); }, 0);
+      }, 0) / prior.length;
+      if (priorAvgVol > 0) {
+        var pct = Math.round((vol - priorAvgVol) / priorAvgVol * 100);
+        trendStr = ' | vs rolling avg ' + Math.round(priorAvgVol) + 'kg (' + (pct >= 0 ? '+' : '') + pct + '%)';
+      }
+    }
+    var verdict = getProgressionVerdict(id);
+    var verdictStr = verdict === 'up' ? ' | e1RM↑' : verdict === 'down' ? ' | e1RM↓' : verdict === 'plateau' ? ' | e1RM plateau' : '';
+    return '  - ' + (ex ? ex.name : id) + ': ' + Math.round(vol) + 'kg volume (' + rows.length + ' sets, best e1RM ' + bestE1RM + 'kg)' + trendStr + verdictStr;
+  });
+  return 'Total Volume Load: ' + Math.round(totalVolume) + 'kg across ' + totalSets + ' sets, ' + exIds.length + ' exercise(s)\n' + lines.join('\n');
 }
 
 // Render the exercise-sheet "next target" line (called from openExSheet).
