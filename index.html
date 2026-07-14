@@ -9282,6 +9282,7 @@ function normalizeRecoveryResult(r, sd) {
 
   // Bedtime card always reflects the deterministic gradual-shift calc — never
   // whatever bedtime the AI free-texted — so it can't drift from the 14-day trend.
+  // (This assignment fully replaces the field each call, so it's safe to re-run.)
   var sdRef = sd || S.sleepData || {};
   var gradualBed = computeGradualBedtimeTarget(sdRef.wakeTime, sdRef.date, 8);
   if (gradualBed) {
@@ -9291,18 +9292,35 @@ function normalizeRecoveryResult(r, sd) {
       : '');
   }
 
+  // recoveryResultHTMLFor() re-runs this same function on the SAME stored `r`
+  // object every time the result is re-rendered (tab switch, page reload,
+  // dashboard card) — so the load-trend note below must never be appended onto
+  // its own previous output. Capture the AI's original recommendation once
+  // (persisted alongside `r`) and always recompute the override from that
+  // fixed baseline instead of the mutated current value.
+  if (r._aiRecommendation === undefined) r._aiRecommendation = r.recommendation;
+  if (r._aiRecommendationReason === undefined) {
+    // Strip any trailing load-note(s) a pre-fix version of this code may have
+    // already appended, so old saved entries self-heal on next render.
+    r._aiRecommendationReason = (r.recommendation_reason || '').replace(/(\s*\(Load \d+ คืนล่าสุด: Strain เกิน Tolerance \d+\/\d+ คืน \(เฉลี่ย [\d.]+x\)\))+\s*$/g, '');
+  }
+
   // A single overnight Strain>Tolerance reading isn't overreaching — several
   // nights in a row is. Downgrade Push→Rest when the rolling trend says so, so
   // the recommendation card can't contradict the multi-day load pattern.
   var strainTrend = computeStrainLoadTrend(sdRef.date);
   if (strainTrend && strainTrend.days >= 3) {
     var loadNote = 'Load ' + strainTrend.days + ' คืนล่าสุด: Strain เกิน Tolerance ' + strainTrend.overCount + '/' + strainTrend.days + ' คืน (เฉลี่ย ' + strainTrend.avgRatio + 'x)';
-    if (strainTrend.overreaching && r.recommendation === 'Push') {
+    if (strainTrend.overreaching && r._aiRecommendation === 'Push') {
       r.recommendation = 'Rest';
       r.recommendation_reason = loadNote + ' — สัญญาณ overreaching สะสม แนะนำพักแทนแม้ Sleep Score วันนี้จะดี';
     } else {
-      r.recommendation_reason = (r.recommendation_reason || '') + ' (' + loadNote + ')';
+      r.recommendation = r._aiRecommendation;
+      r.recommendation_reason = (r._aiRecommendationReason || '') + ' (' + loadNote + ')';
     }
+  } else {
+    r.recommendation = r._aiRecommendation;
+    r.recommendation_reason = r._aiRecommendationReason;
   }
   return r;
 }
