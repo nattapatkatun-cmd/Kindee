@@ -2807,6 +2807,16 @@ function generateMorningRecovery() {
   } else if(sd.polarStrain!=null){
     polarLine='- Polar Cardio Strain: '+sd.polarStrain+' (no tolerance recorded)\n';
   }
+  var strainTrend = computeStrainLoadTrend(today);
+  var strainTrendLine = '';
+  if (strainTrend && strainTrend.days >= 3) {
+    strainTrendLine = '- Load Trend ('+strainTrend.days+' คืนล่าสุด): Strain เกิน Tolerance '+strainTrend.overCount+'/'+strainTrend.days+' คืน (ratio เฉลี่ย '+strainTrend.avgRatio+'x)'+(strainTrend.overreaching?' → สัญญาณ overreaching สะสม เอียงคำแนะนำไปทาง Rest แม้ Sleep Score วันนี้จะดี':'')+'\n';
+  }
+  var gradualBed = computeGradualBedtimeTarget(sd.wakeTime, today, 8);
+  var bedtimeTrendLine = '';
+  if (gradualBed && gradualBed.shifted) {
+    bedtimeTrendLine = '- Bedtime เมื่อคืน: '+gradualBed.fromBedtime+' | เป้าหมายสุดท้ายจาก wake time วันนี้: '+gradualBed.desiredHHMM+' (ระบบจะขยับให้ทีละ '+BEDTIME_SHIFT_CAP_MIN+' นาที/คืนเท่านั้น ไม่กระโดดทันที)\n';
+  }
 
   var prompt =
     'คุณคือผู้เชี่ยวชาญด้านการนอนและโค้ชฟิตเนส วิเคราะห์ข้อมูลการนอนและคำนวณ Sleep Score แบบ WHOOP\n' +
@@ -2825,10 +2835,10 @@ function generateMorningRecovery() {
     hrvLine +
     consLine +
     (sd.respRate?'- Respiratory Rate: '+sd.respRate+' br/min'+(sd.respRate>18?' (สูงกว่าปกติ)':' (ปกติ)')+'\n':'') +
-    polarLine +
-    (sd.polarStrain!=null&&sd.polarTolerance!=null?'\n[Polar Load Guidance] ใช้ข้อมูล Polar เป็น context เสริมสำหรับ recommendation เท่านั้น (ไม่นำมาคำนวณ Sleep Score): ถ้า Strain > Tolerance → เอียงไป Maintain หรือ Rest แม้ Recovery ดี; ถ้า Strain <= Tolerance → ใช้ Sleep Score ตัดสิน Push/Maintain/Rest ตามปกติ\n':'')+
+    polarLine + strainTrendLine + bedtimeTrendLine +
+    (sd.polarStrain!=null&&sd.polarTolerance!=null?'\n[Polar Load Guidance] ใช้ข้อมูล Polar เป็น context เสริมสำหรับ recommendation เท่านั้น (ไม่นำมาคำนวณ Sleep Score): ถ้า Strain > Tolerance → เอียงไป Maintain หรือ Rest แม้ Recovery ดี; ถ้า Strain <= Tolerance → ใช้ Sleep Score ตัดสิน Push/Maintain/Rest ตามปกติ; ถ้ามี Load Trend ข้างต้นและเป็น overreaching ให้เอียงไป Rest เสมอ\n':'')+
     '\nตอบด้วย JSON เท่านั้น ห้ามมี markdown code block หรือ backtick:\n' +
-    '{ "sleepScore":<ตัวเลข 0-100 ที่คำนวณจาก rubric>, "scoreLabel":"Peak"|"Good"|"Fair"|"Poor", "score":"Optimal"|"Moderate"|"Poor", "emoji":"green_circle"|"yellow_circle"|"red_circle", "pillars":{"duration":<0-100>,"efficiency":<0-100>,"stages":<0-100>,"physio":<0-100>,"consistency":<0-100 หรือ null ถ้าไม่มีข้อมูล>}, "headline":"สรุป 1 บรรทัดเป็นภาษาไทย", "detail":"อธิบาย 2-3 ประโยคภาษาไทย ว่า metric ไหนดึงคะแนนขึ้นหรือลง", "strengths":"bullet list ภาษาไทย (ขึ้นต้นด้วย • ) อธิบายว่าทำไม metric แต่ละตัวถึงดี รวมหลักการ physiology สั้น ๆ ใช้ **ตัวหนา** สำหรับชื่อ metric", "improvements":"bullet list ภาษาไทย (ขึ้นต้นด้วย • ) คำแนะนำเชิงปฏิบัติสำหรับ pillar ที่ยังอ่อน ใช้ **ตัวหนา** สำหรับชื่อ metric", "sleep_actions":{"target_bedtime":"HH:MM ที่ควรนอนคืนนี้ (อ้างอิงจาก wake time ที่กรอก หรือประมาณจาก duration — เพื่อให้ได้ sleep อย่างน้อย 8h)","room_temp":"อุณหภูมิห้องที่แนะนำเป็น °C เช่น 25-26°C (เปิดแอร์เย็นลงจากอุณหภูมิห้องไทยปกติ 28-32°C) พร้อมเหตุผลสั้น ๆ","environment":"คำแนะนำสภาพแวดล้อมเพิ่มเติม เช่น แสง เสียง","consistency_tip":"ถ้า Consistency ต่ำกว่า 70 ให้แนะนำเวลาเข้านอน-ตื่นเป้าหมายที่ควรรักษาไว้เป็นกิจวัตร มิฉะนั้นใส่ null"}, "recommendation":"Push"|"Maintain"|"Rest", "recommendation_reason":"เหตุผล 1 ประโยคภาษาไทย" }';
+    '{ "sleepScore":<ตัวเลข 0-100 ที่คำนวณจาก rubric>, "scoreLabel":"Peak"|"Good"|"Fair"|"Poor", "score":"Optimal"|"Moderate"|"Poor", "emoji":"green_circle"|"yellow_circle"|"red_circle", "pillars":{"duration":<0-100>,"efficiency":<0-100>,"stages":<0-100>,"physio":<0-100>,"consistency":<0-100 หรือ null ถ้าไม่มีข้อมูล>}, "headline":"สรุป 1 บรรทัดเป็นภาษาไทย", "detail":"อธิบาย 2-3 ประโยคภาษาไทย ว่า metric ไหนดึงคะแนนขึ้นหรือลง รวมถึง Load Trend ถ้ามี", "strengths":"bullet list ภาษาไทย (ขึ้นต้นด้วย • ) อธิบายว่าทำไม metric แต่ละตัวถึงดี รวมหลักการ physiology สั้น ๆ ใช้ **ตัวหนา** สำหรับชื่อ metric", "improvements":"bullet list ภาษาไทย (ขึ้นต้นด้วย • ) คำแนะนำเชิงปฏิบัติสำหรับ pillar ที่ยังอ่อน ใช้ **ตัวหนา** สำหรับชื่อ metric", "sleep_actions":{"target_bedtime":"HH:MM ที่ควรนอนคืนนี้ (ระบบจะคำนวณและ override ค่านี้เองจากค่าเฉลี่ยเวลานอนย้อนหลัง แบบขยับทีละไม่เกิน 20 นาที/คืน — ใส่ค่าประมาณจาก wake time ลบ 8h ไปก่อนได้เลย ไม่ต้องคำนวณ gradual shift เอง)","room_temp":"อุณหภูมิห้องที่แนะนำเป็น °C เช่น 25-26°C (เปิดแอร์เย็นลงจากอุณหภูมิห้องไทยปกติ 28-32°C) พร้อมเหตุผลสั้น ๆ","environment":"คำแนะนำสภาพแวดล้อมเพิ่มเติม เช่น แสง เสียง","consistency_tip":"ถ้า Consistency ต่ำกว่า 70 ให้แนะนำเวลาเข้านอน-ตื่นเป้าหมายที่ควรรักษาไว้เป็นกิจวัตร มิฉะนั้นใส่ null"}, "recommendation":"Push"|"Maintain"|"Rest", "recommendation_reason":"เหตุผล 1 ประโยคภาษาไทย (ถ้ามี Load Trend แบบ overreaching ให้พูดถึงด้วย)" }';
 
   geminiCall(key, {
     contents: [{ parts: [{ text: prompt }] }],
@@ -9269,6 +9279,31 @@ function normalizeRecoveryResult(r, sd) {
   r.improvements = mdBold(r.improvements || '• **Sleep consistency** รักษาเวลานอนและเวลาตื่นให้ใกล้เคียงเดิม');
   r.recommendation = r.recommendation || (calc.score === 'Optimal' ? 'Push' : calc.score === 'Moderate' ? 'Maintain' : 'Rest');
   r.recommendation_reason = r.recommendation_reason || 'อิงจาก Sleep Score และ Recovery Status วันนี้';
+
+  // Bedtime card always reflects the deterministic gradual-shift calc — never
+  // whatever bedtime the AI free-texted — so it can't drift from the 14-day trend.
+  var sdRef = sd || S.sleepData || {};
+  var gradualBed = computeGradualBedtimeTarget(sdRef.wakeTime, sdRef.date, 8);
+  if (gradualBed) {
+    r.sleep_actions = r.sleep_actions || {};
+    r.sleep_actions.target_bedtime = gradualBed.hhmm + (gradualBed.shifted
+      ? ' (ขยับจากเมื่อคืน ' + gradualBed.fromBedtime + ' ทีละ ' + BEDTIME_SHIFT_CAP_MIN + ' นาที — เป้าหมายสุดท้าย ' + gradualBed.desiredHHMM + ', ค่อย ๆ ปรับเพื่อไม่ให้ผิดจังหวะนาฬิกาชีวภาพ)'
+      : '');
+  }
+
+  // A single overnight Strain>Tolerance reading isn't overreaching — several
+  // nights in a row is. Downgrade Push→Rest when the rolling trend says so, so
+  // the recommendation card can't contradict the multi-day load pattern.
+  var strainTrend = computeStrainLoadTrend(sdRef.date);
+  if (strainTrend && strainTrend.days >= 3) {
+    var loadNote = 'Load ' + strainTrend.days + ' คืนล่าสุด: Strain เกิน Tolerance ' + strainTrend.overCount + '/' + strainTrend.days + ' คืน (เฉลี่ย ' + strainTrend.avgRatio + 'x)';
+    if (strainTrend.overreaching && r.recommendation === 'Push') {
+      r.recommendation = 'Rest';
+      r.recommendation_reason = loadNote + ' — สัญญาณ overreaching สะสม แนะนำพักแทนแม้ Sleep Score วันนี้จะดี';
+    } else {
+      r.recommendation_reason = (r.recommendation_reason || '') + ' (' + loadNote + ')';
+    }
+  }
   return r;
 }
 
@@ -9562,6 +9597,46 @@ function computeConsistency(bedtime, wakeTime, today){
   if(sd<=90) return 50;
   return 25;
 }
+// Max minutes/night a target bedtime may move from the last actual bedtime —
+// shifting faster than this outruns melatonin-onset adjustment (CBT-I / phase-shift convention).
+var BEDTIME_SHIFT_CAP_MIN = 20;
+// Gradual target bedtime: anchor off the most recent ACTUAL bedtime in the log
+// (never off today's own entry — caller must pass a date, and only records
+// strictly before it are used) and step toward the wake-time-derived goal by
+// at most BEDTIME_SHIFT_CAP_MIN, instead of jumping straight to the goal each night.
+function computeGradualBedtimeTarget(wakeTime, beforeDate, goalHours) {
+  if (!wakeTime || !beforeDate) return null;
+  var goalH = goalHours || 8;
+  var desiredMin = _timeToMin(wakeTime, false) - goalH * 60;
+  var desiredAnchored = desiredMin; if (desiredAnchored < 720) desiredAnchored += 1440;
+  var log = []; try { log = JSON.parse(localStorage.getItem('gd_sleep_log') || '[]'); } catch(e) {}
+  var recent = log.filter(function(s){ return s.date < beforeDate && s.bedtime; })
+                   .sort(function(a,b){ return a.date < b.date ? 1 : -1; });
+  var fmt = function(min){
+    var norm = ((min % 1440) + 1440) % 1440;
+    var hh = Math.floor(norm / 60), mm = norm % 60;
+    return (hh < 10 ? '0' : '') + hh + ':' + (mm < 10 ? '0' : '') + mm;
+  };
+  if (!recent.length) return { hhmm: fmt(desiredAnchored), shifted: false, fromBedtime: null, desiredHHMM: fmt(desiredAnchored) };
+  var lastBedMin = _timeToMin(recent[0].bedtime, true);
+  var diff = desiredAnchored - lastBedMin;
+  var targetMin = Math.abs(diff) <= BEDTIME_SHIFT_CAP_MIN ? desiredAnchored : lastBedMin + (diff > 0 ? 1 : -1) * BEDTIME_SHIFT_CAP_MIN;
+  return { hhmm: fmt(targetMin), shifted: Math.abs(diff) > BEDTIME_SHIFT_CAP_MIN, fromBedtime: recent[0].bedtime, desiredHHMM: fmt(desiredAnchored) };
+}
+// Rolling Polar Cardio Strain/Tolerance load over the last few nights — a single
+// day's Strain > Tolerance isn't a real signal on its own; several nights in a row is.
+function computeStrainLoadTrend(beforeDate) {
+  if (!beforeDate) return null;
+  var log = []; try { log = JSON.parse(localStorage.getItem('gd_sleep_log') || '[]'); } catch(e) {}
+  var recent = log.filter(function(s){ return s.date < beforeDate && s.polarStrain != null && s.polarTolerance; })
+                   .sort(function(a,b){ return a.date < b.date ? 1 : -1; })
+                   .slice(0, 5);
+  if (!recent.length) return null;
+  var overCount = recent.filter(function(s){ return s.polarStrain > s.polarTolerance; }).length;
+  var avgRatio = recent.reduce(function(sum,s){ return sum + (s.polarStrain / s.polarTolerance); }, 0) / recent.length;
+  return { days: recent.length, overCount: overCount, avgRatio: Math.round(avgRatio * 100) / 100,
+    overreaching: recent.length >= 3 && (overCount / recent.length) >= 0.6 };
+}
 // Upsert today's sleep record into gd_sleep_log (keeps 120 days)
 function syncSleepLog(data){
   if(!data||!data.date) return;
@@ -9617,15 +9692,22 @@ function renderSleepTrendChart() {
     if (h == null) return 'rgba(148,163,184,0.3)';
     return h >= 7 ? 'rgba(34,197,94,0.75)' : h >= 6 ? 'rgba(234,179,8,0.75)' : 'rgba(239,68,68,0.75)';
   });
+  // Strain/Tolerance load, shown as % of tolerance (100% = right at the line) so
+  // it's visible on the same timeline as sleep score/hours — makes it possible to
+  // spot "high-strain day → next-night score dip" patterns by eye.
+  var hasLoad = log.some(function(e){ return e.polarStrain != null && e.polarTolerance; });
+  var loadData = log.map(function(e){ return (e.polarStrain != null && e.polarTolerance) ? Math.round(e.polarStrain / e.polarTolerance * 100) : null; });
+  var datasets = [
+    { type:'bar', label:'ชั่วโมงนอน', data:hoursData, backgroundColor:hourColors, borderRadius:4, yAxisID:'yHrs', order:3 },
+    { type:'line', label:'Sleep Score', data:scoreData, borderColor:'#8b5cf6', backgroundColor:'rgba(139,92,246,0.12)',
+      borderWidth:2.5, tension:0.3, pointRadius:4, pointBackgroundColor:'#8b5cf6', spanGaps:true, yAxisID:'yScore', order:1 }
+  ];
+  if (hasLoad) {
+    datasets.push({ type:'line', label:'Load (%Tolerance)', data:loadData, borderColor:'#f97316', backgroundColor:'rgba(249,115,22,0.08)',
+      borderWidth:2, borderDash:[4,3], tension:0.3, pointRadius:3, pointBackgroundColor:'#f97316', spanGaps:true, yAxisID:'yLoad', order:2 });
+  }
   _sleepTrendChart = new Chart(canvas, {
-    data: {
-      labels: labels,
-      datasets: [
-        { type:'bar', label:'ชั่วโมงนอน', data:hoursData, backgroundColor:hourColors, borderRadius:4, yAxisID:'yHrs', order:2 },
-        { type:'line', label:'Sleep Score', data:scoreData, borderColor:'#8b5cf6', backgroundColor:'rgba(139,92,246,0.12)',
-          borderWidth:2.5, tension:0.3, pointRadius:4, pointBackgroundColor:'#8b5cf6', spanGaps:true, yAxisID:'yScore', order:1 }
-      ]
-    },
+    data: { labels: labels, datasets: datasets },
     options: {
       responsive: true, maintainAspectRatio: false,
       interaction: { mode:'index', intersect:false },
@@ -9634,13 +9716,15 @@ function renderSleepTrendChart() {
         tooltip: { callbacks: { label: function(ctx) {
           if (ctx.raw === null || ctx.raw === undefined) return null;
           if (ctx.dataset.yAxisID === 'yHrs') return ' นอน ' + ctx.raw + ' ชม.';
+          if (ctx.dataset.yAxisID === 'yLoad') return ' Load ' + ctx.raw + '% ของ Tolerance';
           return ' Sleep Score ' + ctx.raw;
         } } }
       },
       scales: {
         x: { ticks:{ color:'#64748b', font:{size:10} }, grid:{ color:'rgba(255,255,255,0.04)' } },
         yHrs: { position:'left', beginAtZero:true, max:12, ticks:{ color:'#64748b', font:{size:10}, callback:function(v){ return v+'h'; } }, grid:{ color:'rgba(255,255,255,0.04)' } },
-        yScore: { position:'right', beginAtZero:true, max:100, ticks:{ color:'#8b5cf6', font:{size:10} }, grid:{ drawOnChartArea:false } }
+        yScore: { position:'right', beginAtZero:true, max:100, ticks:{ color:'#8b5cf6', font:{size:10} }, grid:{ drawOnChartArea:false } },
+        yLoad: { display:false, beginAtZero:true, max:200 }
       }
     }
   });
