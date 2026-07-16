@@ -9266,6 +9266,16 @@ function calculateSleepScoreFromData(sd) {
   var emoji = total >= 70 ? '🟢' : total >= 40 ? '🟡' : '🔴';
   return { sleepScore: total, scoreLabel: label, score: recovery, emoji: emoji, pillars: { duration: duration, efficiency: efficiency, stages: stages, physio: physio, consistency: consistency } };
 }
+// Qualitative headline derived from the calculated score label — never AI free
+// text, which can claim a level (เช่น "ปานกลาง") that contradicts the score badge
+// rendered right next to it.
+function headlineForScoreLabel(label) {
+  return label === 'Peak' ? 'การนอนโดยรวมอยู่ในระดับดีเยี่ยม'
+       : label === 'Good' ? 'การนอนโดยรวมอยู่ในระดับดี'
+       : label === 'Fair' ? 'การนอนโดยรวมอยู่ในระดับปานกลาง'
+       : label === 'Poor' ? 'การนอนโดยรวมยังไม่ดี ควรเน้นการฟื้นฟู'
+       : null;
+}
 function normalizeRecoveryResult(r, sd) {
   r = r || {};
   var calc = calculateSleepScoreFromData(sd || S.sleepData || {});
@@ -9274,7 +9284,7 @@ function normalizeRecoveryResult(r, sd) {
   r.score = calc.score;
   r.emoji = calc.emoji;
   r.pillars = calc.pillars;
-  r.headline = r.headline || 'Sleep Score คำนวณจาก duration, efficiency, sleep stages และ HRV/physio';
+  r.headline = headlineForScoreLabel(calc.scoreLabel) || r.headline || 'Sleep Score คำนวณจาก duration, efficiency, sleep stages และ HRV/physio';
   r.detail = r.detail || 'คะแนนนี้เป็นโมเดลภายในที่อิงหลักการเดียวกับ wearable recovery platform แต่ไม่ใช่สูตรทางการของ WHOOP';
   r.strengths = mdBold(r.strengths || '• **HRV / Physio** และระยะเวลานอนถูกนำมาคิดแบบ weighted score');
   r.improvements = mdBold(r.improvements || '• **Sleep consistency** รักษาเวลานอนและเวลาตื่นให้ใกล้เคียงเดิม');
@@ -9420,7 +9430,7 @@ function updateDashRecoveryCard(d) {
       '<div style="flex:1;min-width:0;">' +
         (sl?'<div style="background:'+(SC.lb[sl]||SC.lb.Fair)+';border-radius:12px;padding:2px 10px;font-size:11px;font-weight:700;color:'+(SC.lc[sl]||'#eab308')+';display:inline-block;margin-bottom:4px;">'+sl+'</div> ':'')+
         '<div style="background:'+(SC.rb[d.recoveryScore]||SC.rb.Moderate)+';border:1px solid '+(SC.rbd[d.recoveryScore]||SC.rbd.Moderate)+';border-radius:12px;padding:2px 10px;font-size:11px;font-weight:600;color:'+(SC.rc[d.recoveryScore]||'#eab308')+';display:inline-block;margin-bottom:6px;">'+em+' '+d.recoveryScore+'</div>' +
-        (d.recoveryHeadline?'<div style="font-size:11px;color:var(--text2);line-height:1.5;">'+escapeHTML(d.recoveryHeadline)+'</div>':'') +
+        (function(){ var hl=headlineForScoreLabel(sl)||d.recoveryHeadline; return hl?'<div style="font-size:11px;color:var(--text2);line-height:1.5;">'+escapeHTML(hl)+'</div>':''; })() +
       '</div>' +
     '</div>' +
     (d.recoveryRec?'<div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:var(--surface);border-radius:8px;border:1px solid var(--border);"><div style="font-size:11px;color:var(--text3);">วันนี้แนะนำ:</div><div style="font-size:13px;font-weight:700;color:'+(SC.pc[d.recoveryRec]||'var(--text)')+';">⚡ '+d.recoveryRec+'</div></div>':'');
