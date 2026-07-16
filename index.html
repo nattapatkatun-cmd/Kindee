@@ -2812,7 +2812,7 @@ function generateMorningRecovery() {
   if (strainTrend && strainTrend.days >= 3) {
     strainTrendLine = '- Load Trend ('+strainTrend.days+' คืนล่าสุด): Strain เกิน Tolerance '+strainTrend.overCount+'/'+strainTrend.days+' คืน (ratio เฉลี่ย '+strainTrend.avgRatio+'x)'+(strainTrend.overreaching?' → สัญญาณ overreaching สะสม เอียงคำแนะนำไปทาง Rest แม้ Sleep Score วันนี้จะดี':'')+'\n';
   }
-  var gradualBed = computeGradualBedtimeTarget(sd.wakeTime, today, 8);
+  var gradualBed = computeGradualBedtimeTarget(sd.wakeTime, today, 8, sd.bedtime);
   var bedtimeTrendLine = '';
   if (gradualBed && gradualBed.shifted) {
     bedtimeTrendLine = '- Bedtime เมื่อคืน: '+gradualBed.fromBedtime+' | เป้าหมายสุดท้ายจาก wake time วันนี้: '+gradualBed.desiredHHMM+' (ระบบจะขยับให้ทีละ '+BEDTIME_SHIFT_CAP_MIN+' นาที/คืนเท่านั้น ไม่กระโดดทันที)\n';
@@ -9285,7 +9285,7 @@ function normalizeRecoveryResult(r, sd) {
   // whatever bedtime the AI free-texted — so it can't drift from the 14-day trend.
   // (This assignment fully replaces the field each call, so it's safe to re-run.)
   var sdRef = sd || S.sleepData || {};
-  var gradualBed = computeGradualBedtimeTarget(sdRef.wakeTime, sdRef.date, 8);
+  var gradualBed = computeGradualBedtimeTarget(sdRef.wakeTime, sdRef.date, 8, sdRef.bedtime);
   if (gradualBed) {
     r.sleep_actions = r.sleep_actions || {};
     r.sleep_actions.target_bedtime = gradualBed.hhmm + (gradualBed.shifted
@@ -9623,31 +9623,40 @@ var BEDTIME_SHIFT_CAP_MIN = 20;
 // (never off today's own entry — caller must pass a date, and only records
 // strictly before it are used) and step toward the wake-time-derived goal by
 // at most BEDTIME_SHIFT_CAP_MIN, instead of jumping straight to the goal each night.
-function computeGradualBedtimeTarget(wakeTime, beforeDate, goalHours) {
-  if (!wakeTime || !beforeDate) return null;
+// forDate = date of the sleep record being analyzed. A record dated D holds the
+// night that ENDED on the morning of D, so "last night's bedtime" lives in the
+// record dated forDate itself (pass it via lastBedtime, or the <= filter finds it) —
+// filtering with `< forDate` would grab the night before last and lag one night.
+function computeGradualBedtimeTarget(wakeTime, forDate, goalHours, lastBedtime) {
+  if (!wakeTime || !forDate) return null;
   var goalH = goalHours || 8;
   var desiredMin = _timeToMin(wakeTime, false) - goalH * 60;
   var desiredAnchored = desiredMin; if (desiredAnchored < 720) desiredAnchored += 1440;
-  var log = []; try { log = JSON.parse(localStorage.getItem('gd_sleep_log') || '[]'); } catch(e) {}
-  var recent = log.filter(function(s){ return s.date < beforeDate && s.bedtime; })
-                   .sort(function(a,b){ return a.date < b.date ? 1 : -1; });
+  var fromBed = lastBedtime || null;
+  if (!fromBed) {
+    var log = []; try { log = JSON.parse(localStorage.getItem('gd_sleep_log') || '[]'); } catch(e) {}
+    var recent = log.filter(function(s){ return s.date <= forDate && s.bedtime; })
+                     .sort(function(a,b){ return a.date < b.date ? 1 : -1; });
+    if (recent.length) fromBed = recent[0].bedtime;
+  }
   var fmt = function(min){
     var norm = ((min % 1440) + 1440) % 1440;
     var hh = Math.floor(norm / 60), mm = norm % 60;
     return (hh < 10 ? '0' : '') + hh + ':' + (mm < 10 ? '0' : '') + mm;
   };
-  if (!recent.length) return { hhmm: fmt(desiredAnchored), shifted: false, fromBedtime: null, desiredHHMM: fmt(desiredAnchored) };
-  var lastBedMin = _timeToMin(recent[0].bedtime, true);
+  if (!fromBed) return { hhmm: fmt(desiredAnchored), shifted: false, fromBedtime: null, desiredHHMM: fmt(desiredAnchored) };
+  var lastBedMin = _timeToMin(fromBed, true);
   var diff = desiredAnchored - lastBedMin;
   var targetMin = Math.abs(diff) <= BEDTIME_SHIFT_CAP_MIN ? desiredAnchored : lastBedMin + (diff > 0 ? 1 : -1) * BEDTIME_SHIFT_CAP_MIN;
-  return { hhmm: fmt(targetMin), shifted: Math.abs(diff) > BEDTIME_SHIFT_CAP_MIN, fromBedtime: recent[0].bedtime, desiredHHMM: fmt(desiredAnchored) };
+  return { hhmm: fmt(targetMin), shifted: Math.abs(diff) > BEDTIME_SHIFT_CAP_MIN, fromBedtime: fromBed, desiredHHMM: fmt(desiredAnchored) };
 }
 // Rolling Polar Cardio Strain/Tolerance load over the last few nights — a single
 // day's Strain > Tolerance isn't a real signal on its own; several nights in a row is.
-function computeStrainLoadTrend(beforeDate) {
-  if (!beforeDate) return null;
+// forDate's own record IS the most recent night (logged that morning), so include it.
+function computeStrainLoadTrend(forDate) {
+  if (!forDate) return null;
   var log = []; try { log = JSON.parse(localStorage.getItem('gd_sleep_log') || '[]'); } catch(e) {}
-  var recent = log.filter(function(s){ return s.date < beforeDate && s.polarStrain != null && s.polarTolerance; })
+  var recent = log.filter(function(s){ return s.date <= forDate && s.polarStrain != null && s.polarTolerance; })
                    .sort(function(a,b){ return a.date < b.date ? 1 : -1; })
                    .slice(0, 5);
   if (!recent.length) return null;
