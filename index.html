@@ -3026,6 +3026,8 @@ function generateDailySummary() {
     '- Identify the 1 most important thing to fix or maintain — don\'t dilute with too many points\n' +
     '- Use Retention Context to explain possible water/glycogen fluctuation; do not call fat gain from one high sodium/high carb day.\n' +
     '- For the "strain" verdict: judge STRENGTH/resistance sessions by Total Volume Load (tonnage) vs the user\'s own rolling average and e1RM trend (up/plateau/down) — never by avg HR/%HRR zone. Inter-set rest suppresses mean HR during lifting regardless of true effort, so a low HR zone on a strength session does NOT mean low intensity; a long duration alone also does not automatically mean higher intensity. Only use %HRR zone to judge CARDIO sessions (running, cycling, swimming, HIIT, walking). If a day mixes both, assess each modality on its own terms in the detail text.\n' +
+    '- e1RM trend is the PRIMARY progression signal for strength; Volume Load is secondary context. If an exercise shows e1RM↑ or a NEW PR while its volume is down, that is intensity-driven progression (heavier weight, fewer reps) — report it as progress and NEVER as "insufficient stimulus". Only flag low volume as a problem when e1RM is ALSO flat or declining for that exercise. Never contradict a PR: if any exercise hit a new e1RM PR today, the strain/progress text must acknowledge it positively.\n' +
+    '- Compare volume ONLY like-for-like: each exercise vs its OWN rolling average (provided per line). Do NOT compare today\'s Total Volume Load against a past day\'s total from RECENT HISTORY — different days train different muscle groups and exercise counts, so day totals are not comparable and such a comparison must not appear in your output.\n' +
     '- Tone: professional coach, direct and confident, not cheerful chatbot\n\n' +
     'User Profile: ' + profileStr + '\n' +
     'Calorie Context: ' + formatCalorieContextLine(calCtx) + '\n' +
@@ -5015,9 +5017,15 @@ function buildTodayStrengthVolumeSummary() {
     }
     var verdict = getProgressionVerdict(id);
     var verdictStr = verdict === 'up' ? ' | e1RM↑' : verdict === 'down' ? ' | e1RM↓' : verdict === 'plateau' ? ' | e1RM plateau' : '';
-    return '  - ' + (ex ? ex.name : id) + ': ' + Math.round(vol) + 'kg volume (' + rows.length + ' sets, best e1RM ' + bestE1RM + 'kg)' + trendStr + verdictStr;
+    // All-time PR check: a new best e1RM outranks any volume drop — a heavy
+    // low-rep day lowers tonnage while strength still moves up.
+    var priorBest = getStrengthLog().reduce(function(b,r){
+      return (r.exerciseId === id && r.date !== today && r.e1RM > b) ? r.e1RM : b;
+    }, 0);
+    var prStr = (priorBest > 0 && bestE1RM > priorBest) ? ' | 🔥 NEW all-time e1RM PR (prev ' + priorBest + 'kg)' : '';
+    return '  - ' + (ex ? ex.name : id) + ': ' + Math.round(vol) + 'kg volume (' + rows.length + ' sets, best e1RM ' + bestE1RM + 'kg)' + trendStr + verdictStr + prStr;
   });
-  return 'Total Volume Load: ' + Math.round(totalVolume) + 'kg across ' + totalSets + ' sets, ' + exIds.length + ' exercise(s)\n' + lines.join('\n');
+  return 'Total Volume Load: ' + Math.round(totalVolume) + 'kg across ' + totalSets + ' sets, ' + exIds.length + ' exercise(s) — do NOT compare this total to other days (different exercise mix); judge each exercise vs its own rolling avg below\n' + lines.join('\n');
 }
 
 // Render the exercise-sheet "next target" line (called from openExSheet).
