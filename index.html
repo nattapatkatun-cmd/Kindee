@@ -2738,18 +2738,25 @@ function getDailyRetentionContext(date) {
   var meals = mealsForDate ? mealsForDate(date) : (S.meals || []).filter(function(m){ return m.date === date; });
   if (!meals.length) return {score:0, sodiumHigh:false, carbHigh:false, mealCount:0, label:getRetentionLabel(0)};
   var maxRisk = 0, avgRisk = 0, sodiumHigh = false, carbHigh = false, contexts = {};
+  var totalCal = 0, hiNaCal = 0, hiCarbCal = 0;
   meals.forEach(function(m){
     var r = Math.max(0, Math.min(100, +m.retentionRisk || 0));
     maxRisk = Math.max(maxRisk, r);
     avgRisk += r;
-    if ((m.sodiumFlag||'').toLowerCase() === 'high') sodiumHigh = true;
-    if ((m.carbLoadFlag||'').toLowerCase() === 'high') carbHigh = true;
+    var mCal = parseFloat(m.calories) || 0;
+    totalCal += mCal;
+    if ((m.sodiumFlag||'').toLowerCase() === 'high') { sodiumHigh = true; hiNaCal += mCal; }
+    if ((m.carbLoadFlag||'').toLowerCase() === 'high') { carbHigh = true; hiCarbCal += mCal; }
     if (m.mealContext) contexts[m.mealContext] = (contexts[m.mealContext]||0)+1;
   });
   avgRisk = avgRisk / meals.length;
   var score = Math.round(Math.min(100, maxRisk*0.65 + avgRisk*0.35));
-  if (sodiumHigh) score = Math.max(score, 65);
-  if (carbHigh) score = Math.max(score, 55);
+  // Floor scales with how much of the day the flagged meals actually were —
+  // one small salty side dish should not brand the whole day "High risk".
+  var naShare = totalCal > 0 ? hiNaCal / totalCal : 1;
+  var carbShare = totalCal > 0 ? hiCarbCal / totalCal : 1;
+  if (sodiumHigh) score = Math.max(score, naShare >= 0.25 ? 65 : 55);
+  if (carbHigh) score = Math.max(score, carbShare >= 0.25 ? 55 : 45);
   return {score:score, sodiumHigh:sodiumHigh, carbHigh:carbHigh, mealCount:meals.length, contexts:contexts, label:getRetentionLabel(score)};
 }
 function getRangeRetentionContext(startDate, endDate) {
@@ -2822,10 +2829,10 @@ function generateMorningRecovery() {
     'คุณคือผู้เชี่ยวชาญด้านการนอนและโค้ชฟิตเนส วิเคราะห์ข้อมูลการนอนและคำนวณ Sleep Score แบบ WHOOP\n' +
     'SCORING RUBRIC (คำนวณ weighted average 0-100):\n' +
     '  Duration (25%): <6h->15, 6-6.9h->45, 7-7.9h->72, 8-8.9h->88, 9h->95, >9h->90\n' +
-    '  Efficiency (20%): ถ้ามีข้อมูล TIB: <75%->20, 75-84%->55, >=85%->85. ถ้าไม่มี TIB: ประมาณจาก quality/duration\n' +
-    '  Stages (20%): Deep: >=20%->25pts, 15-19%->18, <15%->8. REM: >=20%->25pts, 15-19%->18, <15%->8. รวม 50pts หาร 2. ถ้าไม่มี stage data: ประมาณ 50\n' +
+    '  Efficiency (20%): ถ้ามีข้อมูล TIB: <75%->20, 75-84%->55, 85-89%->85, >=90%->95. ถ้าไม่มี TIB: pillar นี้ถูกตัดออก (re-normalize) ห้ามพูดถึง Efficiency ในข้อความ\n' +
+    '  Stages (20%): ช่วงเหมาะสมของผู้ใหญ่คือ Deep 13-23% และ REM 18-28% ของเวลาหลับ — อยู่ในช่วง = ดีมาก, เกิน/ขาดไม่เกิน 4 จุด = พอใช้, ห่างกว่านั้น = ควรปรับ (สูงเกินช่วงก็ไม่ใช่เรื่องดี อย่าชมว่า Deep ยิ่งเยอะยิ่งดี). ถ้าไม่มี stage data: ประมาณ 50\n' +
     '  Physio/HRV (20%): HRV vs baseline: >=+5%->25, 0-+4%->20, -1 to -4%->14, <=-5%->8. ไม่มี HRV: ใช้ RHR แทน\n' +
-    '  Consistency (15%): ใช้ค่า Sleep Consistency ที่ให้มาโดยตรง (0-100). ถ้าไม่มีค่า Consistency: ตัด pillar นี้ออกแล้ว re-normalize 4 pillar ที่เหลือ (Duration 0.3125, Efficiency 0.25, Stages 0.25, Physio 0.1875) ให้รวมเป็น 100%\n' +
+    '  Consistency (15%): ใช้ค่า Sleep Consistency ที่ให้มาโดยตรง (0-100). ถ้า pillar ไหนไม่มีข้อมูล (Consistency หรือ Efficiency): ตัด pillar นั้นออกแล้ว re-normalize น้ำหนักของ pillar ที่เหลือให้รวมเป็น 100%\n' +
     'Final Score (มี Consistency) = (Duration*0.25)+(Efficiency*0.20)+(Stages*0.20)+(Physio*0.20)+(Consistency*0.15). LABEL: 85-100=Peak, 66-84=Good, 34-65=Fair, 0-33=Poor\n' +
     'Recovery Status: score>=70=Optimal, 40-69=Moderate, <40=Poor\n\n' +
     '[กฎสำคัญ] ห้ามพิมพ์ตัวเลขคะแนนรวม (sleepScore) ซ้ำในข้อความ headline/detail/strengths/improvements/recommendation_reason เด็ดขาด — แอปคำนวณและแสดงตัวเลขนี้เองแยกต่างหากจาก pillars ด้านล่าง (ไม่ได้ใช้เลขที่คุณพิมพ์ในข้อความ) ถ้าตัวเลขในข้อความคำนวณผิดหรือไม่ตรงกับที่แอปคำนวณ จะดูขัดแย้งกันในหน้าจอเดียวกัน ให้พูดถึงระดับคะแนนเชิงคุณภาพแทนเสมอ เช่น "อยู่ในระดับ Fair" หรือ "คะแนนโดยรวมปานกลาง" ห้ามเขียน "อยู่ที่ 47.3" หรือตัวเลขทศนิยม/จำนวนเต็มใด ๆ แทนคะแนนรวม\n\n' +
@@ -2890,12 +2897,21 @@ function generateMorningRecovery() {
       var rec = r.recommendation;
       var today = localDateStr();
       var delta = 0, carbDelta = 0, proDelta = 0, reason = '';
-      if (rec === 'Push') {
+      // A planned rest day never gets the +150 "fuel training" bump — there is no
+      // session to fuel, and the rest-day carb cut would be fighting it on the
+      // same dashboard number.
+      var restDayPlan = (typeof isTodayRestDayByPlan === 'function') && isTodayRestDayByPlan() &&
+                        !((typeof todayWorkouts === 'function') && todayWorkouts().length);
+      if (rec === 'Push' && restDayPlan) {
+        reason = 'Recovery ดี แต่วันนี้เป็นวันพักตามแผน — คงเป้าปกติ เก็บแรงไว้ซ้อมเต็มที่พรุ่งนี้';
+      } else if (rec === 'Push') {
         delta = 150; carbDelta = 30;
         reason = 'Recovery ดี — เพิ่ม +' + delta + ' kcal (+' + carbDelta + 'g carbs) เพื่อ fuel training';
       } else if (rec === 'Rest') {
-        delta = -150; carbDelta = -20; proDelta = 10;
-        reason = 'Recovery ต่ำ — ลด ' + Math.abs(delta) + ' kcal, เพิ่ม protein +' + proDelta + 'g เพื่อซ่อมกล้ามเนื้อ';
+        // Poor recovery is the worst day to deepen the deficit — keep calories,
+        // shift carbs→protein (≈isocaloric) to support repair instead.
+        carbDelta = -20; proDelta = 15;
+        reason = 'Recovery ต่ำ — คงแคลเท่าเดิม สลับคาร์บ ' + carbDelta + 'g เป็นโปรตีน +' + proDelta + 'g เพื่อซ่อมกล้ามเนื้อ (ไม่ลดแคลในวันที่ร่างกายฟื้นตัวแย่)';
       } else {
         reason = 'Maintain — เป้าหมายแคลปกติ';
       }
@@ -3369,25 +3385,29 @@ function renderDailySummary(r) {
 function getRecoveryAdjGoals() {
   var today = localDateStr();
   var adj = null; try { adj = JSON.parse(localStorage.getItem('gd_recovery_adj') || 'null'); } catch(e) {}
-  // Only apply if user explicitly confirmed via Apply button (adj.confirmed === true)
-  if (!adj || adj.date !== today || adj.delta === 0 || !adj.confirmed) return null;
+  // Only apply if user explicitly confirmed via Apply button (adj.confirmed === true).
+  // A Rest-day macro swap has delta 0 but nonzero carb/protein deltas — still real.
+  if (!adj || adj.date !== today || !adj.confirmed) return null;
+  if (!adj.delta && !adj.carbDelta && !adj.proDelta) return null;
   return { cal: (S.goals.cal||1800) + adj.delta, pro: (S.goals.pro||120) + (adj.proDelta||0), crb: (S.goals.crb||200) + (adj.carbDelta||0), fat: S.goals.fat||60, _adj: adj };
 }
 function updateRecoveryAdjBanner(adj) {
   var el = document.getElementById('recovery-adj-banner'); if (!el) return;
-  if (!adj || adj.delta === 0) { el.style.display = 'none'; return; }
-  var col = adj.delta > 0 ? 'var(--green)' : 'var(--accent)';
-  var icon = adj.delta > 0 ? '🔼' : '🔽';
+  if (!adj || (!adj.delta && !adj.carbDelta && !adj.proDelta)) { el.style.display = 'none'; return; }
+  var col = adj.delta > 0 ? 'var(--green)' : adj.delta < 0 ? 'var(--accent)' : 'var(--blue)';
+  var icon = adj.delta > 0 ? '🔼' : adj.delta < 0 ? '🔽' : '🔁';
+  var lbl = adj.delta ? ((adj.delta > 0 ? '+' : '') + adj.delta + ' kcal')
+                      : ('โปรตีน +' + (adj.proDelta || 0) + 'g / คาร์บ ' + (adj.carbDelta || 0) + 'g');
   el.style.display = 'block';
   if (adj.confirmed) {
     // Already applied — show confirmed state
-    el.innerHTML = '<span style="color:' + col + ';font-weight:700;">' + icon + ' ' + (adj.delta > 0 ? '+' : '') + adj.delta + ' kcal ใช้งานแล้ววันนี้</span>' +
+    el.innerHTML = '<span style="color:' + col + ';font-weight:700;">' + icon + ' ' + lbl + ' ใช้งานแล้ววันนี้</span>' +
       '<span style="color:var(--text3);font-size:11px;margin-left:6px;">(' + adj.reason + ')</span>' +
       '<button onclick="cancelRecoveryAdj()" style="margin-left:8px;padding:2px 8px;background:none;border:1px solid var(--border);border-radius:8px;color:var(--text3);font-family:inherit;font-size:11px;cursor:pointer;">ยกเลิก</button>';
   } else {
     // Pending — show Apply button
     el.innerHTML = '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">' +
-      '<span style="color:var(--text2);font-size:11px;">' + icon + ' Recovery แนะนำ ' + (adj.delta > 0 ? '+' : '') + adj.delta + ' kcal วันนี้ — ' + adj.reason + '</span>' +
+      '<span style="color:var(--text2);font-size:11px;">' + icon + ' Recovery แนะนำ ' + lbl + ' วันนี้ — ' + adj.reason + '</span>' +
       '<button onclick="applyRecoveryAdj()" style="padding:3px 12px;background:' + col + ';border:none;border-radius:8px;color:white;font-family:inherit;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;">ใช้เป้าหมายนี้</button>' +
       '</div>';
   }
@@ -3400,7 +3420,9 @@ function applyRecoveryAdj() {
   localStorage.setItem('gd_recovery_adj', JSON.stringify(adj));
   updateRecoveryAdjBanner(adj);
   updateDash();
-  showToast('ใช้เป้าหมายแคล ' + (adj.delta > 0 ? '+' : '') + adj.delta + ' kcal วันนี้แล้ว', 'success');
+  showToast(adj.delta
+    ? ('ใช้เป้าหมายแคล ' + (adj.delta > 0 ? '+' : '') + adj.delta + ' kcal วันนี้แล้ว')
+    : ('ใช้เป้าหมายมาโครปรับตาม Recovery วันนี้แล้ว (โปรตีน +' + (adj.proDelta || 0) + 'g / คาร์บ ' + (adj.carbDelta || 0) + 'g)'), 'success');
 }
 function cancelRecoveryAdj() {
   var today = localDateStr();
@@ -3547,22 +3569,26 @@ function detectAnomalies() {
     if (hrvPct <= -20) flags.push('💓 HRV วันนี้ ' + todayHrv + ' ms — ต่ำกว่า baseline ' + Math.abs(Math.round(hrvPct)) + '% (' + baseline + ' ms) ร่างกายยังฟื้นตัวไม่เต็มที่');
   }
 
-  // Flag 3: Weight moving opposite to net-cal direction (3+ consecutive days)
+  // Flag 3: Weight moving opposite to the energy balance (3+ days in the window).
+  // Deficit/surplus must be judged against TDEE — the intake goal already sits
+  // hundreds of kcal BELOW TDEE, so "net > goal" can still be a real deficit and
+  // the old goal-based check fired false "surplus but weight falling" conflicts.
   var recentW = weights.filter(function(w){ return days.indexOf(w.date) >= 0; }).sort(function(a,b){ return a.date>b.date?1:-1; });
-  var calGoalV = S.goals.cal || 1800;
+  var tdeeRef = (function(){ try { return getOfficialCalorieContext().officialTDEE; } catch(e) { return S.goals.cal || 1800; } })();
   if (recentW.length >= 3) {
     var conflicts = 0;
     for (var i = 1; i < recentW.length; i++) {
       var prevDate = recentW[i-1].date, currDate = recentW[i].date;
       var dayMeals = meals.filter(function(m){ return m.date === prevDate; });
       var intake = dayMeals.reduce(function(s,m){ return s+(parseFloat(m.calories)||0); },0);
-      var burn = workouts.filter(function(w){ return w.date===prevDate; }).reduce(function(s,w){ return s+(parseFloat(w.calories_burned)||0); },0);
-      var net = intake - burn;
+      var burn = creditedBurnSum(workouts.filter(function(w){ return w.date===prevDate; }));
+      var neat = (typeof getNeatCalForDate === 'function') ? getNeatCalForDate(prevDate) : 0;
+      var net = intake - burn - neat;
       var wDiff = recentW[i].weight - recentW[i-1].weight;
       // Conflict: deficit but weight rising, or surplus but weight falling
-      if (intake > 0 && ((net < calGoalV - 200 && wDiff > 0.25) || (net > calGoalV + 200 && wDiff < -0.25))) conflicts++;
+      if (intake > 0 && ((net < tdeeRef - 200 && wDiff > 0.25) || (net > tdeeRef + 200 && wDiff < -0.25))) conflicts++;
     }
-    if (conflicts >= 3) flags.push('⚖️ น้ำหนักเคลื่อนไหวสวนทางกับ Net Cal ' + conflicts + ' วันติด — อาจเป็น water retention หรือข้อมูลแคลไม่ครบ');
+    if (conflicts >= 3) flags.push('⚖️ น้ำหนักเคลื่อนไหวสวนทางกับสมดุลพลังงาน (เทียบ TDEE ' + tdeeRef + ' kcal) ' + conflicts + ' วันใน 7 วัน — อาจเป็น water retention หรือข้อมูลแคลไม่ครบ');
   }
 
   // Flag 4: Protein consistently low 3+ days
@@ -3611,8 +3637,9 @@ function renderWeeklyReview() {
     // getNeatCalForDate() which also dedups session steps. (The old code read
     // a 'gd_steps_<date>' key that never existed, so NEAT was always 0 here.)
     var stepCal=(typeof getNeatCalForDate==='function')?getNeatCalForDate(date):0;
-    // Only accumulate net for days that have meal data (avoid skewing avg with workout-only days)
-    if(dm.length){totalNet+=intake-burn-stepCal;daysWithNet++;}
+    // Only accumulate net for days that have meal data (avoid skewing avg with workout-only days).
+    // Credited burn, same as getDailyMetrics — raw burn made this net disagree with the dashboard.
+    if(dm.length){totalNet+=intake-creditedBurnSum(dw)-stepCal;daysWithNet++;}
   });
   var avgCal=daysWithMeals?Math.round(totalCal/daysWithMeals):0;
   var avgPro=daysWithMeals?Math.round(totalPro/daysWithMeals):0;
@@ -3712,7 +3739,7 @@ function renderCorrelations() {
     // NEAT for this date — shared 'gd_steps' store via getNeatCalForDate()
     // (dedups session steps; old code read a nonexistent 'gd_steps_<date>' key)
     var neatCalC=(typeof getNeatCalForDate==='function')?getNeatCalForDate(date):0;
-    dayData[date]={intake:intake,sodium:sodium,protein:protein,strain:burn,neatCal:neatCalC,weight:weight,hrv:hrv,rhr:rhr,hasMeal:intake>0};
+    dayData[date]={intake:intake,sodium:sodium,protein:protein,strain:burn,credBurn:creditedBurnSum(dw),neatCal:neatCalC,weight:weight,hrv:hrv,rhr:rhr,hasMeal:intake>0};
   });
   var findings=[];
   // P1 sodium→weight
@@ -3725,7 +3752,7 @@ function renderCorrelations() {
   var lowPro=days.filter(function(d){return dayData[d].hasMeal&&dayData[d].protein<goalProC*0.7;});
   if(lowPro.length>=3)findings.push({icon:'🥩',color:'var(--blue)',text:'มี '+lowPro.length+' วันใน 14 วัน ที่โปรตีน <70% ของเป้า — อาจส่งผลต่อ muscle preservation'});
   // P4 surplus→weight (uses proper net = intake − burn − NEAT, consistent with updateDash)
-  var surp=days.filter(function(d){return dayData[d].hasMeal&&(dayData[d].intake-dayData[d].strain-dayData[d].neatCal)>calGoalC+200;});
+  var surp=days.filter(function(d){return dayData[d].hasMeal&&(dayData[d].intake-dayData[d].credBurn-dayData[d].neatCal)>calGoalC+200;});
   if(surp.length>=3){var wu=0,ch3=0;surp.forEach(function(d){var ni=days.indexOf(d)+1;if(ni>=days.length)return;var nx=days[ni];if(dayData[d].weight!==null&&dayData[nx].weight!==null){ch3++;if(dayData[nx].weight>dayData[d].weight)wu++;}});if(ch3>=2){var p4=Math.round(wu/ch3*100);findings.push({icon:'⚖️',color:p4>=60?'var(--red)':'var(--green)',text:'Net Cal เกิน goal >200 kcal → น้ำหนักขึ้นวันถัดไป '+p4+'% ('+ch3+' ครั้งที่ตรวจได้)'});}}
   // P5 RHR trend
   var rhrD=days.map(function(d){return dayData[d].rhr;}).filter(function(v){return v!==null;});
@@ -4124,6 +4151,9 @@ function buildGoalFromMode(mode, profile, tdee) {
     crb = 80;
     fat = Math.max(Math.round(weight*0.7), Math.round((cal - (pro*4) - (crb*4)) / 9));
   }
+  // The carb/fat floors can push macro totals past the calorie target; show the
+  // calories the macros actually add up to instead of an impossible combination.
+  cal = Math.max(cal, pro*4 + crb*4 + fat*9);
   return { cal:Math.round(cal), pro:Math.round(pro), crb:Math.round(crb), fat:Math.round(fat), mode:mode, modeLabel:cfg.label, tdee:baseTDEE,
            deficit:deficit, deficitSource:deficitSource, proteinBasis:proteinBasis, bfUsed:bfForPro||null };
 }
@@ -4921,16 +4951,19 @@ function getExerciseSessions(exerciseId, limit) {
 function getProgressionVerdict(exerciseId) {
   var s = getExerciseSessions(exerciseId, 3); // newest..oldest
   if (s.length < 2) return null;
-  var THRESH = 0.5; // kg — ignores calcE1RM rounding noise
+  // Noise threshold: 2% of the lift, min 0.5kg. Epley e1RM from high-rep
+  // isolation sets (10-15 reps) jitters far beyond a flat 0.5kg, which made
+  // verdicts flip up/down on estimation noise alone.
+  function thr(base){ return Math.max(0.5, base * 0.02); }
   var latest = s[0].bestE1RM, prev = s[1].bestE1RM;
   if (s.length >= 3) {
     var oldest = s[2].bestE1RM;
-    if (latest > oldest + THRESH && latest >= prev - THRESH) return 'up';
-    if (latest < oldest - THRESH && latest <= prev + THRESH) return 'down';
-    if (Math.abs(latest - oldest) <= THRESH) return 'plateau';
+    if (latest > oldest + thr(oldest) && latest >= prev - thr(prev)) return 'up';
+    if (latest < oldest - thr(oldest) && latest <= prev + thr(prev)) return 'down';
+    if (Math.abs(latest - oldest) <= thr(oldest)) return 'plateau';
   }
-  if (latest > prev + THRESH) return 'up';
-  if (latest < prev - THRESH) return 'down';
+  if (latest > prev + thr(prev)) return 'up';
+  if (latest < prev - thr(prev)) return 'down';
   return 'plateau';
 }
 
@@ -5004,7 +5037,10 @@ function buildTodayStrengthVolumeSummary() {
     var bestE1RM = rows.reduce(function(b,r){ return r.e1RM > b ? r.e1RM : b; }, 0);
     totalVolume += vol; totalSets += rows.length;
     var sessions = getExerciseSessions(id, 4); // newest..oldest, sessions[0] = today
-    var prior = sessions.slice(1, 4);
+    // Only compare against reasonably recent sessions — after a long layoff the
+    // old volumes are not a meaningful baseline for today's session.
+    var staleCutoff = (function(){ var d = new Date(); d.setDate(d.getDate() - 45); return localDateStr(d); })();
+    var prior = sessions.slice(1, 4).filter(function(s){ return s.date >= staleCutoff; });
     var trendStr = '';
     if (prior.length) {
       var priorAvgVol = prior.reduce(function(a,s){
@@ -6024,7 +6060,7 @@ function renderFitnessCharts() {
   });
   var netData  = days.map(function(d) {
     var eaten   = S.meals.filter(function(m){return m.date===d;}).reduce(function(a,m){return a+m.calories;},0);
-    var burned  = FT.workouts.filter(function(w){return w.date===d;}).reduce(function(a,w){return a+w.calories_burned;},0);
+    var burned  = creditedBurnSum(FT.workouts.filter(function(w){return w.date===d;}));
     var sessionSteps = FT.workouts.filter(function(w){return w.date===d;}).reduce(function(a,w){return a+(w.session_steps||0);},0);
     var neatSteps = Math.max((stepData[d]||0) - sessionSteps, 0);
     var neatCal = calcStepCalories(neatSteps);
@@ -6307,6 +6343,12 @@ function calcTargetFeasibility(target, profile) {
   var currBF = target.currBF != null ? parseFloat(target.currBF) : null;
   var tgtBF  = target.bf     != null ? parseFloat(target.bf)     : null;
   var duration = parseInt(target.duration) || 8;
+  // A program already underway plans with the weeks REMAINING — keeping the
+  // original duration meant the required deficit forever assumed the full window.
+  if (target.startDate) {
+    var elapsedWk = Math.floor(Math.max(0, (new Date() - new Date(target.startDate)) / 86400000) / 7);
+    if (elapsedWk > 0) duration = Math.max(2, duration - elapsedWk);
+  }
   var gender = profile.gender || 'male';
   var essential = gender === 'female' ? 13 : 5;
   if (!currW || !currBF || !tgtBF || !duration) return { status:'insufficient' };
@@ -9228,14 +9270,18 @@ function scoreStages(hours, deepMin, remMin) {
   if (!totalMin || (!deepMin && !remMin)) return null;
   var deepPct = deepMin ? (deepMin / totalMin) * 100 : null;
   var remPct  = remMin  ? (remMin  / totalMin) * 100 : null;
-  function oneStageScore(pct) {
+  // Band scoring around adult norms — deep 13-23%, REM 18-28% of total sleep.
+  // The old ">=20% = perfect" rule penalized a perfectly normal 16% deep night
+  // forever and gave abnormally HIGH stage percentages a free pass.
+  function bandScore(pct, lo, hi) {
     if (pct === null) return 50;
-    if (pct >= 20) return 100;
-    if (pct >= 15) return 72;
-    if (pct > 0) return 32;
-    return 0;
+    if (pct >= lo && pct <= hi) return 100;
+    var d = pct < lo ? lo - pct : pct - hi;
+    if (d <= 4) return 72;
+    if (d <= 9) return 40;
+    return 20;
   }
-  return Math.round((oneStageScore(deepPct) + oneStageScore(remPct)) / 2);
+  return Math.round((bandScore(deepPct, 13, 23) + bandScore(remPct, 18, 28)) / 2);
 }
 function scorePhysio(hrv, baseline, rhr) {
   if (hrv && baseline) {
@@ -9255,20 +9301,24 @@ function scorePhysio(hrv, baseline, rhr) {
 }
 function calculateSleepScoreFromData(sd) {
   var duration = scoreDuration(sd && sd.hours);
+  // Never-measured pillars stay null and get dropped via re-normalization below.
+  // The old fallback copied the Duration score into Efficiency, silently counting
+  // Duration at 45% weight and showing an "Efficiency" bar that was never measured.
   var efficiency = scoreEfficiency(sd && sd.hours, sd && sd.timeInBed);
-  if (efficiency === null) efficiency = duration;
   var stages = scoreStages(sd && sd.hours, sd && sd.deepSleep, sd && sd.remSleep);
   if (stages === null) stages = 50;
   var physio = scorePhysio(sd && sd.hrv, sd && sd.hrvBaseline, sd && sd.rhr);
   if (physio === null) physio = 50;
   var consistency = (sd && sd.consistency != null) ? sd.consistency : null;
-  var total;
-  if (consistency != null) {
-    total = Math.round((duration*0.25)+(efficiency*0.20)+(stages*0.20)+(physio*0.20)+(consistency*0.15));
-  } else {
-    // re-normalize 4 pillars to 100% (Duration .3125 / Eff .25 / Stages .25 / Physio .1875)
-    total = Math.round((duration*0.3125)+(efficiency*0.25)+(stages*0.25)+(physio*0.1875));
-  }
+  var parts = [
+    { v: duration,    w: 0.25 },
+    { v: efficiency,  w: 0.20 },
+    { v: stages,      w: 0.20 },
+    { v: physio,      w: 0.20 },
+    { v: consistency, w: 0.15 }
+  ].filter(function(p){ return p.v != null; });
+  var wSum = parts.reduce(function(s,p){ return s + p.w; }, 0);
+  var total = Math.round(parts.reduce(function(s,p){ return s + p.v * p.w; }, 0) / wSum);
   var label = total >= 85 ? 'Peak' : total >= 66 ? 'Good' : total >= 34 ? 'Fair' : 'Poor';
   var recovery = total >= 70 ? 'Optimal' : total >= 40 ? 'Moderate' : 'Poor';
   var emoji = total >= 70 ? '🟢' : total >= 40 ? '🟡' : '🔴';
@@ -9372,7 +9422,7 @@ function buildResultHTML(r, em) {
     '</div>' +
     '<div style="background:var(--surface2);border-radius:16px;padding:16px;margin-bottom:12px;">' +
       '<div style="font-size:11px;font-weight:700;color:var(--text3);margin-bottom:12px;text-transform:uppercase;letter-spacing:0.5px;">Score Breakdown</div>' +
-      pillarBar('Duration',pil.duration)+pillarBar('Efficiency',pil.efficiency)+pillarBar('Sleep Stages',pil.stages)+pillarBar('HRV / Physio',pil.physio)+(pil.consistency!=null?pillarBar('Consistency',pil.consistency):'') +
+      pillarBar('Duration',pil.duration)+(pil.efficiency!=null?pillarBar('Efficiency',pil.efficiency):'')+pillarBar('Sleep Stages',pil.stages)+pillarBar('HRV / Physio',pil.physio)+(pil.consistency!=null?pillarBar('Consistency',pil.consistency):'') +
     '</div>' +
     (r.strengths?'<div style="background:rgba(34,197,94,0.07);border:1px solid rgba(34,197,94,0.2);border-radius:10px;padding:10px 12px;margin-bottom:8px;"><div style="font-size:11px;font-weight:700;color:#22c55e;margin-bottom:6px;text-transform:uppercase;letter-spacing:0.5px;">✅ ทำไมคะแนนดี</div><div style="font-size:12px;color:var(--text2);line-height:1.8;">'+mdBold(r.strengths)+'</div></div>':'') +
     (r.improvements?'<div style="background:rgba(59,130,246,0.07);border:1px solid rgba(59,130,246,0.2);border-radius:10px;padding:10px 12px;margin-bottom:10px;"><div style="font-size:11px;font-weight:700;color:#3b82f6;margin-bottom:6px;text-transform:uppercase;letter-spacing:0.5px;">💡 Improve ยังไงได้อีก</div><div style="font-size:12px;color:var(--text2);line-height:1.8;">'+mdBold(r.improvements)+'</div></div>':'') +
@@ -9623,10 +9673,12 @@ function computeConsistency(bedtime, wakeTime, today){
   var mids=[];
   log.forEach(function(s){
     if(s.date===today) return;
-    if(s.bedtime&&s.wakeTime){ var mp=_midpoint(s.bedtime,s.wakeTime); if(mp!=null) mids.push(mp); }
+    if(s.bedtime&&s.wakeTime){ var mp=_midpoint(s.bedtime,s.wakeTime); if(mp!=null) mids.push({date:s.date, mp:mp}); }
   });
-  var todayMid=_midpoint(bedtime,wakeTime); if(todayMid!=null) mids.push(todayMid);
-  mids=mids.slice(-4); // last 4 nights
+  var todayMid=_midpoint(bedtime,wakeTime); if(todayMid!=null) mids.push({date:today, mp:todayMid});
+  // Sort by date before taking the last 4 — array order is insertion order, so
+  // backfilled/imported nights would otherwise displace the actual recent ones.
+  mids=mids.sort(function(a,b){ return a.date.localeCompare(b.date); }).slice(-4).map(function(x){ return x.mp; });
   if(mids.length<2) return null;
   var sd=_std(mids); if(sd==null) return null;
   if(sd<=30) return 95;
