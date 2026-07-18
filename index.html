@@ -632,6 +632,25 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
     </div>
     </div><!-- end stat-pair -->
 
+    <!-- WATER INTAKE CARD -->
+    <div class="card" id="dash-water-card">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;">
+        <div style="display:flex;align-items:center;gap:8px;">
+          <div style="width:28px;height:28px;border-radius:8px;background:linear-gradient(135deg,#3b82f6,#2563eb);display:flex;align-items:center;justify-content:center;font-size:14px;">💧</div>
+          <div class="card-title" style="margin:0;">น้ำดื่มวันนี้</div>
+        </div>
+        <div style="font-size:12px;font-weight:700;color:var(--blue);" id="dash-water-val">0 / 0 ml</div>
+      </div>
+      <div class="macro-bar" style="height:8px;margin-bottom:8px;"><div class="macro-bar-fill" id="dash-water-bar" style="background:var(--blue);width:0%"></div></div>
+      <div id="dash-water-nudge" style="display:none;font-size:11px;color:#eab308;margin-bottom:8px;"></div>
+      <div style="display:flex;gap:6px;">
+        <button onclick="addWater(250)" style="flex:1;padding:7px 4px;background:rgba(59,130,246,0.12);border:1px solid rgba(59,130,246,0.35);border-radius:10px;color:var(--blue);font-family:inherit;font-size:12px;font-weight:600;cursor:pointer;">+250ml</button>
+        <button onclick="addWater(500)" style="flex:1;padding:7px 4px;background:rgba(59,130,246,0.12);border:1px solid rgba(59,130,246,0.35);border-radius:10px;color:var(--blue);font-family:inherit;font-size:12px;font-weight:600;cursor:pointer;">+500ml</button>
+        <button onclick="addWater(1000)" style="flex:1;padding:7px 4px;background:rgba(59,130,246,0.12);border:1px solid rgba(59,130,246,0.35);border-radius:10px;color:var(--blue);font-family:inherit;font-size:12px;font-weight:600;cursor:pointer;">+1L</button>
+        <button onclick="undoLastWater()" style="flex:0 0 auto;padding:7px 10px;background:none;border:1px solid var(--border);border-radius:10px;color:var(--text3);font-family:inherit;font-size:12px;cursor:pointer;">↩️</button>
+      </div>
+    </div>
+
     <!-- AI DAILY SUMMARY CARD -->
     <div class="card" id="ai-summary-card">
       <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px;flex-wrap:wrap;">
@@ -1172,8 +1191,9 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:16px;">
           <div><label class="input-label">💫 HRV</label><div style="position:relative;"><input class="input-field" type="number" id="sleep-hrv" min="10" max="200" placeholder="39"/><span style="position:absolute;right:8px;top:50%;transform:translateY(-50%);font-size:11px;color:var(--text3);pointer-events:none;">ms</span></div></div>
-          <div><label class="input-label">📊 HRV Baseline</label><div style="position:relative;"><input class="input-field" type="number" id="sleep-hrv-baseline" min="10" max="200" placeholder="36"/><span style="position:absolute;right:8px;top:50%;transform:translateY(-50%);font-size:11px;color:var(--text3);pointer-events:none;">ms</span></div></div>
+          <div><label class="input-label">📊 HRV Baseline</label><div style="position:relative;"><input class="input-field" type="number" id="sleep-hrv-baseline" min="10" max="200" placeholder="36" oninput="onHRVBaselineFieldInput()"/><span style="position:absolute;right:8px;top:50%;transform:translateY(-50%);font-size:11px;color:var(--text3);pointer-events:none;">ms</span></div></div>
         </div>
+        <div id="hrv-baseline-hint" style="font-size:10px;color:var(--text3);margin:-10px 0 14px;line-height:1.4;"></div>
         <div id="sleep-view-banner" style="display:none;background:rgba(99,102,241,0.1);border:1px solid rgba(99,102,241,0.3);border-radius:10px;padding:8px 12px;font-size:12px;color:#818cf8;margin-bottom:10px;">📖 โหมดดูย้อนหลัง — แก้ไขไม่ได้ <button onclick="onSleepDateChange(localDateStr())" style="background:none;border:none;color:#818cf8;font-size:12px;cursor:pointer;text-decoration:underline;padding:0;margin-left:6px;">กลับวันนี้</button></div>
         <button class="btn-primary" id="sleep-save-btn" onclick="saveSleep()">💾 บันทึก Sleep Data</button>
         <button id="morning-recovery-btn" onclick="generateMorningRecovery()" style="margin-top:10px;width:100%;padding:10px;background:linear-gradient(135deg,#22c55e,#16a34a);border:none;border-radius:12px;color:white;font-family:inherit;font-size:13px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;transition:all 0.2s;" onmouseover="this.style.opacity='0.85'" onmouseout="this.style.opacity='1'">
@@ -2824,6 +2844,11 @@ function generateMorningRecovery() {
   if (gradualBed && gradualBed.shifted) {
     bedtimeTrendLine = '- Bedtime เมื่อคืน: '+gradualBed.fromBedtime+' | เป้าหมายสุดท้ายจาก wake time วันนี้: '+gradualBed.desiredHHMM+' (ระบบจะขยับให้ทีละ '+BEDTIME_SHIFT_CAP_MIN+' นาที/คืนเท่านั้น ไม่กระโดดทันที)\n';
   }
+  var sleepDebt = (typeof computeSleepDebt === 'function') ? computeSleepDebt(today) : null;
+  var sleepDebtLine = '';
+  if (sleepDebt && sleepDebt.hours > 0) {
+    sleepDebtLine = '- Sleep Debt (rolling '+SLEEP_DEBT_WINDOW_DAYS+' คืน, need '+sleepDebt.needHours+'h/คืน): สะสม '+sleepDebt.hours+' ชม.'+(sleepDebt.hours>=SLEEP_DEBT_REST_THRESHOLD_H?' → สะสมมาก เอียงคำแนะนำไปทาง Rest แม้ Sleep Score วันนี้จะดี (แอปจะ override เป็น Rest ให้อัตโนมัติถ้าคุณตอบ Push)':'')+'\n';
+  }
 
   var prompt =
     'คุณคือผู้เชี่ยวชาญด้านการนอนและโค้ชฟิตเนส วิเคราะห์ข้อมูลการนอนและคำนวณ Sleep Score แบบ WHOOP\n' +
@@ -2843,7 +2868,7 @@ function generateMorningRecovery() {
     hrvLine +
     consLine +
     (sd.respRate?'- Respiratory Rate: '+sd.respRate+' br/min'+(sd.respRate>18?' (สูงกว่าปกติ)':' (ปกติ)')+'\n':'') +
-    polarLine + strainTrendLine + bedtimeTrendLine +
+    polarLine + strainTrendLine + bedtimeTrendLine + sleepDebtLine +
     (sd.polarStrain!=null&&sd.polarTolerance!=null?'\n[Polar Load Guidance] ใช้ข้อมูล Polar เป็น context เสริมสำหรับ recommendation เท่านั้น (ไม่นำมาคำนวณ Sleep Score): ถ้า Strain > Tolerance → เอียงไป Maintain หรือ Rest แม้ Recovery ดี; ถ้า Strain <= Tolerance → ใช้ Sleep Score ตัดสิน Push/Maintain/Rest ตามปกติ; ถ้ามี Load Trend ข้างต้นและเป็น overreaching ให้เอียงไป Rest เสมอ\n':'')+
     '\nตอบด้วย JSON เท่านั้น ห้ามมี markdown code block หรือ backtick:\n' +
     '{ "sleepScore":<ตัวเลข 0-100 ที่คำนวณจาก rubric>, "scoreLabel":"Peak"|"Good"|"Fair"|"Poor", "score":"Optimal"|"Moderate"|"Poor", "emoji":"green_circle"|"yellow_circle"|"red_circle", "pillars":{"duration":<0-100>,"efficiency":<0-100>,"stages":<0-100>,"physio":<0-100>,"consistency":<0-100 หรือ null ถ้าไม่มีข้อมูล>}, "headline":"สรุป 1 บรรทัดเป็นภาษาไทย ห้ามระบุตัวเลขคะแนนรวม พูดเชิงคุณภาพเท่านั้น", "detail":"อธิบาย 2-3 ประโยคภาษาไทย ว่า metric ไหนดึงคะแนนขึ้นหรือลง รวมถึง Load Trend ถ้ามี ห้ามระบุตัวเลขคะแนนรวม", "strengths":"bullet list ภาษาไทย (ขึ้นต้นด้วย • ) อธิบายว่าทำไม metric แต่ละตัวถึงดี รวมหลักการ physiology สั้น ๆ ใช้ **ตัวหนา** สำหรับชื่อ metric", "improvements":"bullet list ภาษาไทย (ขึ้นต้นด้วย • ) คำแนะนำเชิงปฏิบัติสำหรับ pillar ที่ยังอ่อน ใช้ **ตัวหนา** สำหรับชื่อ metric", "sleep_actions":{"target_bedtime":"HH:MM ที่ควรนอนคืนนี้ (ระบบจะคำนวณและ override ค่านี้เองจากค่าเฉลี่ยเวลานอนย้อนหลัง แบบขยับทีละไม่เกิน 20 นาที/คืน — ใส่ค่าประมาณจาก wake time ลบ 8h ไปก่อนได้เลย ไม่ต้องคำนวณ gradual shift เอง)","room_temp":"อุณหภูมิห้องที่แนะนำเป็น °C เช่น 25-26°C (เปิดแอร์เย็นลงจากอุณหภูมิห้องไทยปกติ 28-32°C) พร้อมเหตุผลสั้น ๆ","environment":"คำแนะนำสภาพแวดล้อมเพิ่มเติม เช่น แสง เสียง","consistency_tip":"ถ้า Consistency ต่ำกว่า 70 ให้แนะนำเวลาเข้านอน-ตื่นเป้าหมายที่ควรรักษาไว้เป็นกิจวัตร มิฉะนั้นใส่ null"}, "recommendation":"Push"|"Maintain"|"Rest", "recommendation_reason":"เหตุผล 1 ประโยคภาษาไทย (ถ้ามี Load Trend แบบ overreaching ให้พูดถึงด้วย) ห้ามระบุตัวเลขคะแนนรวม" }';
@@ -3080,6 +3105,7 @@ function generateDailySummary() {
     'Workouts:\n' + workoutStr + '\n' +
     (strengthVolumeSummary ? '\nStrength Volume Load (today, from strength log — the correct intensity signal for STRENGTH sessions, NOT avg HR):\n' + strengthVolumeSummary + '\n' : '') +
     'Workout Burn: ' + workoutBurn + ' kcal | Steps: ' + steps + ' ก้าว | NEAT: ' + Math.round(neatCal) + ' kcal\n' +
+    (typeof getTodayWaterMl === 'function' ? 'Water Intake: ' + getTodayWaterMl() + ' / ' + getWaterGoalMl() + ' ml (ใช้เป็น context เสริมสำหรับ retention/performance เท่านั้น ไม่ใช่ macro)\n' : '') +
     'Net Calories (intake minus activity — for information only, NOT the primary comparison): ' + Math.round(netCal) + ' kcal\n' +
     'User Calorie Goal (compare intake against THIS): ' + manualGoal.cal + ' kcal | Intake vs Goal: ' + (nut.cal > manualGoal.cal ? '+' : '') + (nut.cal - manualGoal.cal) + ' kcal\n' +
     'Macro Gaps vs Manual Goal — Protein: ' + (proGap >= 0 ? '+' : '') + Math.round(proGap) + 'g | Carbs: ' + (crbGap >= 0 ? '+' : '') + Math.round(crbGap) + 'g | Fat: ' + (fatGap >= 0 ? '+' : '') + Math.round(fatGap) + 'g\n\n' +
@@ -3625,6 +3651,7 @@ function renderWeeklyReview() {
   var weights  = (typeof WT!=='undefined'&&WT.log&&WT.log.length)?WT.log:JSON.parse(localStorage.getItem('gd_weight')||'[]');
   var calGoal  = S.goals.cal||1800, target = JSON.parse(localStorage.getItem('gd_ft_target')||'null');
   var totalCal=0,totalPro=0,totalNet=0,daysWithMeals=0,daysWithNet=0,totalBurn=0,totalDuration=0,workoutDays=0;
+  var totalWater=0,daysWithWater=0;
   days.forEach(function(date) {
     var dm=meals.filter(function(m){return m.date===date;});
     if(dm.length)daysWithMeals++;
@@ -3640,10 +3667,13 @@ function renderWeeklyReview() {
     // Only accumulate net for days that have meal data (avoid skewing avg with workout-only days).
     // Credited burn, same as getDailyMetrics — raw burn made this net disagree with the dashboard.
     if(dm.length){totalNet+=intake-creditedBurnSum(dw)-stepCal;daysWithNet++;}
+    var wml=(typeof getWaterForDate==='function')?getWaterForDate(date):0;
+    if(wml>0){totalWater+=wml;daysWithWater++;}
   });
   var avgCal=daysWithMeals?Math.round(totalCal/daysWithMeals):0;
   var avgPro=daysWithMeals?Math.round(totalPro/daysWithMeals):0;
   var avgNet=daysWithNet?Math.round(totalNet/daysWithNet):0;
+  var avgWater=daysWithWater?Math.round(totalWater/daysWithWater):0;
   // Bug fix: compare gross intake (avgCal) vs goal — not net. Adaptive TDEE already includes activity.
   var intakeDiff=avgCal-calGoal, netColor=intakeDiff<=0?'var(--green)':'var(--red)';
   var netLabel=intakeDiff<=0?('−'+Math.abs(intakeDiff)+' kcal vs goal'):('+'+intakeDiff+' kcal vs goal');
@@ -3705,7 +3735,8 @@ function renderWeeklyReview() {
   var html='<div style="display:flex;gap:8px;margin-bottom:8px;">'+pill('แคล/วัน เฉลี่ย',avgCal+' kcal')+pill('Intake vs Goal',netLabel,netColor)+'</div>'+
     '<div style="display:flex;gap:8px;margin-bottom:8px;">'+pill('โปรตีน/วัน',avgPro+' g')+pill('น้ำหนัก trend',weightSlope!==null?wTrend:'—',wColor)+'</div>'+
     '<div style="display:flex;gap:8px;margin-bottom:8px;">'+pill('%BF vs เป้า',bfPillVal,bfPillColor)+pill('Training Load',trainLabel)+'</div>'+
-    '<div style="display:flex;gap:8px;margin-bottom:'+(onTrackMsg?'10':'0')+'px;">'+pill('HRV เฉลี่ย',avgHRV||'—')+pill('บันทึกอาหาร',daysWithMeals+'/7 วัน')+'</div>';
+    '<div style="display:flex;gap:8px;margin-bottom:8px;">'+pill('HRV เฉลี่ย',avgHRV||'—')+pill('บันทึกอาหาร',daysWithMeals+'/7 วัน')+'</div>'+
+    '<div style="display:flex;gap:8px;margin-bottom:'+(onTrackMsg?'10':'0')+'px;">'+pill('น้ำดื่ม/วัน เฉลี่ย',daysWithWater?(avgWater+' ml'):'—')+'</div>';
   if(onTrackMsg)html+='<div style="padding:7px 12px;background:var(--surface2);border-radius:10px;font-size:12px;font-weight:600;margin-bottom:8px;">'+onTrackMsg+'</div>';
   if(retentionNote)html+='<div style="padding:8px 12px;background:rgba(59,130,246,0.08);border:1px solid rgba(59,130,246,0.2);border-radius:10px;font-size:11px;color:var(--text2);line-height:1.5;margin-bottom:8px;">'+retentionNote+'</div>';
   var lmgWR=(typeof checkLeanMassGuard==='function')?checkLeanMassGuard():null;
@@ -3855,6 +3886,7 @@ function updateDash() {
   else { dm.innerHTML = meals.slice(-3).reverse().map(function(m){return mealHTML(m,false);}).join(''); }
 
   renderDashWeight();
+  if (typeof renderDashWater === 'function') renderDashWater();
 }
 
 // แสดงน้ำหนักล่าสุด + เทรนด์บน dashboard (อ่านอย่างเดียว ไม่แก้ข้อมูล)
@@ -5899,6 +5931,59 @@ function getTodaySteps() {
   var today = localDateStr();
   var stepData = JSON.parse(localStorage.getItem('gd_steps') || '{}');
   return stepData[today] || 0;
+}
+
+// ── Water Intake ─────────────────────────────────────────────────
+// Simple per-day ml total (mirrors the gd_steps pattern), plus a one-slot
+// undo for the last add — quick-tap logging has no natural "edit" affordance.
+function getWaterLog() { return JSON.parse(localStorage.getItem('gd_water_log') || '{}'); }
+function setWaterLog(log) { localStorage.setItem('gd_water_log', JSON.stringify(log)); }
+function getWaterForDate(date) { return getWaterLog()[date] || 0; }
+function getTodayWaterMl() { return getWaterForDate(localDateStr()); }
+// ~35ml/kg bodyweight is the common daily-intake guideline, clamped so an
+// unset/odd profile weight can't produce a silly goal.
+function getWaterGoalMl() {
+  var w = (typeof getLatestCheckinWeight === 'function' && getLatestCheckinWeight()) || (S.profile && S.profile.weight) || 65;
+  return Math.round(Math.max(1500, Math.min(4000, w * 35)) / 100) * 100;
+}
+function addWater(ml) {
+  var date = localDateStr();
+  var log = getWaterLog();
+  log[date] = (log[date] || 0) + ml;
+  setWaterLog(log);
+  localStorage.setItem('gd_water_last_add', JSON.stringify({date:date, ml:ml}));
+  renderDashWater();
+  showToast('💧 +' + ml + 'ml', 'success');
+}
+function undoLastWater() {
+  var last = null; try { last = JSON.parse(localStorage.getItem('gd_water_last_add') || 'null'); } catch(e) {}
+  if (!last || last.date !== localDateStr()) { showToast('ไม่มีรายการล่าสุดให้ยกเลิก', 'error'); return; }
+  var log = getWaterLog();
+  log[last.date] = Math.max(0, (log[last.date] || 0) - last.ml);
+  setWaterLog(log);
+  localStorage.removeItem('gd_water_last_add');
+  renderDashWater();
+  showToast('ยกเลิกแล้ว', 'info');
+}
+function renderDashWater() {
+  var valEl = document.getElementById('dash-water-val');
+  var barEl = document.getElementById('dash-water-bar');
+  var nudgeEl = document.getElementById('dash-water-nudge');
+  if (!valEl) return;
+  var ml = getTodayWaterMl(), goal = getWaterGoalMl();
+  valEl.textContent = ml + ' / ' + goal + ' ml';
+  if (barEl) barEl.style.width = Math.min(100, (ml/goal)*100) + '%';
+  if (nudgeEl) {
+    var hour = new Date().getHours();
+    var pct = ml / goal;
+    var msg = '';
+    // Passive, in-app nudge only (no background notification) — checked whenever
+    // the dashboard renders, so it needs no polling/interval of its own.
+    if (hour >= 19 && pct < 0.6) msg = '⏰ ใกล้ค่ำแล้วแต่ดื่มน้ำได้แค่ ' + Math.round(pct*100) + '% ของเป้า';
+    else if (hour >= 14 && pct < 0.3) msg = '⏰ ยังดื่มน้ำน้อยมากวันนี้ ลองดื่มเพิ่มสักแก้ว';
+    nudgeEl.style.display = msg ? 'block' : 'none';
+    nudgeEl.textContent = msg;
+  }
 }
 
 function updateFitnessUI() {
@@ -9369,27 +9454,34 @@ function normalizeRecoveryResult(r, sd) {
   // fixed baseline instead of the mutated current value.
   if (r._aiRecommendation === undefined) r._aiRecommendation = r.recommendation;
   if (r._aiRecommendationReason === undefined) {
-    // Strip any trailing load-note(s) a pre-fix version of this code may have
-    // already appended, so old saved entries self-heal on next render.
-    r._aiRecommendationReason = (r.recommendation_reason || '').replace(/(\s*\(Load \d+ คืนล่าสุด: Strain เกิน Tolerance \d+\/\d+ คืน \(เฉลี่ย [\d.]+x\)\))+\s*$/g, '');
+    // Strip any trailing override-note(s) a prior version of this code may have
+    // already appended (Load and/or Sleep Debt), so old saved entries self-heal
+    // on next render instead of accumulating duplicate parenthetical notes.
+    r._aiRecommendationReason = (r.recommendation_reason || '').replace(/(\s*\([^()]*(?:Load \d+ คืนล่าสุด|Sleep Debt สะสม)[^()]*\))+\s*$/g, '');
   }
 
-  // A single overnight Strain>Tolerance reading isn't overreaching — several
-  // nights in a row is. Downgrade Push→Rest when the rolling trend says so, so
-  // the recommendation card can't contradict the multi-day load pattern.
+  // A single overnight reading — one Strain>Tolerance night, one short night's
+  // sleep — isn't overreaching on its own; an accumulated multi-night pattern
+  // is. Downgrade Push→Rest when either rolling signal says so, so the
+  // recommendation card can't contradict a multi-day load or debt pattern.
   var strainTrend = computeStrainLoadTrend(sdRef.date);
+  var sleepDebt = (typeof computeSleepDebt === 'function') ? computeSleepDebt(sdRef.date) : null;
+  r.sleepDebt = sleepDebt; // exposed for the result card + chat/AI context
+  var overrideNotes = [], forceRest = false;
   if (strainTrend && strainTrend.days >= 3) {
-    var loadNote = 'Load ' + strainTrend.days + ' คืนล่าสุด: Strain เกิน Tolerance ' + strainTrend.overCount + '/' + strainTrend.days + ' คืน (เฉลี่ย ' + strainTrend.avgRatio + 'x)';
-    if (strainTrend.overreaching && r._aiRecommendation === 'Push') {
-      r.recommendation = 'Rest';
-      r.recommendation_reason = loadNote + ' — สัญญาณ overreaching สะสม แนะนำพักแทนแม้ Sleep Score วันนี้จะดี';
-    } else {
-      r.recommendation = r._aiRecommendation;
-      r.recommendation_reason = (r._aiRecommendationReason || '') + ' (' + loadNote + ')';
-    }
+    overrideNotes.push('Load ' + strainTrend.days + ' คืนล่าสุด: Strain เกิน Tolerance ' + strainTrend.overCount + '/' + strainTrend.days + ' คืน (เฉลี่ย ' + strainTrend.avgRatio + 'x)');
+    if (strainTrend.overreaching) forceRest = true;
+  }
+  if (sleepDebt && sleepDebt.hours >= SLEEP_DEBT_REST_THRESHOLD_H) {
+    overrideNotes.push('Sleep Debt สะสม ' + sleepDebt.hours + ' ชม. ใน ' + sleepDebt.nights + ' คืนล่าสุด');
+    forceRest = true;
+  }
+  if (forceRest && r._aiRecommendation === 'Push') {
+    r.recommendation = 'Rest';
+    r.recommendation_reason = overrideNotes.join('; ') + ' — สัญญาณสะสมเกินพัก แนะนำพักแทนแม้ Sleep Score วันนี้จะดี';
   } else {
     r.recommendation = r._aiRecommendation;
-    r.recommendation_reason = r._aiRecommendationReason;
+    r.recommendation_reason = r._aiRecommendationReason + (overrideNotes.length ? ' (' + overrideNotes.join('; ') + ')' : '');
   }
   return r;
 }
@@ -9416,6 +9508,7 @@ function buildResultHTML(r, em) {
         '<div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;flex-wrap:wrap;">' +
           '<div style="background:'+(SC.lb[sl]||SC.lb.Fair)+';border-radius:12px;padding:3px 11px;font-size:12px;font-weight:700;color:'+(SC.lc[sl]||'#eab308')+';">'+sl+'</div>' +
           '<div style="background:'+(SC.rb[r.score]||SC.rb.Moderate)+';border:1px solid '+(SC.rbd[r.score]||SC.rbd.Moderate)+';border-radius:12px;padding:3px 11px;font-size:11px;font-weight:600;color:'+(SC.rc[r.score]||'#eab308')+';">'+em+' '+r.score+'</div>' +
+          (r.sleepDebt && r.sleepDebt.hours >= 0.5 ? '<div style="background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.3);border-radius:12px;padding:3px 11px;font-size:11px;font-weight:600;color:var(--red);">😴 Sleep Debt '+r.sleepDebt.hours+'h</div>' : '') +
         '</div>' +
         '<div style="font-size:12px;font-weight:600;color:var(--text);line-height:1.5;">'+(r.headline||'')+'</div>' +
       '</div>' +
@@ -9588,13 +9681,7 @@ function onSleepDateChange(dateStr) {
       if(todayHTML&&recovEl){recovEl.style.display='block';recovEl.innerHTML=todayHTML;}
     } else {
       _fillSleepForm(null);
-      // pre-fill hints from last saved
-      if(d){
-        try{
-          var _bl=document.getElementById('sleep-hrv-baseline');
-          if(_bl&&d.hrvBaseline&&!_bl.value) _bl.value=d.hrvBaseline;
-        }catch(e){}
-      }
+      try{ applyAutoHRVBaseline(today, d && d.hrvBaseline); }catch(e){}
     }
     return;
   }
@@ -9620,13 +9707,9 @@ function loadSleepUI() {
   // Set date picker to today on init
   var dateEl=document.getElementById('sleep-date');
   if(dateEl && !dateEl.value) dateEl.value=today;
-  if(!d){_setSleepReadOnly(false);return;}
+  if(!d){ try{ applyAutoHRVBaseline(today); }catch(e){} _setSleepReadOnly(false); return; }
   if(d.date!==today){
-    // pre-fill HRV baseline hint only
-    try{
-      var _bl=document.getElementById('sleep-hrv-baseline');
-      if(_bl&&!_bl.value&&d.hrvBaseline) _bl.value=d.hrvBaseline;
-    }catch(e){}
+    try{ applyAutoHRVBaseline(today, d.hrvBaseline); }catch(e){}
     _setSleepReadOnly(false);
     return;
   }
@@ -9735,6 +9818,82 @@ function computeStrainLoadTrend(forDate) {
   return { days: recent.length, overCount: overCount, avgRatio: Math.round(avgRatio * 100) / 100,
     overreaching: recent.length >= 3 && (overCount / recent.length) >= 0.6 };
 }
+
+// ── Auto HRV Baseline ───────────────────────────────────────────
+// A "baseline" is a slow-moving reference line HRV-today gets compared
+// against (the wearable convention — WHOOP/Oura use a trailing multi-week
+// mean) — deliberately NOT the same thing as a short trend average (e.g. the
+// 7-day/14-day HRV averages shown in Weekly Review/Correlations), which
+// reacts to recent nights and would defeat the point of a stable reference.
+var HRV_BASELINE_WINDOW_DAYS = 30;
+var HRV_BASELINE_MIN_NIGHTS = 5;
+function computeAutoHRVBaseline(forDate) {
+  if (!forDate) return null;
+  var log = []; try { log = JSON.parse(localStorage.getItem('gd_sleep_log') || '[]'); } catch(e) {}
+  var cutoff = new Date(forDate); cutoff.setDate(cutoff.getDate() - HRV_BASELINE_WINDOW_DAYS);
+  var cutoffStr = localDateStr(cutoff);
+  var vals = log.filter(function(s){ return s.date < forDate && s.date >= cutoffStr && s.hrv > 0; })
+                .map(function(s){ return parseFloat(s.hrv); });
+  if (vals.length < HRV_BASELINE_MIN_NIGHTS) return null;
+  var avg = vals.reduce(function(a,b){ return a+b; }, 0) / vals.length;
+  return { value: Math.round(avg), nights: vals.length, windowDays: HRV_BASELINE_WINDOW_DAYS };
+}
+// Hint-only refresh — safe to call on every keystroke (oninput). Never writes
+// to the input itself, so it can't fight the user mid-edit (e.g. re-filling
+// the field the instant they clear it to type a different number).
+function refreshHRVBaselineHint(forDate) {
+  var input = document.getElementById('sleep-hrv-baseline');
+  var hint = document.getElementById('hrv-baseline-hint');
+  if (!input || !hint) return;
+  var auto = computeAutoHRVBaseline(forDate || localDateStr());
+  if (input.value) {
+    hint.textContent = auto ? ('auto = ' + auto.value + 'ms จาก ' + auto.nights + ' คืน — เว้นว่างตอนเปิดหน้าใหม่เพื่อใช้ค่านี้แทน') : '';
+  } else if (auto) {
+    hint.textContent = '🔄 Auto-baseline พร้อมใช้: ' + auto.value + 'ms (เฉลี่ย ' + auto.windowDays + ' วันล่าสุด, ' + auto.nights + ' คืน) — เว้นว่างไว้เพื่อใช้ค่านี้';
+  } else {
+    hint.textContent = 'ยังไม่มีข้อมูลพอคำนวณ baseline อัตโนมัติ (ต้องมี HRV ย้อนหลังอย่างน้อย ' + HRV_BASELINE_MIN_NIGHTS + ' คืน) — กรอกเองได้';
+  }
+}
+// Auto-fill the HRV Baseline field from the rolling baseline when the user
+// hasn't typed one for this date — only called on load/date-change, never on
+// keystroke, so it can't overwrite what someone is actively typing.
+function applyAutoHRVBaseline(forDate, fallbackValue) {
+  var input = document.getElementById('sleep-hrv-baseline');
+  if (!input) return;
+  if (!input.value) {
+    var auto = computeAutoHRVBaseline(forDate || localDateStr());
+    if (auto) input.value = auto.value;
+    else if (fallbackValue) input.value = fallbackValue;
+  }
+  refreshHRVBaselineHint(forDate);
+}
+function onHRVBaselineFieldInput() {
+  var dateEl = document.getElementById('sleep-date');
+  refreshHRVBaselineHint(dateEl && dateEl.value ? dateEl.value : localDateStr());
+}
+
+// ── Sleep Debt ───────────────────────────────────────────────────
+// Rolling balance over a trailing window: nights short of the need add to
+// the debt, nights that meet/exceed it pay debt back down (never below 0).
+// Capped at 2 nights' worth, matching the WHOOP-style ceiling — otherwise a
+// long bad stretch could show an implausibly large, ever-growing number.
+var SLEEP_DEBT_WINDOW_DAYS = 14;
+var SLEEP_DEBT_NEED_HOURS = 8;
+var SLEEP_DEBT_CAP_HOURS = SLEEP_DEBT_NEED_HOURS * 2;
+var SLEEP_DEBT_REST_THRESHOLD_H = 6; // accumulated debt this large overrides a same-day "Push"
+function computeSleepDebt(forDate) {
+  if (!forDate) return null;
+  var log = []; try { log = JSON.parse(localStorage.getItem('gd_sleep_log') || '[]'); } catch(e) {}
+  var cutoff = new Date(forDate); cutoff.setDate(cutoff.getDate() - SLEEP_DEBT_WINDOW_DAYS);
+  var cutoffStr = localDateStr(cutoff);
+  var nights = log.filter(function(s){ return s.date <= forDate && s.date > cutoffStr && s.hours > 0; })
+                   .sort(function(a,b){ return a.date.localeCompare(b.date); });
+  if (!nights.length) return null;
+  var debt = 0;
+  nights.forEach(function(n){ debt = Math.max(0, Math.min(SLEEP_DEBT_CAP_HOURS, debt + (SLEEP_DEBT_NEED_HOURS - n.hours))); });
+  return { hours: Math.round(debt*10)/10, nights: nights.length, needHours: SLEEP_DEBT_NEED_HOURS };
+}
+
 // Upsert today's sleep record into gd_sleep_log (keeps 120 days)
 function syncSleepLog(data){
   if(!data||!data.date) return;
@@ -10162,6 +10321,13 @@ function buildChatContext(){
   } else {
     c += 'การนอน/Recovery: ยังไม่มีข้อมูลเช้านี้\n';
   }
+  var chatSleepDebt = (typeof computeSleepDebt === 'function') ? computeSleepDebt(today) : null;
+  if (chatSleepDebt && chatSleepDebt.hours > 0) {
+    c += 'Sleep Debt สะสม (rolling ' + SLEEP_DEBT_WINDOW_DAYS + ' คืน): ' + chatSleepDebt.hours + ' ชม.\n';
+  }
+  var chatWater = (typeof getTodayWaterMl === 'function') ? getTodayWaterMl() : 0;
+  var chatWaterGoal = (typeof getWaterGoalMl === 'function') ? getWaterGoalMl() : null;
+  if (chatWaterGoal) c += 'น้ำดื่มวันนี้: ' + chatWater + ' / ' + chatWaterGoal + ' ml\n';
 
   // Recent multi-day trend (same log generateDailySummary writes)
   try {
