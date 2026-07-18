@@ -18,6 +18,9 @@
 const GEMINI_MODEL = 'gemini-2.5-flash';
 // Public value (also embedded in index.html's firebaseConfig) — not a secret.
 const FIREBASE_PROJECT_ID = 'kindee-f0cc1';
+// bump ทุกครั้งที่แก้ไฟล์นี้ — เปิด https://kindee.ojo0308.workers.dev/health
+// ในเบราว์เซอร์แล้วเทียบเลขนี้ เพื่อเช็คว่าโค้ดบน Cloudflare ตรงกับ repo หรือยัง
+const WORKER_VERSION = '2026-07-18.1';
 
 export default {
   async fetch(request, env) {
@@ -29,6 +32,22 @@ export default {
     };
 
     if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
+
+    // เช็คว่า worker ที่ deploy อยู่เป็นเวอร์ชันไหน + ตั้งค่าครบไหม (ไม่เผยค่า secret)
+    if (url.pathname === '/health' && request.method === 'GET') {
+      return json(
+        {
+          ok: true,
+          version: WORKER_VERSION,
+          gemini: !!env.GEMINI_KEYS,
+          firebase: !!env.FIREBASE_WEB_API_KEY,
+          quotaKV: !!env.QUOTA,
+          allowedOrigin: env.ALLOWED_ORIGIN || '*',
+        },
+        200,
+        cors
+      );
+    }
 
     if (url.pathname === '/gemini' && request.method === 'POST') return handleGemini(request, env, cors);
 

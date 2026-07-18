@@ -2148,17 +2148,41 @@ function geminiCall(key, body, timeoutMs, onProgress) {
       }).catch(function(err){
         clearTimeout(timer);
         if (err.name === 'AbortError') throw new Error('หมดเวลา — ลองใหม่อีกครั้ง');
+        var isNetErr = /Failed to fetch|NetworkError|Load failed/i.test(err.message || '');
         // Worker unreachable (not yet deployed / network blip): fall back to
         // the device's own keys when available so AI never hard-breaks.
-        if (/Failed to fetch|NetworkError|Load failed/i.test(err.message || '') && S.apiKeys.some(function(k){ return k && k.length; })) {
+        if (isNetErr && S.apiKeys.some(function(k){ return k && k.length; })) {
           if (onProgress) onProgress('เชื่อมต่อ AI proxy ไม่ได้ — ใช้ key ในเครื่องแทน...');
           return legacyGeminiCall(key, body, timeoutMs, onProgress);
+        }
+        // No local keys to fall back to — probe the worker with a simple GET
+        // (no preflight) so the error can say WHERE it broke instead of the
+        // browser's raw "Load failed".
+        if (isNetErr) {
+          return diagnoseAIProxy().then(function(msg){ throw new Error(msg); });
         }
         throw err;
       });
     });
   }
   return legacyGeminiCall(key, body, timeoutMs, onProgress);
+}
+// The POST /gemini call carries an Authorization header, which forces a CORS
+// preflight. A plain GET is a "simple request" that skips preflight — so if the
+// GET below succeeds while the POST died with a network error, the worker is
+// reachable but rejecting the preflight (almost always: the deployed worker is
+// an old version that doesn't allow the Authorization header). If even the GET
+// fails, the worker itself is unreachable from this device.
+function diagnoseAIProxy() {
+  return fetch(AI_PROXY_URL + '/health', { method: 'GET' })
+    .then(function(){
+      return 'เซิร์ฟเวอร์ AI ออนไลน์อยู่ แต่เบราว์เซอร์บล็อกคำขอ (CORS preflight ไม่ผ่าน) — ' +
+        'ปกติเกิดจาก Worker บนเซิร์ฟเวอร์ยังเป็นเวอร์ชันเก่า กรุณาแจ้งผู้ดูแลแอปให้อัปเดต Worker เป็นโค้ดล่าสุด';
+    })
+    .catch(function(){
+      return 'เชื่อมต่อเซิร์ฟเวอร์ AI ไม่ได้ — ลองเช็คอินเทอร์เน็ต หรือสลับ WiFi ↔ เน็ตมือถือ ' +
+        '(บางเครือข่ายบล็อกโดเมน workers.dev) ถ้ายังไม่หายให้แจ้งผู้ดูแลแอป';
+    });
 }
 function legacyGeminiCall(key, body, timeoutMs, onProgress) {
   var keys = S.apiKeys.filter(function(k){ return k && k.length > 0; });
