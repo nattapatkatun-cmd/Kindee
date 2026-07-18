@@ -17,6 +17,7 @@
 <!-- /PWA -->
 <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-storage-compat.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -511,6 +512,24 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
 </style>
 </head>
 <body>
+<!-- AUTH GATE: covers the app until Firebase resolves auth state. Hidden when
+     signed in, or when Firebase itself is unreachable (offline/local mode). -->
+<div id="authGate" style="display:flex;position:fixed;inset:0;z-index:2000;background:var(--bg);flex-direction:column;align-items:center;justify-content:center;gap:18px;padding:24px;text-align:center;">
+  <div style="width:72px;height:72px;border-radius:20px;background:linear-gradient(135deg,var(--accent),#0f766e);display:flex;align-items:center;justify-content:center;font-size:36px;box-shadow:0 8px 28px var(--accent-glow);">🥗</div>
+  <div>
+    <div style="font-size:24px;font-weight:800;letter-spacing:-0.3px;">กินดี</div>
+    <div style="font-size:13px;color:var(--text2);margin-top:4px;">ติดตามแคลอรี่ ฟิตเนส การนอน และน้ำหนัก</div>
+  </div>
+  <div id="authGateChecking" style="display:flex;flex-direction:column;align-items:center;gap:10px;">
+    <div class="spinner" style="margin:0;"></div>
+    <div style="font-size:12px;color:var(--text3);">กำลังตรวจสอบการเข้าสู่ระบบ...</div>
+  </div>
+  <button id="authGateLoginBtn" onclick="loginWithGoogle()" style="display:none;align-items:center;gap:10px;padding:13px 26px;background:#fff;color:#1a2233;border:1px solid rgba(0,0,0,0.12);border-radius:14px;font-family:inherit;font-size:15px;font-weight:700;cursor:pointer;box-shadow:0 2px 10px rgba(0,0,0,0.18);">
+    <svg width="20" height="20" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>
+    เข้าสู่ระบบด้วย Google
+  </button>
+  <div style="font-size:11px;color:var(--text3);max-width:280px;line-height:1.6;">ข้อมูลของคุณถูกเก็บแยกตามบัญชี เข้าถึงได้เฉพาะคุณเท่านั้น</div>
+</div>
 <div class="app">
   <div class="sticky-top">
   <div class="header">
@@ -1400,6 +1419,11 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
   <div class="page" id="page-settings">
     <div class="section-title fold-full">ข้อมูลส่วนตัวและเป้าหมาย</div>
     <div class="fold-grid">
+    <div class="card fold-full">
+      <div class="card-title">👤 บัญชีผู้ใช้</div>
+      <div id="account-info" style="margin-bottom:12px;"><div style="font-size:12px;color:var(--text3);">ยังไม่ได้เข้าสู่ระบบ</div></div>
+      <button class="btn-secondary" style="margin-top:0;" onclick="logoutUser()">🚪 ออกจากระบบ</button>
+    </div>
     <div class="card">
       <div class="card-title">ข้อมูลร่างกาย</div>
       <div class="input-row">
@@ -1596,8 +1620,8 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
       </div>
     </div>
     <div class="card">
-      <div class="card-title">🔑 Gemini API Keys (Auto-Rotate)</div>
-      <div style="font-size:12px;color:var(--text3);margin-bottom:10px;">ใส่ได้สูงสุด 4 keys — ระบบจะ rotate อัตโนมัติเมื่อ key ไหน rate limit · <a href="https://aistudio.google.com/app/apikey" target="_blank" style="color:var(--accent)">ขอ key ฟรี</a></div>
+      <div class="card-title">🔑 Gemini API Keys (สำรอง)</div>
+      <div style="font-size:12px;color:var(--text3);margin-bottom:10px;">ปกติฟีเจอร์ AI เรียกผ่านเซิร์ฟเวอร์ของแอปอัตโนมัติ ไม่ต้องใส่อะไรที่นี่ — ช่องนี้ใช้เป็น fallback กรณีเซิร์ฟเวอร์ AI ล่มเท่านั้น · <a href="https://aistudio.google.com/app/apikey" target="_blank" style="color:var(--accent)">ขอ key ฟรี</a></div>
       <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px;">
         <div style="display:flex;align-items:center;gap:8px;">
           <div style="font-size:11px;font-weight:700;color:var(--accent);width:20px;flex-shrink:0;">K1</div>
@@ -1766,6 +1790,17 @@ function escapeAttr(s) {
 }
 // ─────────────────────────────────────────────────────────────────────────────
 
+// ==================== AUTH + FIREBASE ====================
+// Multi-user: every Firestore path is scoped to the signed-in user's uid.
+// OWNER_EMAIL is the account that owns the pre-auth legacy data at
+// users/nattapat/* and is the only one offered the one-time migration.
+var OWNER_EMAIL = 'ojo0308@gmail.com';
+var LEGACY_UID = 'nattapat';
+// Cloudflare Worker that holds the Gemini keys server-side and enforces
+// per-user daily quotas (see worker/worker.js). Empty string = disabled,
+// every AI call then falls back to the legacy local-key path.
+var AI_PROXY_URL = 'https://kindee.ojo0308.workers.dev';
+
 // Firebase
 function initFirebase() {
   try {
@@ -1783,51 +1818,208 @@ function initFirebase() {
     // prevents a single stray undefined (e.g. a cardio workout's empty
     // `exercises` field) from rejecting the whole .set() call.
     try { db.settings({ ignoreUndefinedProperties: true }); } catch(_) {}
-    // Expose the Firestore handle: saveSleep()/generateMorningRecovery() gate
-    // their writes on window.db, which was never assigned before (sleep data
-    // silently stayed localStorage-only).
     window.db = db;
-    var UID = 'nattapat';
     // Storage may not be enabled/reachable even when Firestore is — keep it
     // optional so a Storage hiccup never breaks the rest of Firebase init.
     var storage = null;
     try { storage = firebase.storage(); } catch(_) {}
-    window.FB = {
-      saveMeal: function(m){ return db.collection('users').doc(UID).collection('meals').doc(String(m.id)).set(m); },
-      delMeal: function(id){ return db.collection('users').doc(UID).collection('meals').doc(String(id)).delete(); },
-      loadMeals: function(){ return db.collection('users').doc(UID).collection('meals').get().then(function(s){ return s.docs.map(function(d){return d.data();}).sort(function(a,b){return a.id-b.id;}); }); },
-      saveSetting: function(k,v){ return db.collection('users').doc(UID).collection('settings').doc(k).set({v:JSON.stringify(v)}); },
-      loadSetting: function(k,fb){ return db.collection('users').doc(UID).collection('settings').doc(k).get().then(function(s){ return s.exists?JSON.parse(s.data().v):fb; }); },
-      saveFavorite: function(f){ return db.collection('users').doc(UID).collection('favorites').doc(String(f.id)).set(f); },
-      delFavorite: function(id){ return db.collection('users').doc(UID).collection('favorites').doc(String(id)).delete(); },
-      loadFavorites: function(){ return db.collection('users').doc(UID).collection('favorites').get().then(function(s){ return s.docs.map(function(d){return d.data();}).sort(function(a,b){return b.id-a.id;}); }); },
-      saveBodyComp: function(r){ return db.collection('users').doc(UID).collection('bodyComp').doc(String(r.id)).set(r); },
-      delBodyComp: function(id){ return db.collection('users').doc(UID).collection('bodyComp').doc(String(id)).delete(); },
-      savePhotoMeta: function(m){ return db.collection('users').doc(UID).collection('photoMeta').doc(String(m.id)).set(m); },
-      // Progress photos: upload the actual image bytes to Storage and keep
-      // only a metadata record (with the resulting URL) in Firestore/localStorage
-      // — previously the full compressed JPEG was base64-encoded straight into
-      // localStorage for every one of up to 20 photos (~3-5MB total), crowding
-      // out quota that gd_meals/gd_workouts need and had no error handling for.
-      uploadProgressPhoto: function(id, blob){
-        if (!storage) return Promise.reject(new Error('Firebase Storage ไม่พร้อมใช้งาน'));
-        return storage.ref('users/'+UID+'/progressPhotos/'+id+'.jpg').put(blob)
-          .then(function(snap){ return snap.ref.getDownloadURL(); });
-      },
-      deleteProgressPhotoBlob: function(id){
-        if (!storage) return Promise.resolve();
-        return storage.ref('users/'+UID+'/progressPhotos/'+id+'.jpg').delete().catch(function(){});
-      },
-      loadBodyComps: function(){ return db.collection('users').doc(UID).collection('bodyComp').get().then(function(s){ return s.docs.map(function(d){return d.data();}).sort(function(a,b){return a.date.localeCompare(b.date)||a.id-b.id;}); }); },
-      saveDailySummary: function(date, html){ return db.collection('users').doc(UID).collection('dailySummary').doc(date).set({ date: date, html: html, savedAt: Date.now() }); },
-      loadDailySummaryByDate: function(date){ return db.collection('users').doc(UID).collection('dailySummary').doc(date).get().then(function(s){ return s.exists ? s.data() : null; }); }
-    };
-    window.FB_OK = true;
-    console.log('Firebase OK');
+    window._fbDb = db;
+    window._fbStorage = storage;
+    firebase.auth().onAuthStateChanged(function(user){ onAuthChanged(user, db, storage); });
+    console.log('Firebase initialized, waiting for auth state');
   } catch(e) {
     console.warn('Firebase offline:', e.message);
     window.FB_OK = false;
+    // No Firebase at all (offline first paint / blocked CDN): keep the app
+    // usable in localStorage-only mode instead of trapping the user at login.
+    hideAuthGate();
   }
+}
+
+function onAuthChanged(user, db, storage) {
+  if (!user) {
+    window.FB_OK = false;
+    window.FB = null;
+    window.AUTH_USER = null;
+    window.CURRENT_UID = null;
+    showAuthGateLogin();
+    return;
+  }
+  // Account switch on a shared device: gd_* localStorage keys are global per
+  // browser, so a different uid signing in must not inherit the previous
+  // user's cached data. Clear and reload once — the fresh session then
+  // hydrates purely from this user's Firestore.
+  var prevUid = null;
+  try { prevUid = localStorage.getItem('gd_active_uid'); } catch(e){}
+  if (prevUid && prevUid !== user.uid) {
+    clearLocalDataForAccountSwitch(user.uid);
+    return; // clearLocalDataForAccountSwitch reloads the page
+  }
+  try { localStorage.setItem('gd_active_uid', user.uid); } catch(e){}
+  window.AUTH_USER = user;
+  window.CURRENT_UID = user.uid;
+  window.FB = buildFB(db, storage);
+  window.FB_OK = true;
+  hideAuthGate();
+  renderAccountCard(user);
+  console.log('Signed in:', user.email);
+  maybeMigrateLegacyData(user).then(function(){ loadRemoteData(); });
+}
+
+function clearLocalDataForAccountSwitch(newUid) {
+  try {
+    var keep = { gd_theme: localStorage.getItem('gd_theme') };
+    var toRemove = [];
+    for (var i = 0; i < localStorage.length; i++) {
+      var k = localStorage.key(i);
+      if (k && k.indexOf('gd_') === 0) toRemove.push(k);
+    }
+    toRemove.forEach(function(k){ localStorage.removeItem(k); });
+    if (keep.gd_theme) localStorage.setItem('gd_theme', keep.gd_theme);
+    localStorage.setItem('gd_active_uid', newUid);
+  } catch(e){}
+  window.location.reload();
+}
+
+// All FB helpers resolve the uid at CALL time (window.CURRENT_UID), so the
+// object never holds a stale uid across sign-in/sign-out.
+function buildFB(db, storage) {
+  function uref(){ return db.collection('users').doc(window.CURRENT_UID); }
+  return {
+    saveMeal: function(m){ return uref().collection('meals').doc(String(m.id)).set(m); },
+    delMeal: function(id){ return uref().collection('meals').doc(String(id)).delete(); },
+    loadMeals: function(){ return uref().collection('meals').get().then(function(s){ return s.docs.map(function(d){return d.data();}).sort(function(a,b){return a.id-b.id;}); }); },
+    saveSetting: function(k,v){ return uref().collection('settings').doc(k).set({v:JSON.stringify(v)}); },
+    loadSetting: function(k,fb){ return uref().collection('settings').doc(k).get().then(function(s){ return s.exists?JSON.parse(s.data().v):fb; }); },
+    saveFavorite: function(f){ return uref().collection('favorites').doc(String(f.id)).set(f); },
+    delFavorite: function(id){ return uref().collection('favorites').doc(String(id)).delete(); },
+    loadFavorites: function(){ return uref().collection('favorites').get().then(function(s){ return s.docs.map(function(d){return d.data();}).sort(function(a,b){return b.id-a.id;}); }); },
+    saveBodyComp: function(r){ return uref().collection('bodyComp').doc(String(r.id)).set(r); },
+    delBodyComp: function(id){ return uref().collection('bodyComp').doc(String(id)).delete(); },
+    savePhotoMeta: function(m){ return uref().collection('photoMeta').doc(String(m.id)).set(m); },
+    uploadProgressPhoto: function(id, blob){
+      if (!storage) return Promise.reject(new Error('Firebase Storage ไม่พร้อมใช้งาน'));
+      return storage.ref('users/'+window.CURRENT_UID+'/progressPhotos/'+id+'.jpg').put(blob)
+        .then(function(snap){ return snap.ref.getDownloadURL(); });
+    },
+    deleteProgressPhotoBlob: function(id){
+      if (!storage) return Promise.resolve();
+      return storage.ref('users/'+window.CURRENT_UID+'/progressPhotos/'+id+'.jpg').delete().catch(function(){});
+    },
+    loadBodyComps: function(){ return uref().collection('bodyComp').get().then(function(s){ return s.docs.map(function(d){return d.data();}).sort(function(a,b){return a.date.localeCompare(b.date)||a.id-b.id;}); }); },
+    saveDailySummary: function(date, html){ return uref().collection('dailySummary').doc(date).set({ date: date, html: html, savedAt: Date.now() }); },
+    loadDailySummaryByDate: function(date){ return uref().collection('dailySummary').doc(date).get().then(function(s){ return s.exists ? s.data() : null; }); },
+    // Workouts / weight / strength / sleep — previously bolted on by
+    // initFitness()/initWeightFirebase() with a hardcoded uid.
+    saveWorkout: function(w){ return uref().collection('workouts').doc(String(w.id)).set(w); },
+    delWorkout: function(id){ return uref().collection('workouts').doc(String(id)).delete(); },
+    loadWorkouts: function(){ return uref().collection('workouts').get().then(function(s){ return s.docs.map(function(d){return d.data();}).sort(function(a,b){return a.id-b.id;}); }); },
+    saveWeight: function(e){ return uref().collection('weightLog').doc(String(e.id)).set(e); },
+    delWeight: function(id){ return uref().collection('weightLog').doc(String(id)).delete(); },
+    loadWeights: function(){ return uref().collection('weightLog').orderBy('date','asc').get().then(function(s){ return s.docs.map(function(d){ return d.data(); }); }); },
+    saveStrengthEntry: function(e){ return uref().collection('strengthLog').doc(String(e.id)).set(e); },
+    delStrengthEntry: function(id){ return uref().collection('strengthLog').doc(String(id)).delete(); },
+    saveSleepDoc: function(data){ return uref().collection('settings').doc('sleep').set(data); },
+    updateSleepDoc: function(fields){ return uref().collection('settings').doc('sleep').update(fields); }
+  };
+}
+
+// ── Auth gate UI ──
+function hideAuthGate() {
+  var g = document.getElementById('authGate');
+  if (g) g.style.display = 'none';
+}
+function showAuthGateLogin() {
+  var g = document.getElementById('authGate');
+  if (!g) return;
+  g.style.display = 'flex';
+  var sp = document.getElementById('authGateChecking'); if (sp) sp.style.display = 'none';
+  var btn = document.getElementById('authGateLoginBtn'); if (btn) btn.style.display = 'flex';
+}
+function loginWithGoogle() {
+  var provider = new firebase.auth.GoogleAuthProvider();
+  // Popup first (best on desktop); mobile browsers that block it fall back
+  // to a full-page redirect.
+  firebase.auth().signInWithPopup(provider).catch(function(err){
+    if (err && (err.code === 'auth/popup-blocked' || err.code === 'auth/popup-closed-by-user' || err.code === 'auth/cancelled-popup-request' || err.code === 'auth/operation-not-supported-in-this-environment')) {
+      if (err.code === 'auth/popup-closed-by-user') return; // user changed their mind — not an error
+      return firebase.auth().signInWithRedirect(provider);
+    }
+    showToast('เข้าสู่ระบบไม่สำเร็จ: ' + (err && err.message || ''), 'error');
+  });
+}
+function logoutUser() {
+  if (!confirm('ออกจากระบบ? ข้อมูลบน Cloud ยังอยู่ครบ กลับมา login ใหม่ได้เสมอ')) return;
+  firebase.auth().signOut().then(function(){ showToast('ออกจากระบบแล้ว', 'info'); });
+}
+function renderAccountCard(user) {
+  var el = document.getElementById('account-info');
+  if (!el || !user) return;
+  el.innerHTML = '<div style="display:flex;align-items:center;gap:10px;">' +
+    (user.photoURL ? '<img src="'+escapeAttr(user.photoURL)+'" referrerpolicy="no-referrer" style="width:36px;height:36px;border-radius:50%;" alt=""/>' : '<div style="width:36px;height:36px;border-radius:50%;background:var(--surface3);display:flex;align-items:center;justify-content:center;">👤</div>') +
+    '<div style="min-width:0;"><div style="font-size:13px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+escapeHTML(user.displayName||'')+'</div>' +
+    '<div style="font-size:11px;color:var(--text3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+escapeHTML(user.email||'')+'</div></div></div>';
+}
+
+// ── One-time legacy data migration (owner account only) ──
+// Pre-auth versions wrote everything under users/nattapat/*. On the owner's
+// first sign-in, COPY (not move) every collection to users/{uid}/* so the
+// same data appears under the authenticated account. Originals are kept
+// until the owner verifies and deletes them manually.
+var LEGACY_COLLECTIONS = ['meals','favorites','settings','bodyComp','photoMeta','dailySummary','workouts','weightLog','strengthLog'];
+function maybeMigrateLegacyData(user) {
+  if (!user || user.email !== OWNER_EMAIL) return Promise.resolve();
+  var doneKey = 'gd_migration_done_' + user.uid;
+  try { if (localStorage.getItem(doneKey)) return Promise.resolve(); } catch(e){}
+  var db = window._fbDb;
+  // Migration flag doc survives across devices — check it before offering.
+  return db.collection('users').doc(user.uid).collection('settings').doc('legacyMigration').get().then(function(flagSnap){
+    if (flagSnap.exists) { try { localStorage.setItem(doneKey, '1'); } catch(e){} return; }
+    return db.collection('users').doc(LEGACY_UID).collection('meals').limit(1).get().then(function(probe){
+      if (probe.empty) { try { localStorage.setItem(doneKey, '1'); } catch(e){} return; }
+      if (!confirm('พบข้อมูลเดิมของคุณจากเวอร์ชันก่อนมีระบบ login\nคัดลอกทั้งหมดเข้าบัญชี ' + user.email + ' เลยไหม?\n(ข้อมูลต้นฉบับจะยังถูกเก็บไว้ ไม่มีอะไรถูกลบ)')) return;
+      showToast('กำลังย้ายข้อมูลเดิม... อย่าปิดหน้านี้', 'info');
+      return runLegacyMigration(db, user.uid).then(function(counts){
+        return db.collection('users').doc(user.uid).collection('settings').doc('legacyMigration')
+          .set({ migratedAt: Date.now(), from: LEGACY_UID, counts: counts })
+          .then(function(){
+            try { localStorage.setItem(doneKey, '1'); } catch(e){}
+            var total = Object.keys(counts).reduce(function(a,k){ return a + counts[k]; }, 0);
+            alert('ย้ายข้อมูลสำเร็จ ' + total + ' รายการ ✅\n' +
+              Object.keys(counts).filter(function(k){return counts[k]>0;}).map(function(k){ return '• '+k+': '+counts[k]; }).join('\n') +
+              '\n\nแอปจะโหลดใหม่เพื่อแสดงข้อมูลของคุณ');
+            window.location.reload();
+          });
+      });
+    });
+  }).catch(function(e){
+    console.error('Legacy migration failed:', e);
+    showToast('ย้ายข้อมูลเดิมไม่สำเร็จ: ' + (e && e.message || '') + ' — ลองใหม่ได้โดย reload', 'error');
+  });
+}
+function runLegacyMigration(db, newUid) {
+  var counts = {};
+  // Copy sequentially per collection; batched writes capped well under the
+  // 500-op Firestore limit.
+  var chain = Promise.resolve();
+  LEGACY_COLLECTIONS.forEach(function(col){
+    chain = chain.then(function(){
+      return db.collection('users').doc(LEGACY_UID).collection(col).get().then(function(snap){
+        counts[col] = snap.size;
+        var docs = snap.docs;
+        var batches = [];
+        for (var i = 0; i < docs.length; i += 400) {
+          var batch = db.batch();
+          docs.slice(i, i + 400).forEach(function(d){
+            batch.set(db.collection('users').doc(newUid).collection(col).doc(d.id), d.data());
+          });
+          batches.push(batch);
+        }
+        return batches.reduce(function(p, b){ return p.then(function(){ return b.commit(); }); }, Promise.resolve());
+      });
+    });
+  });
+  return chain.then(function(){ return counts; });
 }
 
 // ─────────────────────────────────────────────
@@ -1884,7 +2076,47 @@ window.addEventListener('online', function() { if (window.FB_OK) drainFBQueue();
 //   503 / overload → retry same key up to 2x (backoff 3s, 7s), then rotate key
 //   All keys exhausted → clear error message
 // ─────────────────────────────────────────────
+// ── AI entry point ──
+// Signed-in + proxy configured → call the Cloudflare Worker (keys server-side,
+// per-user daily quota). Otherwise → legacy path with the device's own keys.
+// The `key` argument is kept for call-site compatibility; the proxy ignores it.
+function aiAvailable() {
+  return !!(AI_PROXY_URL && window.AUTH_USER) || S.apiKeys.filter(function(k){ return k && k.length > 0; }).length > 0;
+}
 function geminiCall(key, body, timeoutMs, onProgress) {
+  if (AI_PROXY_URL && window.AUTH_USER) {
+    return window.AUTH_USER.getIdToken().then(function(token){
+      var controller = new AbortController();
+      var timer = setTimeout(function(){ controller.abort(); }, timeoutMs || 45000);
+      return fetch(AI_PROXY_URL + '/gemini', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+        signal: controller.signal,
+        body: JSON.stringify(body)
+      }).then(function(r){
+        clearTimeout(timer);
+        return r.json().then(function(data){ return { status: r.status, data: data }; });
+      }).then(function(res){
+        if (res.status === 429 && res.data && res.data.error === 'quota') throw new Error(res.data.message || 'ใช้ AI ครบโควตาวันนี้แล้ว');
+        if (res.status === 401) throw new Error((res.data && res.data.message) || 'session หมดอายุ — ลอง login ใหม่');
+        if (res.data && res.data.error) throw new Error((res.data.error.message || res.data.message || 'AI error'));
+        return res.data;
+      }).catch(function(err){
+        clearTimeout(timer);
+        if (err.name === 'AbortError') throw new Error('หมดเวลา — ลองใหม่อีกครั้ง');
+        // Worker unreachable (not yet deployed / network blip): fall back to
+        // the device's own keys when available so AI never hard-breaks.
+        if (/Failed to fetch|NetworkError|Load failed/i.test(err.message || '') && S.apiKeys.some(function(k){ return k && k.length; })) {
+          if (onProgress) onProgress('เชื่อมต่อ AI proxy ไม่ได้ — ใช้ key ในเครื่องแทน...');
+          return legacyGeminiCall(key, body, timeoutMs, onProgress);
+        }
+        throw err;
+      });
+    });
+  }
+  return legacyGeminiCall(key, body, timeoutMs, onProgress);
+}
+function legacyGeminiCall(key, body, timeoutMs, onProgress) {
   var keys = S.apiKeys.filter(function(k){ return k && k.length > 0; });
   if (!keys.length) return Promise.reject(new Error('ไม่มี API Key — กรุณาตั้งค่าใน ⚙️'));
 
@@ -1979,9 +2211,11 @@ var S = {
   meals: [],
   goals: {cal:1800,pro:120,crb:200,fat:60},
   profile: null,
-  // User-saved webhook (testSync writes 'gd_wh') wins over the built-in default;
-  // previously the saved URL was never read back, so edits vanished on reload.
-  webhook: (function(){ try { return localStorage.getItem('gd_wh') || ''; } catch(e){ return ''; } })() || 'https://script.google.com/macros/s/AKfycby9qLSWIOQRl-gOIsyGbeAtBsLCKPkMYgQK0U_VJns3HW_xmOhRZl77odHgP80X-QpV/exec',
+  // Google Sheets sync is opt-in PER USER now — no built-in default URL.
+  // (The old hardcoded fallback meant every user's data would have been sent
+  // to the app owner's personal spreadsheet.) Loaded from localStorage here,
+  // then from the user's Firestore settings after login (loadRemoteData).
+  webhook: (function(){ try { return localStorage.getItem('gd_wh') || ''; } catch(e){ return ''; } })(),
   favorites: (function(){ try { return JSON.parse(localStorage.getItem('gd_favorites') || '[]'); } catch(e){ return []; } })(),
   apiKeys: (function(){
     try { return JSON.parse(localStorage.getItem('gd_keys') || '[]'); } catch(e){ return []; }
@@ -2039,7 +2273,6 @@ function init() {
     if(b.textContent.includes(auto.replace('มื้อ',''))){b.classList.add('active');curLabel=auto;}
   });
   if(S.webhook) document.getElementById('webhookUrl').value = S.webhook;
-  if(!S.apiKeys.length){ showToast('กรุณาใส่ Gemini API Key ในแท็บตั้งค่า ⚙️','error'); }
   ['apiKey1','apiKey2','apiKey3','apiKey4'].forEach(function(id,i){
     var el=document.getElementById(id); if(el) el.value=S.apiKeys[i]||'';
   });
@@ -2058,53 +2291,67 @@ function init() {
     document.addEventListener('touchend', _askNotifPerm, { once: true });
   }
 
-  if(window.FB_OK){
-    showToast('กำลังโหลดข้อมูล...','info');
-    Promise.all([
-      window.FB.loadMeals(),
-      window.FB.loadSetting('goals', S.goals),
-      window.FB.loadSetting('profile', null),
-      window.FB.loadFavorites(),
-      window.FB.loadBodyComps(),
-      window.FB.loadSetting('behaviors', null),
-      window.FB.loadSetting('behaviorLog', null)
-    ]).then(function(r){
-      S.meals = r[0] || [];
-      S.goals = r[1] || S.goals;
-      S.profile = r[2] || null;
-      S.favorites = r[3] || S.favorites;
-      var fbBodyComps = r[4] || [];
-      if(r[5]) localStorage.setItem('gd_behaviors', JSON.stringify(r[5]));
-      if(r[6]) localStorage.setItem('gd_behavior_log', JSON.stringify(r[6]));
-      localStorage.setItem('gd_favorites', JSON.stringify(S.favorites));
-      if(fbBodyComps.length){
-        var local = safeJSON('gd_body_comp_logs', []);
-        // Exclude ids with a still-pending offline delete — otherwise the Firestore
-        // copy (not yet caught up) resurrects a row the user just deleted locally.
-        var pendingBcDelIds = {};
-        safeJSON('gd_pending_fb', []).forEach(function(item){ if(item.type==='bodycomp' && item.op==='del') pendingBcDelIds[item.data]=true; });
-        var byId = {};
-        fbBodyComps.concat(local).forEach(function(e){ if(e && e.id && !pendingBcDelIds[e.id]) byId[e.id]=e; });
-        var merged = Object.keys(byId).map(function(k){ return byId[k]; }).sort(function(a,b){ return a.date.localeCompare(b.date)||a.id-b.id; });
-        localStorage.setItem('gd_body_comp_logs', JSON.stringify(merged));
-      }
-      if(S.profile) loadProfile();
-      loadGoalInputs(); syncProfileWeightFromLatestCheckin(); render();
-      drainFBQueue();
-      showToast('โหลดข้อมูลจาก Firebase ✅','success');
-      // Persist hardcoded webhook URL to Firebase settings once
-      window.FB.saveSetting('webhook', S.webhook).catch(function(){});
-    }).catch(function(e){
-      console.error('Firebase load error:', e);
-      showToast('โหลด Firebase ไม่สำเร็จ ใช้ข้อมูล local','error');
-      S.meals = JSON.parse(localStorage.getItem('gd_meals')||'[]');
-      loadGoalInputs(); syncProfileWeightFromLatestCheckin(); render();
-    });
-  } else {
-    S.meals = JSON.parse(localStorage.getItem('gd_meals')||'[]');
-    loadGoalInputs(); syncProfileWeightFromLatestCheckin(); render();
-  }
+  // Local-first paint: auth resolves asynchronously AFTER this runs, so init
+  // always starts from localStorage; onAuthChanged() then calls
+  // loadRemoteData() which overwrites with the signed-in user's Firestore data.
+  S.meals = JSON.parse(localStorage.getItem('gd_meals')||'[]');
+  loadGoalInputs(); syncProfileWeightFromLatestCheckin(); render();
   if (S.sleepData && S.sleepData.date === localDateStr() && S.sleepData.recoveryScore) { updateDashRecoveryCard(S.sleepData); }
+}
+
+// Hydrate everything from the signed-in user's Firestore. Called from
+// onAuthChanged() once auth is confirmed (and again after legacy migration).
+function loadRemoteData() {
+  if (!window.FB_OK || !window.FB) return;
+  showToast('กำลังโหลดข้อมูล...','info');
+  Promise.all([
+    window.FB.loadMeals(),
+    window.FB.loadSetting('goals', S.goals),
+    window.FB.loadSetting('profile', null),
+    window.FB.loadFavorites(),
+    window.FB.loadBodyComps(),
+    window.FB.loadSetting('behaviors', null),
+    window.FB.loadSetting('behaviorLog', null),
+    window.FB.loadSetting('webhook', null),
+    window.FB.loadWorkouts().catch(function(){ return null; }),
+    window.FB.loadWeights().catch(function(){ return null; })
+  ]).then(function(r){
+    S.meals = r[0] || [];
+    S.goals = r[1] || S.goals;
+    S.profile = r[2] || null;
+    S.favorites = r[3] || S.favorites;
+    var fbBodyComps = r[4] || [];
+    if(r[5]) localStorage.setItem('gd_behaviors', JSON.stringify(r[5]));
+    if(r[6]) localStorage.setItem('gd_behavior_log', JSON.stringify(r[6]));
+    // Per-user webhook (Google Sheets sync is opt-in per account now)
+    if (r[7] && !S.webhook) {
+      S.webhook = r[7];
+      try { localStorage.setItem('gd_wh', S.webhook); } catch(e){}
+      var whEl = document.getElementById('webhookUrl'); if (whEl) whEl.value = S.webhook;
+    }
+    if (r[8]) { FT.workouts = r[8]; localStorage.setItem('gd_workouts', JSON.stringify(FT.workouts)); }
+    if (r[9]) { WT.log = r[9]; }
+    localStorage.setItem('gd_favorites', JSON.stringify(S.favorites));
+    if(fbBodyComps.length){
+      var local = safeJSON('gd_body_comp_logs', []);
+      // Exclude ids with a still-pending offline delete — otherwise the Firestore
+      // copy (not yet caught up) resurrects a row the user just deleted locally.
+      var pendingBcDelIds = {};
+      safeJSON('gd_pending_fb', []).forEach(function(item){ if(item.type==='bodycomp' && item.op==='del') pendingBcDelIds[item.data]=true; });
+      var byId = {};
+      fbBodyComps.concat(local).forEach(function(e){ if(e && e.id && !pendingBcDelIds[e.id]) byId[e.id]=e; });
+      var merged = Object.keys(byId).map(function(k){ return byId[k]; }).sort(function(a,b){ return a.date.localeCompare(b.date)||a.id-b.id; });
+      localStorage.setItem('gd_body_comp_logs', JSON.stringify(merged));
+    }
+    if(S.profile) loadProfile();
+    loadGoalInputs(); syncProfileWeightFromLatestCheckin(); render();
+    updateFitnessUI();
+    drainFBQueue();
+    showToast('โหลดข้อมูลจาก Firebase ✅','success');
+  }).catch(function(e){
+    console.error('Firebase load error:', e);
+    showToast('โหลด Firebase ไม่สำเร็จ ใช้ข้อมูล local','error');
+  });
 }
 
 function render() { updateDash(); renderWeightCalChart(); renderLog(); renderFavorites(); updateSyncDot(); restoreDailySummary(); restoreRecoveryAdj(); detectAnomalies(); renderFitnessCharts(); }
@@ -2276,7 +2523,7 @@ function syncItem(id) {
 function analyzePhoto(extra) {
   extra = extra || '';
   var key = S.apiKeys[S.currentKeyIndex] || S.apiKeys[0] || "";
-  if(!S.apiKeys.length){showToast('กรุณาใส่ API Key ในแท็บตั้งค่า','error');return;}
+  if(!aiAvailable()){showToast('ฟีเจอร์ AI ยังไม่พร้อม — กรุณา login ก่อน','error');return;}
   if(!curImg){showToast('กรุณาอัปโหลดรูปก่อน','error');return;}
   document.getElementById('analyzeBtn').disabled = true;
   document.getElementById('loadingDiv').style.display = 'block';
@@ -2327,7 +2574,7 @@ function analyzeText(extra) {
   var valid = menuItems.filter(function(m){return m.name.trim();});
   if(!valid.length){showToast('กรุณาพิมพ์ชื่อเมนูก่อน','error');return;}
   var key = S.apiKeys[S.currentKeyIndex] || S.apiKeys[0] || "";
-  if(!S.apiKeys.length){showToast('กรุณาใส่ API Key ในแท็บตั้งค่า','error');return;}
+  if(!aiAvailable()){showToast('ฟีเจอร์ AI ยังไม่พร้อม — กรุณา login ก่อน','error');return;}
   document.getElementById('analyzeTextBtn').disabled = true;
   document.getElementById('loadingDiv').style.display = 'block';
   document.getElementById('resultCard').style.display = 'none';
@@ -2834,7 +3081,7 @@ function getWaistTrend(entries) {
 // ─────────────────────────────────────────────
 function generateMorningRecovery() {
   var key = S.apiKeys[S.currentKeyIndex] || S.apiKeys[0] || "";
-  if (!S.apiKeys.length) { showToast('กรุณาตั้งค่า API Key ก่อน ⚙️', 'error'); return; }
+  if (!aiAvailable()) { showToast('ฟีเจอร์ AI ยังไม่พร้อม — กรุณา login ก่อน', 'error'); return; }
 
   var sd = S.sleepData;
   var today = localDateStr();
@@ -2943,9 +3190,8 @@ function generateMorningRecovery() {
     S.sleepData.recoveryResultHTML = html;
     localStorage.setItem('gd_sleep', JSON.stringify(S.sleepData));
     syncSleepLog(S.sleepData);
-    if (window.db) {
-      window.db.collection('users').doc('nattapat').collection('settings').doc('sleep')
-        .update({ recoveryScore: r.score, recoveryEmoji: em, sleepScore: r.sleepScore, scoreLabel: r.scoreLabel }).catch(function(){});
+    if (window.FB_OK && window.FB && window.FB.updateSleepDoc) {
+      window.FB.updateSleepDoc({ recoveryScore: r.score, recoveryEmoji: em, sleepScore: r.sleepScore, scoreLabel: r.scoreLabel }).catch(function(){});
     }
     // Re-send webhook so Sheet gets recovery fields (only sent here — after analysis is complete)
     if(S.webhook){ fetch('https://kindee.ojo0308.workers.dev/',{method:'POST',headers:{'Content-Type':'application/json','x-target-url':S.webhook},body:JSON.stringify({action:'addSleep',data:S.sleepData})}).catch(function(){}); }
@@ -2993,7 +3239,7 @@ function generateMorningRecovery() {
 }
 function generateDailySummary() {
   var key = S.apiKeys[S.currentKeyIndex] || S.apiKeys[0] || "";
-  if (!S.apiKeys.length) { showToast('กรุณาตั้งค่า API Key ก่อน ⚙️', 'error'); return; }
+  if (!aiAvailable()) { showToast('ฟีเจอร์ AI ยังไม่พร้อม — กรุณา login ก่อน', 'error'); return; }
 
   var today = localDateStr();
   var meals = todayMeals();
@@ -4680,6 +4926,7 @@ function testSync() {
   var url=document.getElementById('webhookUrl').value.trim();
   if(!url){showToast('กรุณาใส่ Webhook URL','error');return;}
   S.webhook=url; localStorage.setItem('gd_wh',url);
+  if(window.FB_OK && window.FB) window.FB.saveSetting('webhook', url).catch(function(){});
   fetch('https://kindee.ojo0308.workers.dev/', {method:'GET',headers:{'x-target-url':url+'?test=1'}})
   .then(function(r){ if(r.ok){showToast('เชื่อมต่อสำเร็จ ✅','success');updateSyncDot();}else throw new Error(); })
   .catch(function(){ showToast('ไม่สามารถเชื่อมต่อได้','error'); });
@@ -5064,10 +5311,9 @@ function migrateThaiExercisesToEnglish() {
   });
   saveStrengthLog(log);
   saveCustomExercises(customs.filter(function(c){ return !moves[c.id]; }));
-  if (window.FB_OK && changed.length) {
-    var db = firebase.firestore();
+  if (window.FB_OK && window.FB && changed.length) {
     changed.forEach(function(e) {
-      db.collection('users').doc('nattapat').collection('strengthLog').doc(String(e.id)).set(e).catch(function(){});
+      window.FB.saveStrengthEntry(e).catch(function(){});
     });
   }
   var names = ids.map(function(id){ var ex = getExById(moves[id]); return ex ? ex.name : moves[id]; });
@@ -5711,14 +5957,13 @@ function confirmExerciseFromSheet() {
       e1RM:calcE1RM(s.weight,s.reps,s.rir), isPR:isPR&&i===bestSetIdx});
   });
   saveStrengthLog(log);
-  if (window.FB_OK) {
-    var db = firebase.firestore();
+  if (window.FB_OK && window.FB) {
     replacedRows.forEach(function(e) {
-      db.collection('users').doc('nattapat').collection('strengthLog').doc(String(e.id)).delete().catch(function(){});
+      window.FB.delStrengthEntry(e.id).catch(function(){});
     });
     validSets.forEach(function(s, i) {
       var entry = log[log.length - validSets.length + i];
-      db.collection('users').doc('nattapat').collection('strengthLog').doc(String(entry.id)).set(entry);
+      window.FB.saveStrengthEntry(entry).catch(function(){});
     });
   }
   if (S.webhook) autoSyncStrengthLog(ST.curExercise, validSets, bestE1RM, isPR, today, bestSetIdx);
@@ -5879,22 +6124,11 @@ function initFitness() {
       }
     });
   }
-  initWeightFirebase();
-  // Extend Firebase for workouts
-  if (window.FB_OK) {
-    var db = firebase.firestore();
-    var UID = 'nattapat';
-    window.FB.saveWorkout = function(w){ return db.collection('users').doc(UID).collection('workouts').doc(String(w.id)).set(w); };
-    window.FB.delWorkout = function(id){ return db.collection('users').doc(UID).collection('workouts').doc(String(id)).delete(); };
-    window.FB.loadWorkouts = function(){ return db.collection('users').doc(UID).collection('workouts').get().then(function(s){ return s.docs.map(function(d){return d.data();}).sort(function(a,b){return a.id-b.id;}); }); };
-    window.FB.loadWorkouts().then(function(ws){ FT.workouts = ws || []; updateFitnessUI(); }).catch(function(){
-      FT.workouts = JSON.parse(localStorage.getItem('gd_workouts')||'[]');
-      updateFitnessUI();
-    });
-  } else {
-    FT.workouts = JSON.parse(localStorage.getItem('gd_workouts')||'[]');
-    updateFitnessUI();
-  }
+  // Workout/weight Firestore helpers now live in the central buildFB() (auth
+  // resolves after this runs). Start from the local cache; loadRemoteData()
+  // replaces it with the signed-in user's data once auth completes.
+  FT.workouts = JSON.parse(localStorage.getItem('gd_workouts')||'[]');
+  updateFitnessUI();
 }
 
 function renderPresets() {
@@ -7998,21 +8232,8 @@ function matchPlanPreset(name) {
 // ==================== WEIGHT LOG MODULE ====================
 var WT = { log: [], chartInstance: null, _calChartInstance: null, filterDays: 7 };
 
-function initWeightFirebase() {
-  if (!window.FB_OK) return;
-  var db = firebase.firestore();
-  var UID = 'nattapat';
-  window.FB.saveWeight = function(e){ return db.collection('users').doc(UID).collection('weightLog').doc(String(e.id)).set(e); };
-  window.FB.delWeight  = function(id){ return db.collection('users').doc(UID).collection('weightLog').doc(String(id)).delete(); };
-  window.FB.loadWeights = function(){
-    return db.collection('users').doc(UID).collection('weightLog')
-      .orderBy('date','asc').get()
-      .then(function(s){ return s.docs.map(function(d){ return d.data(); }); });
-  };
-}
-
 function initWeightTab() {
-  if (window.FB_OK && window.FB.loadWeights) {
+  if (window.FB_OK && window.FB && window.FB.loadWeights) {
     window.FB.loadWeights().then(function(ws){
       WT.log = ws || [];
       _renderWeightTab();
@@ -8839,7 +9060,7 @@ function getLatestVisualAnalysis(){
 }
 function analyzeProgressPhotoAI(){
   var key = S.apiKeys[S.currentKeyIndex] || S.apiKeys[0] || '';
-  if(!S.apiKeys.length){ showToast('กรุณาตั้งค่า API Key ก่อน','error'); return; }
+  if(!aiAvailable()){ showToast('ฟีเจอร์ AI ยังไม่พร้อม — กรุณา login ก่อน','error'); return; }
   if(!_vpImgB64){ showToast('กรุณาเลือกรูปก่อน','error'); return; }
   var ar=document.getElementById('vp-ai-result');
   if(ar){ ar.style.display='block'; ar.innerHTML='<div style="color:var(--text3);">⏳ กำลังวิเคราะห์เชิงลึก...</div>'; }
@@ -9521,7 +9742,7 @@ function runAIWeightDeepDive() {
   }
 
   var key=S.apiKeys&&S.apiKeys[S.currentKeyIndex||0];
-  if(!key){showToast('ไม่มี API Key','error');return;}
+  if(!aiAvailable()){showToast('ฟีเจอร์ AI ยังไม่พร้อม — กรุณา login ก่อน','error');return;}
 
   if(btn){btn.disabled=true;btn.innerHTML='⏳ กำลังวิเคราะห์...';}
   aiEl.innerHTML='<div style="padding:12px;background:var(--surface2);border-radius:12px;font-size:13px;color:var(--text3);text-align:center;">🤖 AI กำลังวิเคราะห์ data...</div>';
@@ -9916,7 +10137,7 @@ function saveSleep() {
   S.sleepData=data;
   localStorage.setItem('gd_sleep',JSON.stringify(data));
   syncSleepLog(data);
-  if(window.FB_OK&&window.db){window.db.collection('users').doc('nattapat').collection('settings').doc('sleep').set(data).catch(function(){});}
+  if(window.FB_OK&&window.FB&&window.FB.saveSleepDoc){window.FB.saveSleepDoc(data).catch(function(){});}
   // หมายเหตุ: ไม่ส่ง webhook ที่นี่ — ส่งหลังวิเคราะห์ recovery แล้วเท่านั้น (มี recovery fields ครบ)
   document.getElementById('sleep-saved-badge').style.display='block';
   var msg='✅ บันทึก Sleep '+displayStr;
@@ -9997,7 +10218,7 @@ function handleSleepScreenshotFile(e) {
   if (!e.target.files || !e.target.files[0]) return;
   var file = e.target.files[0];
   var key = S.apiKeys[S.currentKeyIndex] || S.apiKeys[0] || '';
-  if (!S.apiKeys.length) { showToast('กรุณาตั้งค่า API Key ก่อน ⚙️', 'error'); e.target.value=''; return; }
+  if (!aiAvailable()) { showToast('ฟีเจอร์ AI ยังไม่พร้อม — กรุณา login ก่อน', 'error'); e.target.value=''; return; }
   var btn = document.getElementById('sleep-import-btn');
   _sleepImportShowMsg('⏳ กำลังอ่านค่าจากรูป...', 'info');
   if (btn) btn.disabled = true;
@@ -10994,7 +11215,7 @@ function sendChatMessage(){
   var input = document.getElementById('chatInput');
   var q = (input.value || '').trim();
   if (!q) return;
-  if (!S.apiKeys || !S.apiKeys.length) { showToast('กรุณาตั้งค่า API Key ก่อน ⚙️','error'); return; }
+  if (!aiAvailable()) { showToast('ฟีเจอร์ AI ยังไม่พร้อม — กรุณา login ก่อน','error'); return; }
 
   _chatBusy = true;
   document.getElementById('chatSend').disabled = true;

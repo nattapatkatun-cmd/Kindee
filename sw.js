@@ -1,4 +1,4 @@
-const CACHE_NAME = 'kindee-v4';
+const CACHE_NAME = 'kindee-v5';
 const STATIC_ASSETS = [
   '/Kindee/',
   '/Kindee/index.html',

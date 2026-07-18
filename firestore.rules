@@ -1,0 +1,29 @@
+rules_version = '2';
+
+// กินดี — Firestore Security Rules
+// วางเนื้อหาไฟล์นี้ใน Firebase Console → Firestore Database → Rules → Publish
+//
+// หลักการ:
+//   1. ผู้ใช้ที่ login แล้วอ่าน/เขียนได้เฉพาะ users/{uid ของตัวเอง} เท่านั้น
+//   2. path เก่า users/nattapat (ข้อมูลก่อนมีระบบ login) อ่าน/ลบได้เฉพาะ
+//      บัญชีเจ้าของแอป (OWNER_EMAIL) เพื่อใช้ตอน migration — คนอื่นเข้าไม่ได้
+//   3. ทุกอย่างนอกเหนือจากนี้ถูกปฏิเสธทั้งหมด
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ข้อมูลส่วนตัวของแต่ละบัญชี — เจ้าของ uid เท่านั้น
+    match /users/{uid}/{document=**} {
+      allow read, write: if request.auth != null && request.auth.uid == uid;
+    }
+
+    // Legacy path ก่อนมีระบบ login — ให้เฉพาะบัญชีเจ้าของแอปอ่าน (เพื่อ
+    // migrate) และลบ (เพื่อเก็บกวาดหลัง migrate เสร็จ) ห้ามเขียนเพิ่ม
+    // เพื่อกันแอปเวอร์ชันเก่าที่ค้าง cache เขียนข้อมูลใหม่ลง path เก่า
+    match /users/nattapat/{document=**} {
+      allow read, delete: if request.auth != null
+        && request.auth.token.email == 'ojo0308@gmail.com'
+        && request.auth.token.email_verified == true;
+    }
+  }
+}
