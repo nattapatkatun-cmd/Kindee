@@ -1,4 +1,4 @@
-const CACHE_NAME = 'kindee-v5';
+const CACHE_NAME = 'kindee-v6';
 const STATIC_ASSETS = [
   '/Kindee/',
   '/Kindee/index.html',
@@ -7,13 +7,20 @@ const STATIC_ASSETS = [
 ];
 
 // Install: cache static assets
+// NOTE: no self.skipWaiting() here on purpose. A first-ever install (no
+// older SW controlling any client yet) activates on its own regardless.
+// An UPDATE install (an older SW already controls open tabs) must instead
+// sit in the "waiting" state until the page's update banner is tapped —
+// only that tap sends {type:'SKIP_WAITING'} (handled below). Calling
+// skipWaiting() unconditionally here defeats that banner entirely: the new
+// SW would activate and reload the page the instant it finished installing,
+// which is the exact auto-reload-wipes-your-typing bug the banner exists to fix.
 self.addEventListener('install', event => {
   event.waitUntil(
     caches.open(CACHE_NAME).then(cache => {
       return cache.addAll(['/Kindee/', '/Kindee/index.html']).catch(() => {});
     })
   );
-  self.skipWaiting();
 });
 
 // Activate: clean old caches

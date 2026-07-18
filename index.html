@@ -528,7 +528,16 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
     <svg width="20" height="20" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>
     เข้าสู่ระบบด้วย Google
   </button>
-  <div style="font-size:11px;color:var(--text3);max-width:280px;line-height:1.6;">ข้อมูลของคุณถูกเก็บแยกตามบัญชี เข้าถึงได้เฉพาะคุณเท่านั้น</div>
+  <!-- Signed in with Google successfully, but the email isn't on the closed-beta
+       allowlist — distinct from the generic login prompt so it's obvious this
+       is a permissions issue, not a broken app. -->
+  <div id="authGateBlocked" style="display:none;flex-direction:column;align-items:center;gap:12px;max-width:300px;">
+    <div style="font-size:34px;">🔒</div>
+    <div style="font-size:15px;font-weight:700;">ยังไม่ได้รับสิทธิ์ใช้งาน</div>
+    <div style="font-size:12px;color:var(--text2);line-height:1.6;">แอปนี้อยู่ระหว่างช่วงทดสอบปิด บัญชี <b id="authGateBlockedEmail" style="color:var(--text);"></b> ยังไม่ได้รับอนุญาต — ติดต่อผู้ดูแลเพื่อขอสิทธิ์เข้าใช้งาน</div>
+    <button onclick="logoutUser()" style="margin-top:4px;padding:10px 20px;background:var(--surface2);border:1px solid var(--border-md);border-radius:14px;color:var(--text2);font-family:inherit;font-size:13px;font-weight:600;cursor:pointer;">ออกจากระบบ / ลองบัญชีอื่น</button>
+  </div>
+  <div id="authGateFooterNote" style="font-size:11px;color:var(--text3);max-width:280px;line-height:1.6;">ข้อมูลของคุณถูกเก็บแยกตามบัญชี เข้าถึงได้เฉพาะคุณเท่านั้น</div>
 </div>
 <div class="app">
   <div class="sticky-top">
@@ -1858,12 +1867,30 @@ function onAuthChanged(user, db, storage) {
   try { localStorage.setItem('gd_active_uid', user.uid); } catch(e){}
   window.AUTH_USER = user;
   window.CURRENT_UID = user.uid;
-  window.FB = buildFB(db, storage);
-  window.FB_OK = true;
-  hideAuthGate();
-  renderAccountCard(user);
-  console.log('Signed in:', user.email);
-  maybeMigrateLegacyData(user).then(function(){ loadRemoteData(); });
+  // Closed-beta gate: Google sign-in alone isn't enough — the email also has
+  // to be in the allowedEmails collection (added manually via Firebase
+  // Console, see SETUP_AUTH.md). Checked here explicitly, BEFORE handing the
+  // app to the user, so a blocked account gets a clear "not authorized"
+  // screen instead of the generic Firebase-load-failed fallback that
+  // loadRemoteData() would otherwise show (which reads like a bug, not a
+  // permissions message).
+  checkUserAllowed(user, db).then(function(allowed){
+    if (!allowed) { showAuthGateBlocked(user); return; }
+    window.FB = buildFB(db, storage);
+    window.FB_OK = true;
+    hideAuthGate();
+    renderAccountCard(user);
+    console.log('Signed in:', user.email);
+    maybeMigrateLegacyData(user).then(function(){ loadRemoteData(); });
+  });
+}
+
+function checkUserAllowed(user, db) {
+  var email = (user.email || '').toLowerCase();
+  if (!email) return Promise.resolve(false);
+  return db.collection('allowedEmails').doc(email).get()
+    .then(function(snap){ return snap.exists; })
+    .catch(function(){ return false; }); // security-rules denial reads as "not allowed"
 }
 
 function clearLocalDataForAccountSwitch(newUid) {
@@ -1935,6 +1962,18 @@ function showAuthGateLogin() {
   g.style.display = 'flex';
   var sp = document.getElementById('authGateChecking'); if (sp) sp.style.display = 'none';
   var btn = document.getElementById('authGateLoginBtn'); if (btn) btn.style.display = 'flex';
+  var blocked = document.getElementById('authGateBlocked'); if (blocked) blocked.style.display = 'none';
+  var note = document.getElementById('authGateFooterNote'); if (note) note.style.display = 'block';
+}
+function showAuthGateBlocked(user) {
+  var g = document.getElementById('authGate');
+  if (!g) return;
+  g.style.display = 'flex';
+  var sp = document.getElementById('authGateChecking'); if (sp) sp.style.display = 'none';
+  var btn = document.getElementById('authGateLoginBtn'); if (btn) btn.style.display = 'none';
+  var note = document.getElementById('authGateFooterNote'); if (note) note.style.display = 'none';
+  var blocked = document.getElementById('authGateBlocked'); if (blocked) blocked.style.display = 'flex';
+  var emailEl = document.getElementById('authGateBlockedEmail'); if (emailEl) emailEl.textContent = (user && user.email) || '';
 }
 function loginWithGoogle() {
   var provider = new firebase.auth.GoogleAuthProvider();
@@ -10872,6 +10911,13 @@ try { initFitness(); }  catch(e){ console.error('initFitness failed:', e); }
 <!-- PWA Service Worker -->
 <script>
 if ('serviceWorker' in navigator) {
+  // Captured BEFORE register() — sw.js calls self.skipWaiting()+clients.claim()
+  // unconditionally on install, so even a brand-new visitor's very first
+  // pageload gets a controllerchange event once that first SW activates.
+  // That first claim isn't an "update" (the page already has fresh content,
+  // it just wasn't SW-controlled yet) — only a controllerchange that happens
+  // when a controller ALREADY existed represents a real new-version swap.
+  var hadControllerAtLoad = !!navigator.serviceWorker.controller;
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('sw.js')
       .then(reg => {
@@ -10884,6 +10930,7 @@ if ('serviceWorker' in navigator) {
         // used to wipe whatever the user was mid-typing (a meal, sleep data, ...).
         let refreshing = false;
         navigator.serviceWorker.addEventListener('controllerchange', () => {
+          if (!hadControllerAtLoad) { hadControllerAtLoad = true; return; } // first-ever claim, not a real update
           if (refreshing) return;
           refreshing = true;
           window.location.reload();
