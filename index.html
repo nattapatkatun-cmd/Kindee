@@ -2841,8 +2841,11 @@ function generateMorningRecovery() {
   }
   var gradualBed = computeGradualBedtimeTarget(sd.wakeTime, today, 8, sd.bedtime);
   var bedtimeTrendLine = '';
-  if (gradualBed && gradualBed.shifted) {
-    bedtimeTrendLine = '- Bedtime เมื่อคืน: '+gradualBed.fromBedtime+' | เป้าหมายสุดท้ายจาก wake time วันนี้: '+gradualBed.desiredHHMM+' (ระบบจะขยับให้ทีละ '+BEDTIME_SHIFT_CAP_MIN+' นาที/คืนเท่านั้น ไม่กระโดดทันที)\n';
+  if (gradualBed && (gradualBed.shifted || gradualBed.outlier || gradualBed.debtHeld)) {
+    bedtimeTrendLine = '- Bedtime เมื่อคืน: '+gradualBed.fromBedtime+
+      (gradualBed.outlier ? ' (หลุดจากเวลาปกติ ~'+gradualBed.typicalHHMM+' — คืนนี้ระบบแนะนำให้กลับมาเวลาปกติเลย ไม่ไต่จากเวลาที่หลุด)' : '')+
+      (gradualBed.debtHeld ? ' | มี Sleep Debt สะสม ระบบจึงไม่เลื่อนเวลานอนแนะนำให้ดึกลง' : '')+
+      ' | เวลานอนแนะนำคืนนี้ (คำนวณโดยแอป): '+gradualBed.hhmm+'\n';
   }
   var sleepDebt = (typeof computeSleepDebt === 'function') ? computeSleepDebt(today) : null;
   var sleepDebtLine = '';
@@ -2871,7 +2874,7 @@ function generateMorningRecovery() {
     polarLine + strainTrendLine + bedtimeTrendLine + sleepDebtLine +
     (sd.polarStrain!=null&&sd.polarTolerance!=null?'\n[Polar Load Guidance] ใช้ข้อมูล Polar เป็น context เสริมสำหรับ recommendation เท่านั้น (ไม่นำมาคำนวณ Sleep Score): ถ้า Strain > Tolerance → เอียงไป Maintain หรือ Rest แม้ Recovery ดี; ถ้า Strain <= Tolerance → ใช้ Sleep Score ตัดสิน Push/Maintain/Rest ตามปกติ; ถ้ามี Load Trend ข้างต้นและเป็น overreaching ให้เอียงไป Rest เสมอ\n':'')+
     '\nตอบด้วย JSON เท่านั้น ห้ามมี markdown code block หรือ backtick:\n' +
-    '{ "sleepScore":<ตัวเลข 0-100 ที่คำนวณจาก rubric>, "scoreLabel":"Peak"|"Good"|"Fair"|"Poor", "score":"Optimal"|"Moderate"|"Poor", "emoji":"green_circle"|"yellow_circle"|"red_circle", "pillars":{"duration":<0-100>,"efficiency":<0-100>,"stages":<0-100>,"physio":<0-100>,"consistency":<0-100 หรือ null ถ้าไม่มีข้อมูล>}, "headline":"สรุป 1 บรรทัดเป็นภาษาไทย ห้ามระบุตัวเลขคะแนนรวม พูดเชิงคุณภาพเท่านั้น", "detail":"อธิบาย 2-3 ประโยคภาษาไทย ว่า metric ไหนดึงคะแนนขึ้นหรือลง รวมถึง Load Trend ถ้ามี ห้ามระบุตัวเลขคะแนนรวม", "strengths":"bullet list ภาษาไทย (ขึ้นต้นด้วย • ) อธิบายว่าทำไม metric แต่ละตัวถึงดี รวมหลักการ physiology สั้น ๆ ใช้ **ตัวหนา** สำหรับชื่อ metric", "improvements":"bullet list ภาษาไทย (ขึ้นต้นด้วย • ) คำแนะนำเชิงปฏิบัติสำหรับ pillar ที่ยังอ่อน ใช้ **ตัวหนา** สำหรับชื่อ metric", "sleep_actions":{"target_bedtime":"HH:MM ที่ควรนอนคืนนี้ (ระบบจะคำนวณและ override ค่านี้เองจากค่าเฉลี่ยเวลานอนย้อนหลัง แบบขยับทีละไม่เกิน 20 นาที/คืน — ใส่ค่าประมาณจาก wake time ลบ 8h ไปก่อนได้เลย ไม่ต้องคำนวณ gradual shift เอง)","room_temp":"อุณหภูมิห้องที่แนะนำเป็น °C เช่น 25-26°C (เปิดแอร์เย็นลงจากอุณหภูมิห้องไทยปกติ 28-32°C) พร้อมเหตุผลสั้น ๆ","environment":"คำแนะนำสภาพแวดล้อมเพิ่มเติม เช่น แสง เสียง","consistency_tip":"ถ้า Consistency ต่ำกว่า 70 ให้แนะนำเวลาเข้านอน-ตื่นเป้าหมายที่ควรรักษาไว้เป็นกิจวัตร มิฉะนั้นใส่ null"}, "recommendation":"Push"|"Maintain"|"Rest", "recommendation_reason":"เหตุผล 1 ประโยคภาษาไทย (ถ้ามี Load Trend แบบ overreaching ให้พูดถึงด้วย) ห้ามระบุตัวเลขคะแนนรวม" }';
+    '{ "sleepScore":<ตัวเลข 0-100 ที่คำนวณจาก rubric>, "scoreLabel":"Peak"|"Good"|"Fair"|"Poor", "score":"Optimal"|"Moderate"|"Poor", "emoji":"green_circle"|"yellow_circle"|"red_circle", "pillars":{"duration":<0-100>,"efficiency":<0-100>,"stages":<0-100>,"physio":<0-100>,"consistency":<0-100 หรือ null ถ้าไม่มีข้อมูล>}, "headline":"สรุป 1 บรรทัดเป็นภาษาไทย ห้ามระบุตัวเลขคะแนนรวม พูดเชิงคุณภาพเท่านั้น", "detail":"อธิบาย 2-3 ประโยคภาษาไทย ว่า metric ไหนดึงคะแนนขึ้นหรือลง รวมถึง Load Trend ถ้ามี ห้ามระบุตัวเลขคะแนนรวม", "strengths":"bullet list ภาษาไทย (ขึ้นต้นด้วย • ) อธิบายว่าทำไม metric แต่ละตัวถึงดี รวมหลักการ physiology สั้น ๆ ใช้ **ตัวหนา** สำหรับชื่อ metric", "improvements":"bullet list ภาษาไทย (ขึ้นต้นด้วย • ) คำแนะนำเชิงปฏิบัติสำหรับ pillar ที่ยังอ่อน ใช้ **ตัวหนา** สำหรับชื่อ metric", "sleep_actions":{"consistency_tip":"ถ้า Consistency ต่ำกว่า 70 ให้แนะนำเวลาเข้านอน-ตื่นเป้าหมายที่ควรรักษาไว้เป็นกิจวัตร มิฉะนั้นใส่ null — ส่วนเวลาเข้านอนเป้าหมาย แผนล้าง sleep debt และ action ของ pillar ที่อ่อน แอปคำนวณเองแบบ deterministic ห้ามใส่มา"}, "recommendation":"Push"|"Maintain"|"Rest", "recommendation_reason":"เหตุผล 1 ประโยคภาษาไทย (ถ้ามี Load Trend แบบ overreaching ให้พูดถึงด้วย) ห้ามระบุตัวเลขคะแนนรวม" }';
 
   geminiCall(key, {
     contents: [{ parts: [{ text: prompt }] }],
@@ -9434,17 +9437,27 @@ function normalizeRecoveryResult(r, sd) {
   r.recommendation = r.recommendation || (calc.score === 'Optimal' ? 'Push' : calc.score === 'Moderate' ? 'Maintain' : 'Rest');
   r.recommendation_reason = r.recommendation_reason || 'อิงจาก Sleep Score และ Recovery Status วันนี้';
 
-  // Bedtime card always reflects the deterministic gradual-shift calc — never
-  // whatever bedtime the AI free-texted — so it can't drift from the 14-day trend.
-  // (This assignment fully replaces the field each call, so it's safe to re-run.)
+  // Sleep-action rows always reflect deterministic calcs — never whatever the
+  // AI free-texted — so they can't drift from the measured data. (Every field
+  // here is fully replaced on each call, so re-rendering is safe.)
   var sdRef = sd || S.sleepData || {};
+  r.sleep_actions = r.sleep_actions || {};
   var gradualBed = computeGradualBedtimeTarget(sdRef.wakeTime, sdRef.date, 8, sdRef.bedtime);
   if (gradualBed) {
-    r.sleep_actions = r.sleep_actions || {};
-    r.sleep_actions.target_bedtime = gradualBed.hhmm + (gradualBed.shifted
-      ? ' (ขยับจากเมื่อคืน ' + gradualBed.fromBedtime + ' ทีละ ' + BEDTIME_SHIFT_CAP_MIN + ' นาที — เป้าหมายสุดท้าย ' + gradualBed.desiredHHMM + ', ค่อย ๆ ปรับเพื่อไม่ให้ผิดจังหวะนาฬิกาชีวภาพ)'
-      : '');
+    var bedNotes = [];
+    if (gradualBed.outlier) bedNotes.push('เมื่อคืนนอนหลุดตาราง (' + gradualBed.fromBedtime + ') — คืนเดียวไม่ได้เลื่อนนาฬิกาชีวภาพ คืนนี้กลับมานอนเวลาปกติของคุณ (~' + gradualBed.typicalHHMM + ') ได้เลย ไม่ต้องไต่จากเวลาที่หลุด');
+    if (gradualBed.debtHeld) bedNotes.push('มี Sleep Debt สะสม จึงไม่เลื่อนเวลานอนให้ดึกลงตาม wake time ที่สายกว่าปกติ');
+    if (gradualBed.shifted) bedNotes.push('ขยับจากเมื่อคืน ' + gradualBed.fromBedtime + ' ทีละ ' + BEDTIME_SHIFT_CAP_MIN + ' นาที — เป้าหมายสุดท้าย ' + gradualBed.desiredHHMM + ', ค่อย ๆ ปรับเพื่อไม่ให้ผิดจังหวะนาฬิกาชีวภาพ');
+    r.sleep_actions.target_bedtime = gradualBed.hhmm + (bedNotes.length ? ' (' + bedNotes.join('; ') + ')' : '');
   }
+  var sdDebtForActions = (typeof computeSleepDebt === 'function') ? computeSleepDebt(sdRef.date) : null;
+  r.sleep_actions.debt_plan = (typeof buildDebtPlanText === 'function') ? buildDebtPlanText(sdDebtForActions) : null;
+  r.sleep_actions.weak_pillar = (typeof buildWeakPillarAction === 'function') ? buildWeakPillarAction(calc.pillars, sdRef) : null;
+  r.sleep_actions.behavior_tip = (typeof buildBehaviorSleepTip === 'function') ? buildBehaviorSleepTip() : null;
+  // Old AI-filled generic fields — same tip every day, no data behind them.
+  // Delete so cached entries stop rendering them too.
+  delete r.sleep_actions.room_temp;
+  delete r.sleep_actions.environment;
 
   // recoveryResultHTMLFor() re-runs this same function on the SAME stored `r`
   // object every time the result is re-rendered (tab switch, page reload,
@@ -9530,12 +9543,16 @@ function buildResultHTML(r, em) {
     (function(){
       var sa = r.sleep_actions;
       if (!sa) return '';
-      var rows = '';
-      if (sa.target_bedtime) rows += '<div style="padding:8px 0;border-bottom:1px solid var(--border);"><div style="font-size:11px;color:#a855f7;font-weight:700;margin-bottom:3px;">🕐 นอนกี่โมง</div><div style="font-size:12px;color:var(--text);line-height:1.6;">' + sa.target_bedtime + '</div></div>';
-      if (sa.room_temp) rows += '<div style="padding:8px 0;border-bottom:1px solid var(--border);"><div style="font-size:11px;color:#3b82f6;font-weight:700;margin-bottom:3px;">🌡️ อุณหภูมิ</div><div style="font-size:12px;color:var(--text);line-height:1.6;">' + sa.room_temp + '</div></div>';
-      if (sa.environment) rows += '<div style="padding:8px 0;border-bottom:1px solid var(--border);"><div style="font-size:11px;color:#22c55e;font-weight:700;margin-bottom:3px;">🌙 สภาพแวดล้อม</div><div style="font-size:12px;color:var(--text);line-height:1.6;">' + sa.environment + '</div></div>';
-      if (sa.consistency_tip) rows += '<div style="padding:8px 0;"><div style="font-size:11px;color:#eab308;font-weight:700;margin-bottom:3px;">🔁 สม่ำเสมอ</div><div style="font-size:12px;color:var(--text);line-height:1.6;">' + sa.consistency_tip + '</div></div>';
-      if (!rows) return '';
+      var defs = [];
+      if (sa.target_bedtime)  defs.push(['🕐','#a855f7','นอนกี่โมง',sa.target_bedtime]);
+      if (sa.debt_plan)       defs.push(['😴','#ef4444','ล้างหนี้การนอน',sa.debt_plan]);
+      if (sa.weak_pillar)     defs.push(['🎯','#3b82f6','แก้จุดที่ฉุดคะแนน',sa.weak_pillar]);
+      if (sa.behavior_tip)    defs.push(['🔬','#22c55e','พฤติกรรมที่ได้ผลกับคุณ',sa.behavior_tip]);
+      if (sa.consistency_tip) defs.push(['🔁','#eab308','สม่ำเสมอ',sa.consistency_tip]);
+      if (!defs.length) return '';
+      var rows = defs.map(function(d, i){
+        return '<div style="padding:8px 0;' + (i < defs.length-1 ? 'border-bottom:1px solid var(--border);' : '') + '"><div style="font-size:11px;color:' + d[1] + ';font-weight:700;margin-bottom:3px;">' + d[0] + ' ' + d[2] + '</div><div style="font-size:12px;color:var(--text);line-height:1.6;">' + d[3] + '</div></div>';
+      }).join('');
       return '<div style="margin-top:10px;background:rgba(168,85,247,0.07);border:1px solid rgba(168,85,247,0.2);border-radius:10px;padding:10px 12px;"><div style="font-size:11px;font-weight:700;color:#a855f7;margin-bottom:8px;text-transform:uppercase;letter-spacing:0.5px;">🛌 เพื่อให้คะแนนดีขึ้นคืนนี้</div>' + rows + '</div>';
     })()
   );
@@ -9772,10 +9789,32 @@ function computeConsistency(bedtime, wakeTime, today){
 // Max minutes/night a target bedtime may move from the last actual bedtime —
 // shifting faster than this outruns melatonin-onset adjustment (CBT-I / phase-shift convention).
 var BEDTIME_SHIFT_CAP_MIN = 20;
-// Gradual target bedtime: anchor off the most recent ACTUAL bedtime in the log
-// (never off today's own entry — caller must pass a date, and only records
-// strictly before it are used) and step toward the wake-time-derived goal by
-// at most BEDTIME_SHIFT_CAP_MIN, instead of jumping straight to the goal each night.
+// A single night this far off the habitual bedtime is an aberration, not a
+// schedule change — the circadian clock stays where the habit is.
+var BEDTIME_OUTLIER_MIN = 60;
+// Habitual bedtime = median (robust to one-off late nights) of the last
+// up-to-7 logged bedtimes, in anchored minutes. Needs >=3 nights.
+function computeTypicalBedtimeMin(forDate) {
+  var log = []; try { log = JSON.parse(localStorage.getItem('gd_sleep_log') || '[]'); } catch(e) {}
+  var mins = log.filter(function(s){ return s.date <= forDate && s.bedtime; })
+                .sort(function(a,b){ return a.date < b.date ? 1 : -1; })
+                .slice(0, 7)
+                .map(function(s){ return _timeToMin(s.bedtime, true); })
+                .sort(function(a,b){ return a - b; });
+  if (mins.length < 3) return null;
+  return mins[Math.floor(mins.length / 2)];
+}
+// Gradual target bedtime. Anchor rules, in order:
+// - Last night within ±60min of the habitual (median-of-7) bedtime → step from
+//   last night toward the wake-derived goal by at most BEDTIME_SHIFT_CAP_MIN
+//   (a real schedule shift must be gradual — melatonin-onset adjustment).
+// - Last night an OUTLIER vs the habitual bedtime → anchor on the habitual
+//   time instead: one aberrant night doesn't move the circadian clock, so
+//   tonight's job is simply returning to the normal time, not chasing the
+//   aberrant bedtime in 20-minute steps.
+// - Meaningful sleep debt → never move the target LATER than the anchor. A
+//   late wake after a bad night drags (wake − 8h) later than the habit; obeying
+//   it would shrink tonight's sleep opportunity exactly when debt is highest.
 // forDate = date of the sleep record being analyzed. A record dated D holds the
 // night that ENDED on the morning of D, so "last night's bedtime" lives in the
 // record dated forDate itself (pass it via lastBedtime, or the <= filter finds it) —
@@ -9797,11 +9836,19 @@ function computeGradualBedtimeTarget(wakeTime, forDate, goalHours, lastBedtime) 
     var hh = Math.floor(norm / 60), mm = norm % 60;
     return (hh < 10 ? '0' : '') + hh + ':' + (mm < 10 ? '0' : '') + mm;
   };
-  if (!fromBed) return { hhmm: fmt(desiredAnchored), shifted: false, fromBedtime: null, desiredHHMM: fmt(desiredAnchored) };
+  if (!fromBed) return { hhmm: fmt(desiredAnchored), shifted: false, fromBedtime: null, desiredHHMM: fmt(desiredAnchored), outlier: false, typicalHHMM: null, debtHeld: false };
   var lastBedMin = _timeToMin(fromBed, true);
-  var diff = desiredAnchored - lastBedMin;
-  var targetMin = Math.abs(diff) <= BEDTIME_SHIFT_CAP_MIN ? desiredAnchored : lastBedMin + (diff > 0 ? 1 : -1) * BEDTIME_SHIFT_CAP_MIN;
-  return { hhmm: fmt(targetMin), shifted: Math.abs(diff) > BEDTIME_SHIFT_CAP_MIN, fromBedtime: fromBed, desiredHHMM: fmt(desiredAnchored) };
+  var typicalMin = computeTypicalBedtimeMin(forDate);
+  var isOutlier = typicalMin != null && Math.abs(lastBedMin - typicalMin) > BEDTIME_OUTLIER_MIN;
+  var anchorMin = isOutlier ? typicalMin : lastBedMin;
+  var diff = desiredAnchored - anchorMin;
+  var targetMin = Math.abs(diff) <= BEDTIME_SHIFT_CAP_MIN ? desiredAnchored : anchorMin + (diff > 0 ? 1 : -1) * BEDTIME_SHIFT_CAP_MIN;
+  var debt = (typeof computeSleepDebt === 'function') ? computeSleepDebt(forDate) : null;
+  var debtHeld = false;
+  if (debt && debt.hours >= 3 && targetMin > anchorMin) { targetMin = anchorMin; debtHeld = true; }
+  return { hhmm: fmt(targetMin), shifted: Math.abs(diff) > BEDTIME_SHIFT_CAP_MIN && !isOutlier && !debtHeld,
+           fromBedtime: fromBed, desiredHHMM: fmt(desiredAnchored),
+           outlier: isOutlier, typicalHHMM: typicalMin != null ? fmt(typicalMin) : null, debtHeld: debtHeld };
 }
 // Rolling Polar Cardio Strain/Tolerance load over the last few nights — a single
 // day's Strain > Tolerance isn't a real signal on its own; several nights in a row is.
@@ -9892,6 +9939,71 @@ function computeSleepDebt(forDate) {
   var debt = 0;
   nights.forEach(function(n){ debt = Math.max(0, Math.min(SLEEP_DEBT_CAP_HOURS, debt + (SLEEP_DEBT_NEED_HOURS - n.hours))); });
   return { hours: Math.round(debt*10)/10, nights: nights.length, needHours: SLEEP_DEBT_NEED_HOURS };
+}
+
+// ── Deterministic sleep-action rows ──────────────────────────────
+// These replace the old AI-free-texted room-temp / environment tips, which
+// repeated the same generic advice every day regardless of the data.
+// Concrete payback plan for the current sleep debt. Debt does not repay 1:1 in
+// one long lie-in — and a weekend binge shifts the circadian phase — so the
+// plan is always "extend nightly sleep, keep the wake time fixed".
+function buildDebtPlanText(debt) {
+  if (!debt || debt.hours < 2) return null;
+  var base = 'สะสม ' + debt.hours + ' ชม. จาก ' + debt.nights + ' คืนล่าสุด — ';
+  if (debt.hours >= 6) {
+    return base + 'เข้านอนตามเวลาเป้าหมายด้านบนโดยไม่เลื่อนดึกกว่านั้น และเพิ่มโอกาสนอนอีก 45-60 นาที/คืน ต่อเนื่องอย่างน้อย 1 สัปดาห์ งีบสั้น 20-30 นาทีก่อนบ่ายสามช่วยได้ แต่อย่านอนชดเชยยาวรวดเดียวช่วงวันหยุด — จะเลื่อนนาฬิกาชีวภาพแล้วทำให้คืนถัดไปหลับยากขึ้น';
+  }
+  return base + 'เพิ่มเวลานอน 30-45 นาที/คืน ต่อเนื่อง 4-5 คืนก็ล้างส่วนใหญ่ได้ — รักษาเวลาตื่นให้คงที่ระหว่างนี้';
+}
+// One targeted action for the pillar that dragged last night's score the most,
+// quoting the actual measured numbers so the tip changes with the data.
+function buildWeakPillarAction(pillars, sd) {
+  if (!pillars || !sd) return null;
+  var list = [
+    {k:'duration', v:pillars.duration}, {k:'efficiency', v:pillars.efficiency},
+    {k:'stages', v:pillars.stages}, {k:'physio', v:pillars.physio}, {k:'consistency', v:pillars.consistency}
+  ].filter(function(p){ return p.v != null; });
+  if (!list.length) return null;
+  list.sort(function(a,b){ return a.v - b.v; });
+  var w = list[0];
+  if (w.v >= 75) return null; // nothing meaningfully weak — no forced advice
+  var totalMin = Math.round((sd.hours || 0) * 60);
+  if (w.k === 'duration') {
+    return 'Duration ฉุดคะแนนมากที่สุด (หลับ ' + (sd.displayStr || ((sd.hours || 0) + 'h')) + ') — คืนนี้เข้านอนตามเวลาเป้าหมายด้านบนเพื่อให้ถึง 8 ชม.';
+  }
+  if (w.k === 'efficiency') {
+    var eff = (sd.timeInBed && sd.hours) ? Math.round(sd.hours / sd.timeInBed * 100) : null;
+    return 'Efficiency ฉุดคะแนนมากที่สุด' + (eff ? ' (หลับจริง ' + eff + '% ของเวลาบนเตียง)' : '') + ' — ขึ้นเตียงเมื่อง่วงจริงเท่านั้น ถ้า ~20 นาทีแล้วยังไม่หลับ ให้ลุกไปนั่งที่แสงน้อยจนง่วงแล้วค่อยกลับมา (stimulus control)';
+  }
+  if (w.k === 'stages') {
+    var dp = (sd.deepSleep && totalMin) ? Math.round(sd.deepSleep / totalMin * 100) : null;
+    var rp = (sd.remSleep && totalMin) ? Math.round(sd.remSleep / totalMin * 100) : null;
+    return 'Sleep Stages ฉุดคะแนนมากที่สุด' + ((dp != null || rp != null) ? ' (Deep ' + (dp != null ? dp + '%' : '—') + ' / REM ' + (rp != null ? rp + '%' : '—') + ', ช่วงเหมาะสม 13-23% / 18-28%)' : '') + ' — เลี่ยงแอลกอฮอล์ มื้อหนัก และการออกกำลังหนักภายใน 3 ชม.ก่อนนอน';
+  }
+  if (w.k === 'physio') {
+    var hv = '';
+    if (sd.hrv && sd.hrvBaseline) { var pd = Math.round((sd.hrv - sd.hrvBaseline) / sd.hrvBaseline * 100); hv = ' (HRV ' + (pd >= 0 ? '+' : '') + pd + '% vs baseline' + (sd.rhr ? ', RHR ' + sd.rhr : '') + ')'; }
+    else if (sd.rhr) { hv = ' (RHR ' + sd.rhr + ' bpm)'; }
+    return 'HRV/Physio ฉุดคะแนนมากที่สุด' + hv + ' — วันนี้ลดความหนักการซ้อม เลี่ยงคาเฟอีนหลังเที่ยง และดื่มน้ำให้ถึงเป้า';
+  }
+  if (w.k === 'consistency') {
+    return 'Consistency ฉุดคะแนนมากที่สุด — ยึดเวลาตื่นให้คงที่ทุกวันเป็นหลัก (สำคัญกว่าเวลาเข้านอน) แล้วเวลานอนจะตามมาเอง';
+  }
+  return null;
+}
+// Tonight's action from the user's OWN tracked-behavior stats (Behavior
+// Insights): surface the behavior with the largest proven Sleep Score effect.
+function buildBehaviorSleepTip() {
+  if (typeof _getBehaviors !== 'function' || typeof _behaviorCorrelation !== 'function') return null;
+  var best = null;
+  _getBehaviors().forEach(function(b){
+    var c = _behaviorCorrelation(b.id);
+    if (c && c.ready && Math.abs(c.diff) >= 5 && (!best || Math.abs(c.diff) > Math.abs(best.diff))) best = { name: b.name, diff: c.diff };
+  });
+  if (!best) return null;
+  return best.diff > 0
+    ? 'จากสถิติของคุณเอง: คืนที่ "' + best.name + '" Sleep Score เฉลี่ยสูงกว่า ' + best.diff + ' จุด — ทำคืนนี้ด้วย'
+    : 'จากสถิติของคุณเอง: คืนที่ "' + best.name + '" Sleep Score เฉลี่ยต่ำกว่า ' + Math.abs(best.diff) + ' จุด — เลี่ยงคืนนี้';
 }
 
 // Upsert today's sleep record into gd_sleep_log (keeps 120 days)
