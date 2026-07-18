@@ -1577,6 +1577,9 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
       <div id="ft-feasibility-banner" style="display:none;font-size:12px;line-height:1.7;margin-bottom:10px;padding:10px 12px;border-radius:10px;"></div>
       <button class="btn-primary" onclick="saveFitnessTarget()">💾 บันทึก Fitness Target</button>
     </div>
+    <details class="fold-full" style="margin-bottom:16px;">
+      <summary style="background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:13px 16px;font-size:14px;font-weight:700;cursor:pointer;list-style-position:inside;color:var(--text);">⚙️ ขั้นสูง <span style="font-weight:400;color:var(--text2);font-size:12px;">(Google Sheets Sync, Gemini API Key สำรอง — ผู้ใช้ทั่วไปข้ามได้)</span></summary>
+      <div style="margin-top:12px;">
     <div class="card">
       <div class="card-title">🔗 Google Sheets Sync</div>
       <div style="font-size:12px;color:var(--text3);margin-bottom:12px;">ใช้ Webhook URL เดียวกัน — ระบบจะส่งข้อมูลไปยังคนละ sheet tab อัตโนมัติ</div>
@@ -1660,6 +1663,8 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
       <div id="keyRotateStatus" style="font-size:11px;color:var(--text3);margin-bottom:10px;min-height:16px;"></div>
       <button class="btn-primary" onclick="saveApiKeys()">💾 บันทึก API Keys</button>
     </div>
+      </div>
+    </details>
     </div><!-- end fold-grid -->
   </div>
 </div>
