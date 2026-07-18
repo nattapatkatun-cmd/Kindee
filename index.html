@@ -7810,7 +7810,7 @@ function enforceRestDaysOnPlan(plan, restDays) {
 
 function generatePlan() {
   var key = S.apiKeys[S.currentKeyIndex] || S.apiKeys[0] || "";
-  if (!key) { showToast('กรุณาใส่ API Key ในแท็บตั้งค่า','error'); return; }
+  if (!aiAvailable()) { showToast('ฟีเจอร์ AI ยังไม่พร้อม — กรุณา login ก่อน', 'error'); return; }
   var profile  = S.profile || safeJSON('gd_profile', {}) || {};
   var goals    = S.goals;
   var target   = JSON.parse(localStorage.getItem('gd_ft_target')||'null');
@@ -7965,7 +7965,7 @@ function generatePlan() {
     showToast('❌ '+e.message, 'error');
     document.getElementById('planResult').innerHTML =
       '<div class="card" style="border-color:var(--red);"><div style="color:var(--red);font-size:13px;">❌ เกิดข้อผิดพลาด: '+e.message+'<br><br>'+
-      '<span style="color:var(--text3);">ลองตรวจสอบ:<br>1. API Key ถูกต้องไหม (⚙️ ตั้งค่า)<br>'+
+      '<span style="color:var(--text3);">ลองตรวจสอบ:<br>1. อินเทอร์เน็ตเชื่อมต่ออยู่ไหม<br>'+
       '2. กรอกข้อมูลใน ⚙️ ตั้งค่า → ข้อมูลร่างกาย ครบหรือยัง<br>'+
       '3. ลองกดปุ่มอีกครั้ง</span></div></div>';
   });
