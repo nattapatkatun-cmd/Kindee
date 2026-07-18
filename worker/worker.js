@@ -1,7 +1,8 @@
 // กินดี — Cloudflare Worker
 // ทำ 2 หน้าที่:
 //   1. POST /gemini  — proxy ไป Gemini API โดยเก็บ API keys ไว้ฝั่ง server,
-//      ตรวจ Firebase ID token ของผู้ใช้ และจำกัดโควตา AI ต่อคนต่อวัน (KV)
+//      ตรวจ Firebase ID token ของผู้ใช้, เช็ค allowedEmails (closed beta)
+//      แล้วจำกัดโควตา AI ต่อคนต่อวัน (KV)
 //   2. POST /  (มี header x-target-url) — passthrough เดิมสำหรับ Google Sheets
 //      webhook (จำกัดปลายทางเฉพาะ script.google.com)
 //
@@ -15,6 +16,8 @@
 //   QUOTA  → ผูกกับ namespace ที่สร้างไว้ (เก็บตัวนับโควตารายวัน)
 
 const GEMINI_MODEL = 'gemini-2.5-flash';
+// Public value (also embedded in index.html's firebaseConfig) — not a secret.
+const FIREBASE_PROJECT_ID = 'kindee-f0cc1';
 
 export default {
   async fetch(request, env) {
@@ -57,6 +60,20 @@ async function handleGemini(request, env, cors) {
 
   const user = await verifyFirebaseToken(idToken, env);
   if (!user) return json({ error: 'auth', message: 'token ไม่ถูกต้องหรือหมดอายุ — ลอง login ใหม่' }, 401, cors);
+
+  // 1b) Closed-beta allowlist — เช็คผ่าน Firestore REST ด้วย idToken ตัวเดียวกับ
+  // ที่ client ส่งมา (Firestore ตรวจ security rules ให้เองตาม auth context ของ
+  // token นั้น ไม่ต้องมี service account) allowedEmails/{email} มีแค่เจ้าของ
+  // อีเมลนั้นอ่านได้เอง ตรงกับ rules ฝั่ง Firestore พอดี — เจตนาเดียวกัน
+  // ป้องกันคนที่มีแค่ลิงก์สมัครใช้ AI ได้โดยไม่ได้รับอนุญาต
+  const allowed = await checkAllowlist(idToken, user.email, env);
+  if (!allowed) {
+    return json(
+      { error: 'not_allowed', message: 'บัญชีนี้ยังไม่ได้รับสิทธิ์ใช้งาน (อยู่ระหว่างช่วงทดสอบปิด) — ติดต่อผู้ดูแลเพื่อขอสิทธิ์' },
+      403,
+      cors
+    );
+  }
 
   // 2) โควตาต่อ user ต่อวัน (KV; นับตามวัน UTC — เพียงพอสำหรับกันการใช้เกิน)
   const limit = parseInt(env.DAILY_LIMIT || '20', 10);
@@ -147,6 +164,18 @@ async function verifyFirebaseToken(idToken, env) {
     return { uid: u.localId, email: u.email || '' };
   } catch (e) {
     return null;
+  }
+}
+
+async function checkAllowlist(idToken, email, env) {
+  if (!email) return false;
+  const docId = encodeURIComponent(email.toLowerCase());
+  const url = `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents/allowedEmails/${docId}`;
+  try {
+    const resp = await fetch(url, { headers: { Authorization: `Bearer ${idToken}` } });
+    return resp.ok; // 200 = doc exists + readable per rules · 404/403 = not on the list
+  } catch (e) {
+    return false; // fail closed — network hiccup should not grant free AI access
   }
 }
 

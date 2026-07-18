@@ -4,22 +4,42 @@ rules_version = '2';
 // วางเนื้อหาไฟล์นี้ใน Firebase Console → Firestore Database → Rules → Publish
 //
 // หลักการ:
-//   1. ผู้ใช้ที่ login แล้วอ่าน/เขียนได้เฉพาะ users/{uid ของตัวเอง} เท่านั้น
-//   2. path เก่า users/nattapat (ข้อมูลก่อนมีระบบ login) อ่าน/ลบได้เฉพาะ
-//      บัญชีเจ้าของแอป (OWNER_EMAIL) เพื่อใช้ตอน migration — คนอื่นเข้าไม่ได้
-//   3. ทุกอย่างนอกเหนือจากนี้ถูกปฏิเสธทั้งหมด
+//   1. ต้อง login และอีเมลต้องอยู่ใน collection allowedEmails ก่อนถึงจะอ่าน/
+//      เขียนข้อมูลของตัวเองได้ (ปิดประตูไม่ให้ใครก็ได้ที่มีลิงก์สมัครใช้งาน
+//      ระหว่างช่วง closed beta — ดูวิธีเพิ่มอีเมลใน SETUP_AUTH.md)
+//   2. ผู้ใช้อ่าน/เขียนได้เฉพาะ users/{uid ของตัวเอง} เท่านั้น
+//   3. path เก่า users/nattapat (ข้อมูลก่อนมีระบบ login) อ่าน/ลบได้เฉพาะ
+//      บัญชีเจ้าของแอปเพื่อใช้ตอน migration — คนอื่นเข้าไม่ได้
+//   4. allowedEmails/{email} เขียนไม่ได้ผ่านแอปเลย (ตั้งใจ) — จัดการผ่าน
+//      Firebase Console → Firestore → Data โดยตรงเท่านั้น อ่านได้เฉพาะเจ้าของ
+//      อีเมลนั้น (ใช้เช็คสิทธิ์ตัวเอง)
+//   5. ทุกอย่างนอกเหนือจากนี้ถูกปฏิเสธทั้งหมด
 
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // ข้อมูลส่วนตัวของแต่ละบัญชี — เจ้าของ uid เท่านั้น
+    function isAllowed() {
+      return request.auth != null
+        && request.auth.token.email_verified == true
+        && exists(/databases/$(database)/documents/allowedEmails/$(request.auth.token.email.lower()));
+    }
+
+    // Allowlist — เพิ่ม/ลบผ่าน Firebase Console เท่านั้น ไม่มี write rule ให้
+    // ตั้งใจ (ผู้ใช้ทั่วไปแก้ allowlist ของตัวเองไม่ได้แน่นอน)
+    match /allowedEmails/{email} {
+      allow read: if request.auth != null && request.auth.token.email.lower() == email;
+    }
+
+    // ข้อมูลส่วนตัวของแต่ละบัญชี — ต้องอยู่ใน allowlist และเป็นเจ้าของ uid เอง
     match /users/{uid}/{document=**} {
-      allow read, write: if request.auth != null && request.auth.uid == uid;
+      allow read, write: if isAllowed() && request.auth.uid == uid;
     }
 
     // Legacy path ก่อนมีระบบ login — ให้เฉพาะบัญชีเจ้าของแอปอ่าน (เพื่อ
     // migrate) และลบ (เพื่อเก็บกวาดหลัง migrate เสร็จ) ห้ามเขียนเพิ่ม
     // เพื่อกันแอปเวอร์ชันเก่าที่ค้าง cache เขียนข้อมูลใหม่ลง path เก่า
+    // หมายเหตุ: ไม่ผ่าน isAllowed() เพราะเจ้าของแอปต้องเข้าถึงได้เสมอแม้
+    // ยังไม่ได้เพิ่มตัวเองใน allowedEmails (กันตัวเองล็อกตัวเองตอน bootstrap)
     match /users/nattapat/{document=**} {
       allow read, delete: if request.auth != null
         && request.auth.token.email == 'ojo0308@gmail.com'
