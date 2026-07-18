@@ -379,6 +379,10 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
 .menu-item-del{position:absolute;top:10px;right:10px;background:none;border:none;color:var(--text3);font-size:15px;cursor:pointer;padding:2px 6px;}
 .menu-item-del:hover{color:var(--red);}
 
+/* ── SW update banner (tap-to-refresh, never auto-reloads) ── */
+.sw-update-banner{position:fixed;top:calc(env(safe-area-inset-top,0px) + 10px);left:50%;transform:translateX(-50%) translateY(-16px);background:var(--accent);color:#fff;font-size:12.5px;font-weight:700;padding:9px 16px;border-radius:20px;box-shadow:0 6px 20px rgba(0,0,0,0.28);z-index:1200;cursor:pointer;opacity:0;pointer-events:none;transition:all 0.28s cubic-bezier(.4,0,.2,1);white-space:nowrap;}
+.sw-update-banner.show{opacity:1;pointer-events:auto;transform:translateX(-50%) translateY(0);}
+
 /* ── Toast ── */
 .toast{position:fixed;bottom:calc(var(--nav-h) + 12px);left:50%;transform:translateX(-50%) translateY(12px);background:var(--surface);border:1px solid var(--border-md);border-radius:14px;padding:10px 18px;font-size:13px;font-weight:600;opacity:0;pointer-events:none;transition:all 0.28s cubic-bezier(.4,0,.2,1);z-index:999;white-space:nowrap;max-width:calc(100% - 40px);}
 .toast.show{opacity:1;pointer-events:auto;transform:translateX(-50%) translateY(0);}
@@ -594,7 +598,7 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
     <div class="card fold-full">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
         <div class="card-title" style="margin:0;">มื้ออาหารวันนี้</div>
-        <button onclick="showPage('analyze')" style="padding:5px 12px;background:rgba(20,184,166,0.12);border:1px solid rgba(20,184,166,0.4);border-radius:20px;color:var(--accent);font-family:inherit;font-size:12px;font-weight:600;cursor:pointer;">+ บันทึกมื้อ</button>
+        <button onclick="openQuickLogSheet()" style="padding:5px 12px;background:rgba(20,184,166,0.12);border:1px solid rgba(20,184,166,0.4);border-radius:20px;color:var(--accent);font-family:inherit;font-size:12px;font-weight:600;cursor:pointer;">+ บันทึกมื้อ</button>
       </div>
       <div id="dash-meals"></div>
     </div>
@@ -606,7 +610,7 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
     <div class="card stat-card" id="dash-weight-card">
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
         <div style="width:28px;height:28px;border-radius:8px;background:linear-gradient(135deg,#14b8a6,#0d9488);display:flex;align-items:center;justify-content:center;font-size:14px;">⚖️</div>
-        <div style="font-size:13px;font-weight:700;color:var(--text);">น้ำหนักล่าสุด</div>
+        <div style="font-size:13px;font-weight:700;color:var(--text);" id="dash-weight-title">น้ำหนักล่าสุด</div>
       </div>
       <div id="dash-weight-result">
         <div style="text-align:center;padding:10px 0;color:var(--text3);font-size:12px;">ยังไม่มีข้อมูลน้ำหนัก<br>
@@ -620,7 +624,7 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
         <div style="width:28px;height:28px;border-radius:8px;background:linear-gradient(135deg,#22c55e,#16a34a);display:flex;align-items:center;justify-content:center;font-size:14px;">🌅</div>
         <div>
-          <div style="font-size:13px;font-weight:700;color:var(--text);">Recovery วันนี้</div>
+          <div style="font-size:13px;font-weight:700;color:var(--text);" id="dash-recovery-title">Recovery วันนี้</div>
           <div style="font-size:11px;color:var(--text3);">กรอก sleep ที่ Fitness → 😴 Sleep</div>
         </div>
       </div>
@@ -638,18 +642,19 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
       <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;">
         <div style="display:flex;align-items:center;gap:8px;">
           <div style="width:28px;height:28px;border-radius:8px;background:linear-gradient(135deg,#3b82f6,#2563eb);display:flex;align-items:center;justify-content:center;font-size:14px;">💧</div>
-          <div class="card-title" style="margin:0;">น้ำดื่มวันนี้</div>
+          <div class="card-title" style="margin:0;" id="dash-water-title">น้ำดื่มวันนี้</div>
         </div>
         <div style="font-size:12px;font-weight:700;color:var(--blue);" id="dash-water-val">0 / 0 ml</div>
       </div>
       <div class="macro-bar" style="height:8px;margin-bottom:8px;"><div class="macro-bar-fill" id="dash-water-bar" style="background:var(--blue);width:0%"></div></div>
       <div id="dash-water-nudge" style="display:none;font-size:11px;color:#eab308;margin-bottom:8px;"></div>
-      <div style="display:flex;gap:6px;">
+      <div id="dash-water-actions" style="display:flex;gap:6px;">
         <button onclick="addWater(250)" style="flex:1;padding:7px 4px;background:rgba(59,130,246,0.12);border:1px solid rgba(59,130,246,0.35);border-radius:10px;color:var(--blue);font-family:inherit;font-size:12px;font-weight:600;cursor:pointer;">+250ml</button>
         <button onclick="addWater(500)" style="flex:1;padding:7px 4px;background:rgba(59,130,246,0.12);border:1px solid rgba(59,130,246,0.35);border-radius:10px;color:var(--blue);font-family:inherit;font-size:12px;font-weight:600;cursor:pointer;">+500ml</button>
         <button onclick="addWater(1000)" style="flex:1;padding:7px 4px;background:rgba(59,130,246,0.12);border:1px solid rgba(59,130,246,0.35);border-radius:10px;color:var(--blue);font-family:inherit;font-size:12px;font-weight:600;cursor:pointer;">+1L</button>
         <button onclick="undoLastWater()" style="flex:0 0 auto;padding:7px 10px;background:none;border:1px solid var(--border);border-radius:10px;color:var(--text3);font-family:inherit;font-size:12px;cursor:pointer;">↩️</button>
       </div>
+      <div id="dash-water-readonly-note" style="display:none;font-size:11px;color:var(--text3);text-align:center;padding-top:2px;">ดูย้อนหลังได้อย่างเดียว — เติมน้ำได้เฉพาะวันนี้</div>
     </div>
 
     <!-- AI DAILY SUMMARY CARD -->
@@ -696,36 +701,6 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
         <div style="font-size:11px;color:var(--text3);margin-top:4px;">รับ feedback ระดับ WHOOP + แผนพรุ่งนี้</div>
       </div>
     </div>
-
-    <!-- WEEKLY REVIEW -->
-    <details style="margin:0 16px 14px;">
-      <summary style="background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:13px 16px;font-size:14px;font-weight:700;cursor:pointer;list-style-position:inside;color:var(--text);">📈 สรุปสัปดาห์ & ความสัมพันธ์ข้ามข้อมูล <span style="font-weight:400;color:var(--text2);font-size:12px;">(แตะเพื่อดู)</span></summary>
-      <div style="margin-top:12px;">
-    <div id="weekly-review-card" class="card" style="margin:0 0 14px;">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
-        <div>
-          <div class="card-title" style="margin-bottom:2px;">&#128197; สรุปสัปดาห์นี้</div>
-          <div style="font-size:11px;color:var(--text3);">7 วันล่าสุด · อัปเดตทุกครั้งที่เปิด</div>
-        </div>
-        <button onclick="refreshCard(this, renderWeeklyReview)" style="padding:5px 11px;background:var(--surface3);border:1px solid var(--border-md);border-radius:20px;color:var(--text2);font-family:inherit;font-size:11px;font-weight:600;cursor:pointer;">&#8635; รีเฟรช</button>
-      </div>
-      <div id="weekly-review-body"><div style="text-align:center;padding:18px 0;color:var(--text3);font-size:12px;">กำลังคำนวณ...</div></div>
-    </div>
-
-    <!-- CROSS-METRIC CORRELATIONS -->
-    <div id="correlation-card" class="card" style="margin:0 0 14px;">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
-        <div>
-          <div class="card-title" style="margin-bottom:2px;">&#128279; ความสัมพันธ์ข้ามข้อมูล</div>
-          <div style="font-size:11px;color:var(--text3);">Pattern detection · 14 วันล่าสุด</div>
-        </div>
-        <button onclick="refreshCard(this, renderCorrelations)" style="padding:5px 11px;background:var(--surface3);border:1px solid var(--border-md);border-radius:20px;color:var(--text2);font-family:inherit;font-size:11px;font-weight:600;cursor:pointer;">&#8635; รีเฟรช</button>
-      </div>
-      <div id="correlation-body"><div style="text-align:center;padding:18px 0;color:var(--text3);font-size:12px;">กำลังวิเคราะห์...</div></div>
-    </div>
-
-  </div>
-    </details>
 
   </div><!-- /page-dashboard -->
   <!-- ANALYZE -->
@@ -835,15 +810,15 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
     </div>
   </div>
 
-  <!-- LOG -->
+  <!-- LOG (merged: today + full history, toggled via setLogViewMode) -->
   <div class="page" id="page-log">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
-      <div class="section-title" style="margin:0">บันทึกวันนี้</div>
+      <div class="section-title" style="margin:0" id="log-title">บันทึกวันนี้</div>
       <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:3px 10px;font-size:11px;color:var(--text2);" id="log-count">0 มื้อ</div>
     </div>
     <div class="tab-row" style="margin-bottom:12px;">
-      <button class="tab-pill active">📋 วันนี้</button>
-      <button class="tab-pill" onclick="showPage('history')">📅 ประวัติ</button>
+      <button class="tab-pill active" id="log-tab-today" onclick="setLogViewMode('today')">📋 วันนี้</button>
+      <button class="tab-pill" id="log-tab-all" onclick="setLogViewMode('all')">📅 ทั้งหมด</button>
     </div>
     <div class="meal-search-wrap">
       <span class="meal-search-ico">🔍</span>
@@ -1154,6 +1129,12 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
           <label class="input-label">📅 คืนของวันที่ (เปลี่ยนได้ถ้าบันทึกย้อนหลัง)</label>
           <input class="input-field" type="date" id="sleep-date" onchange="onSleepDateChange(this.value)"/>
         </div>
+        <div class="input-group" style="margin-bottom:14px;">
+          <input type="file" id="sleep-screenshot-file" accept="image/*" style="display:none" onchange="handleSleepScreenshotFile(event)"/>
+          <button type="button" class="btn-secondary" id="sleep-import-btn" style="margin-top:0;" onclick="document.getElementById('sleep-screenshot-file').click()">📷 นำเข้าจาก Screenshot (นาฬิกา/แอปสุขภาพ)</button>
+          <div style="font-size:11px;color:var(--text3);margin-top:5px;">ถ่าย/แนบภาพหน้าจอสรุปการนอนจาก Polar, Huawei, Galaxy Wearable, Samsung Health ฯลฯ — AI จะกรอกช่องที่อ่านได้ให้ ตรวจสอบก่อนกดบันทึก</div>
+          <div id="sleep-import-result" style="display:none;font-size:11px;line-height:1.6;border-radius:8px;padding:7px 10px;margin-top:8px;"></div>
+        </div>
         <div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px;">⏱️ ระยะเวลาการนอน</div>
         <div style="margin-bottom:8px;"><label class="input-label">🛏️ Time in Bed <span style="font-size:11px;color:var(--text3);font-weight:400;">(เวลาอยู่บนเตียงทั้งหมด)</span></label>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
@@ -1199,14 +1180,54 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
         <div id="hrv-baseline-hint" style="font-size:10px;color:var(--text3);margin:-10px 0 14px;line-height:1.4;"></div>
         <div id="sleep-view-banner" style="display:none;background:rgba(99,102,241,0.1);border:1px solid rgba(99,102,241,0.3);border-radius:10px;padding:8px 12px;font-size:12px;color:#818cf8;margin-bottom:10px;">📖 โหมดดูย้อนหลัง — แก้ไขไม่ได้ <button onclick="onSleepDateChange(localDateStr())" style="background:none;border:none;color:#818cf8;font-size:12px;cursor:pointer;text-decoration:underline;padding:0;margin-left:6px;">กลับวันนี้</button></div>
         <button class="btn-primary" id="sleep-save-btn" onclick="saveSleep()">💾 บันทึก Sleep Data</button>
-        <button id="morning-recovery-btn" onclick="generateMorningRecovery()" style="margin-top:10px;width:100%;padding:10px;background:linear-gradient(135deg,#22c55e,#16a34a);border:none;border-radius:12px;color:white;font-family:inherit;font-size:13px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;transition:all 0.2s;" onmouseover="this.style.opacity='0.85'" onmouseout="this.style.opacity='1'">
-          <span>🌅</span><span>วิเคราะห์ Recovery วันนี้</span>
-        </button>
-        <!-- Result stays INSIDE sleep card, inside fitness tab -->
-        <div id="morning-recovery-result" style="display:none;margin-top:12px;background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:12px;"></div>
+        <div style="font-size:11px;color:var(--text3);text-align:center;margin-top:10px;">🌅 วิเคราะห์ Recovery ย้ายไปรวมกับ Insights อื่น ๆ แล้ว — ไปที่ <a href="#" onclick="event.preventDefault();showFitnessTab('insights');" style="color:var(--accent);font-weight:600;">🔬 Insights</a> หลังบันทึก Sleep วันนี้</div>
       </div>
     </div>
     <div id="ftab-content-insights" style="display:none;">
+      <!-- Consolidated analysis/trend hub: weekly review, correlations, weight trend
+           (+ AI deep-dive), recovery analysis, and behavior insights all live here now
+           instead of being scattered across Dashboard / Weight / Sleep. -->
+      <div class="card fold-full" id="weekly-review-card" style="margin:0 0 14px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+          <div>
+            <div class="card-title" style="margin-bottom:2px;">&#128197; สรุปสัปดาห์นี้</div>
+            <div style="font-size:11px;color:var(--text3);">7 วันล่าสุด · อัปเดตทุกครั้งที่เปิด</div>
+          </div>
+          <button onclick="refreshCard(this, renderWeeklyReview)" style="padding:5px 11px;background:var(--surface3);border:1px solid var(--border-md);border-radius:20px;color:var(--text2);font-family:inherit;font-size:11px;font-weight:600;cursor:pointer;">&#8635; รีเฟรช</button>
+        </div>
+        <div id="weekly-review-body"><div style="text-align:center;padding:18px 0;color:var(--text3);font-size:12px;">กำลังคำนวณ...</div></div>
+      </div>
+
+      <div class="card fold-full" id="correlation-card" style="margin:0 0 14px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+          <div>
+            <div class="card-title" style="margin-bottom:2px;">&#128279; ความสัมพันธ์ข้ามข้อมูล</div>
+            <div style="font-size:11px;color:var(--text3);">Pattern detection · 14 วันล่าสุด</div>
+          </div>
+          <button onclick="refreshCard(this, renderCorrelations)" style="padding:5px 11px;background:var(--surface3);border:1px solid var(--border-md);border-radius:20px;color:var(--text2);font-family:inherit;font-size:11px;font-weight:600;cursor:pointer;">&#8635; รีเฟรช</button>
+        </div>
+        <div id="correlation-body"><div style="text-align:center;padding:18px 0;color:var(--text3);font-size:12px;">กำลังวิเคราะห์...</div></div>
+      </div>
+
+      <div class="card fold-full" id="wt-analyzer-card" style="margin:0 0 14px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+          <div class="card-title" style="margin:0;">🔬 วิเคราะห์ Trend น้ำหนัก</div>
+          <button onclick="runWeightAnalysis()" style="padding:6px 14px;background:linear-gradient(135deg,#3b82f6,#1d4ed8);border:none;border-radius:20px;color:white;font-family:inherit;font-size:12px;font-weight:600;cursor:pointer;transition:all 0.2s;" onmouseover="this.style.opacity='0.85'" onmouseout="this.style.opacity='1'">📊 วิเคราะห์</button>
+        </div>
+        <div id="wt-analysis-result" style="min-height:40px;">
+          <div style="text-align:center;padding:16px 0;color:var(--text3);font-size:13px;">กด วิเคราะห์ เพื่อดู Diagnosis จาก data 14 วันล่าสุด</div>
+        </div>
+      </div>
+
+      <div class="card fold-full" id="recovery-analysis-card" style="margin:0 0 14px;">
+        <div class="card-title" style="margin-bottom:10px;">🌅 วิเคราะห์ Recovery วันนี้</div>
+        <div style="font-size:11px;color:var(--text3);margin-bottom:10px;">ต้องบันทึก Sleep Data วันนี้ก่อน (แท็บ 😴 Sleep)</div>
+        <button id="morning-recovery-btn" onclick="generateMorningRecovery()" style="width:100%;padding:10px;background:linear-gradient(135deg,#22c55e,#16a34a);border:none;border-radius:12px;color:white;font-family:inherit;font-size:13px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;transition:all 0.2s;" onmouseover="this.style.opacity='0.85'" onmouseout="this.style.opacity='1'">
+          <span>🌅</span><span>วิเคราะห์ Recovery วันนี้</span>
+        </button>
+        <div id="morning-recovery-result" style="display:none;margin-top:12px;background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:12px;"></div>
+      </div>
+
       <div class="card fold-full">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
           <div style="font-size:15px;font-weight:700;color:var(--text);">🔬 Behavior Insights</div>
@@ -1351,15 +1372,11 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
       <div id="vp-summary" style="margin-top:10px;"></div>
     </div>
 
-    <!-- Weight Trend Analyzer Card -->
-    <div class="card" id="wt-analyzer-card">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
-        <div class="card-title" style="margin:0;">🔬 วิเคราะห์ Trend น้ำหนัก</div>
-        <button onclick="runWeightAnalysis()" style="padding:6px 14px;background:linear-gradient(135deg,#3b82f6,#1d4ed8);border:none;border-radius:20px;color:white;font-family:inherit;font-size:12px;font-weight:600;cursor:pointer;transition:all 0.2s;" onmouseover="this.style.opacity='0.85'" onmouseout="this.style.opacity='1'">📊 วิเคราะห์</button>
-      </div>
-      <div id="wt-analysis-result" style="min-height:40px;">
-        <div style="text-align:center;padding:16px 0;color:var(--text3);font-size:13px;">กด วิเคราะห์ เพื่อดู Diagnosis จาก data 14 วันล่าสุด</div>
-      </div>
+    <!-- Weight Trend Analyzer moved to Fitness → 🔬 Insights (alongside the other analysis/trend tools) -->
+    <div class="card" style="text-align:center;">
+      <div class="card-title" style="margin:0 0 8px;">🔬 วิเคราะห์ Trend น้ำหนัก</div>
+      <div style="font-size:12px;color:var(--text3);margin-bottom:12px;">Diagnosis + AI Deep-Dive ย้ายไปรวมกับ Insights อื่น ๆ แล้ว</div>
+      <button class="btn-secondary" style="margin:0;" onclick="showPage('fitness');showFitnessTab('insights');">🔬 ไปที่ Insights</button>
     </div>
 
     <!-- Log List -->
@@ -1367,21 +1384,6 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
       <div class="card-title">📋 ประวัติน้ำหนัก</div>
       <div id="wt-log-list"><div class="empty-state"><div class="empty-icon">⚖️</div><div class="empty-text">ยังไม่มีข้อมูล</div><div class="empty-sub">กรอกน้ำหนักด้านบนเพื่อเริ่มต้น</div></div></div>
     </div>
-  </div>
-
-  <!-- HISTORY -->
-  <div class="page" id="page-history">
-    <div class="section-title">ประวัติทั้งหมด</div>
-    <div class="tab-row" style="margin-bottom:12px;">
-      <button class="tab-pill" onclick="showPage('log')">📋 วันนี้</button>
-      <button class="tab-pill active">📅 ประวัติ</button>
-    </div>
-    <div class="meal-search-wrap">
-      <span class="meal-search-ico">🔍</span>
-      <input class="meal-search" id="historySearch" type="text" placeholder="ค้นหาเมนูจากประวัติ..." oninput="renderHistory()" autocomplete="off">
-      <button class="meal-search-clr" onclick="clearHistorySearch()" id="historySearchClr" style="display:none;">✕</button>
-    </div>
-    <div id="historyList"></div>
   </div>
 
   <!-- FAVORITES -->
@@ -1630,6 +1632,7 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
 </div>
 
 <div class="toast" id="toast"></div>
+<div class="sw-update-banner" id="swUpdateBanner" onclick="window._swActivateUpdate && window._swActivateUpdate()">🔄 มีอัปเดตใหม่ · แตะเพื่อรีเฟรช</div>
 <!-- FAVORITE MODAL: Save -->
 <div id="favSaveModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:999;align-items:center;justify-content:center;padding:20px;">
   <div style="background:var(--surface);border:1px solid var(--border);border-radius:20px;padding:22px;width:100%;max-width:360px;">
@@ -1690,6 +1693,26 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
       <button onclick="closeFavUseModal()" style="flex:1;padding:11px;background:var(--surface2);border:1px solid var(--border);border-radius:12px;color:var(--text2);font-family:inherit;font-size:14px;cursor:pointer;">ยกเลิก</button>
       <button onclick="confirmUseFavorite()" style="flex:2;padding:11px;background:linear-gradient(135deg,var(--accent),#0f766e);border:none;border-radius:12px;color:white;font-family:inherit;font-size:14px;font-weight:700;cursor:pointer;">💾 บันทึกมื้อนี้</button>
     </div>
+  </div>
+</div>
+
+<!-- QUICK LOG SHEET: favorites + recent distinct meals for 1-tap re-logging from Dashboard -->
+<div class="meal-sheet-overlay" id="quicklog-sheet-overlay" onclick="closeQuickLogSheetIfBg(event)">
+  <div class="meal-sheet" id="quicklog-sheet" style="max-height:78vh;max-height:78dvh;overflow-y:auto;">
+    <div class="meal-sheet-handle"></div>
+    <div class="meal-sheet-title">🍽️ บันทึกมื้ออาหาร</div>
+    <div class="meal-sheet-macro" style="margin-bottom:14px;">แตะเมนูเพื่อบันทึกซ้ำใน 1 แตะ</div>
+    <div id="quicklog-empty" style="display:none;text-align:center;padding:20px 8px;color:var(--text3);font-size:13px;">ยังไม่มีเมนูโปรดหรือประวัติ — เริ่มจากถ่ายรูปหรือพิมพ์ชื่อเมนูด้านล่าง</div>
+    <div id="quicklog-fav-section">
+      <div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px;">⭐ โปรด</div>
+      <div id="quicklog-fav-list" style="margin-bottom:14px;"></div>
+    </div>
+    <div id="quicklog-recent-section">
+      <div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px;">🕐 มื้อล่าสุด</div>
+      <div id="quicklog-recent-list" style="margin-bottom:6px;"></div>
+    </div>
+    <button class="meal-sheet-act" style="background:rgba(20,184,166,0.12);border-color:rgba(20,184,166,0.4);color:var(--accent);" onclick="quickLogGoToAnalyze()">📸 ถ่ายรูป / พิมพ์ชื่อเมนู →</button>
+    <button class="meal-sheet-act cancel" onclick="closeQuickLogSheet()">ยกเลิก</button>
   </div>
 </div>
 
@@ -2084,7 +2107,7 @@ function init() {
   if (S.sleepData && S.sleepData.date === localDateStr() && S.sleepData.recoveryScore) { updateDashRecoveryCard(S.sleepData); }
 }
 
-function render() { updateDash(); renderWeightCalChart(); renderLog(); renderHistory(); renderFavorites(); updateSyncDot(); restoreDailySummary(); restoreRecoveryAdj(); detectAnomalies(); renderWeeklyReview(); renderCorrelations(); renderFitnessCharts(); }
+function render() { updateDash(); renderWeightCalChart(); renderLog(); renderFavorites(); updateSyncDot(); restoreDailySummary(); restoreRecoveryAdj(); detectAnomalies(); renderFitnessCharts(); }
 
 function restoreDailySummary() {
   try {
@@ -2152,19 +2175,21 @@ function exitDailySummaryHistory() {
 
 // Navigation
 function showPage(id) {
+  // 'history' is a legacy alias — page-history was merged into page-log
+  // (toggled via setLogViewMode) so it always resolves to the same page.
+  var targetId = (id === 'history') ? 'log' : id;
   document.querySelectorAll('.page').forEach(function(p){p.classList.remove('active');});
   document.querySelectorAll('.nav-btn').forEach(function(b){b.classList.remove('active');});
-  document.getElementById('page-'+id).classList.add('active');
-  var _navMap={favorites:'analyze',history:'log',settings:null};
-  var _navId=(id in _navMap)?_navMap[id]:id;
+  document.getElementById('page-'+targetId).classList.add('active');
+  var _navMap={favorites:'analyze',settings:null};
+  var _navId=(targetId in _navMap)?_navMap[targetId]:targetId;
   var _nb=_navId?document.getElementById('nav-'+_navId):null;
   if(_nb) _nb.classList.add('active');
-  if(id==='dashboard') { updateDash(); renderWeightCalChart(); restoreRecoveryAdj(); detectAnomalies(); renderWeeklyReview(); renderCorrelations(); }
-  if(id==='log') renderLog();
-  if(id==='history') renderHistory();
-  if(id==='fitness') { syncStepsInputToListDate(); updateFitnessUI(); initLogDate('workout-date'); initLogDate('sleep-date'); }
-  if(id==='weight') initWeightTab();
-  if(id==='settings') syncProfileWeightFromLatestCheckin();
+  if(targetId==='dashboard') { updateDash(); renderWeightCalChart(); restoreRecoveryAdj(); detectAnomalies(); }
+  if(targetId==='log') setLogViewMode(id==='history' ? 'all' : 'today');
+  if(targetId==='fitness') { syncStepsInputToListDate(); updateFitnessUI(); initLogDate('workout-date'); initLogDate('sleep-date'); }
+  if(targetId==='weight') initWeightTab();
+  if(targetId==='settings') syncProfileWeightFromLatestCheckin();
 }
 
 // Meal label
@@ -2192,18 +2217,23 @@ function switchMode(mode) {
 function handleFile(e) {
   if(!e.target.files[0]) return;
   var file = e.target.files[0];
-  curImgType = file.type || 'image/jpeg';
   var reader = new FileReader();
   reader.onload = function(ev){
-    curImg = ev.target.result.split(',')[1];
-    curResult = null;
-    var img = document.getElementById('previewImg');
-    img.src = ev.target.result; img.style.display = 'block';
-    document.getElementById('uploadArea').style.display = 'none';
-    document.getElementById('changePhotoBtn').style.display = 'block';
-    document.getElementById('analyzeBtn').disabled = false;
-    document.getElementById('resultCard').style.display = 'none';
-    document.getElementById('clarifyBox').style.display = 'none';
+    // Compress before it ever touches curImg/the Gemini payload — full camera
+    // resolution (often 10+MB) was previously sent as-is, which was both slow
+    // and wasteful for a task that only needs enough detail to estimate macros.
+    compressPhoto(ev.target.result, 1024, 0.8, function(compressed){
+      curImgType = 'image/jpeg'; // always jpeg after compress
+      curImg = compressed.split(',')[1];
+      curResult = null;
+      var img = document.getElementById('previewImg');
+      img.src = compressed; img.style.display = 'block';
+      document.getElementById('uploadArea').style.display = 'none';
+      document.getElementById('changePhotoBtn').style.display = 'block';
+      document.getElementById('analyzeBtn').disabled = false;
+      document.getElementById('resultCard').style.display = 'none';
+      document.getElementById('clarifyBox').style.display = 'none';
+    });
   };
   reader.readAsDataURL(file);
 }
@@ -3817,6 +3847,13 @@ function dashGoToday() {
   updateDash();
   if (typeof renderWeightCalChart === 'function') renderWeightCalChart();
 }
+// Short Thai date label ("18 ก.ค.") shared by the water/recovery/weight cards
+// when Dashboard is browsing a past date.
+function _dashDateShort(d) {
+  try { return new Date(d+'T00:00:00').toLocaleDateString('th-TH',{day:'numeric',month:'short'}); }
+  catch(e) { return d; }
+}
+
 function updateDash() {
   var viewDate = dashActiveDate();
   var isToday = (viewDate === localDateStr());
@@ -3892,21 +3929,66 @@ function updateDash() {
   if(meals.length===0){ dm.innerHTML='<div class="empty-state"><div class="empty-icon">🍽️</div><div class="empty-text">ยังไม่มีข้อมูลมื้ออาหาร</div><div class="empty-sub">ถ่ายรูปหรือพิมพ์ชื่อเพื่อเริ่มต้น</div><button onclick="showPage(\'analyze\')" style="margin-top:12px;padding:8px 20px;background:rgba(20,184,166,0.12);border:1px solid rgba(20,184,166,0.4);border-radius:20px;color:var(--accent);font-family:inherit;font-size:13px;font-weight:600;cursor:pointer;">📸 วิเคราะห์อาหารแรก</button></div>'; }
   else { dm.innerHTML = meals.slice(-3).reverse().map(function(m){return mealHTML(m,false);}).join(''); }
 
-  renderDashWeight();
-  if (typeof renderDashWater === 'function') renderDashWater();
+  renderDashWeight(viewDate);
+  if (typeof renderDashWater === 'function') renderDashWater(viewDate);
+
+  // Recovery card: only "today" reads from live S.sleepData (which init()/
+  // generateMorningRecovery() also write straight into this card) — a past
+  // date looks up that date's saved sleep-log entry instead, so browsing
+  // history never silently shows today's recovery score.
+  var recEl = document.getElementById('dash-recovery-result');
+  var recTitleEl = document.getElementById('dash-recovery-title');
+  if (recTitleEl) recTitleEl.textContent = isToday ? 'Recovery วันนี้' : 'Recovery วันที่ ' + _dashDateShort(viewDate);
+  if (recEl) {
+    if (isToday) {
+      if (S.sleepData && S.sleepData.date === localDateStr() && S.sleepData.recoveryScore) {
+        updateDashRecoveryCard(S.sleepData);
+      } else {
+        recEl.innerHTML = DASH_RECOVERY_EMPTY_HTML;
+      }
+    } else {
+      var pastRecEntry = (typeof getSleepLogEntryForDate === 'function') ? getSleepLogEntryForDate(viewDate) : null;
+      if (pastRecEntry && pastRecEntry.recoveryScore) {
+        updateDashRecoveryCard(pastRecEntry);
+      } else {
+        recEl.innerHTML = '<div style="text-align:center;padding:10px 0;color:var(--text3);font-size:12px;">ไม่มีข้อมูล Recovery วันที่ '+_dashDateShort(viewDate)+'</div>';
+      }
+    }
+  }
 }
+var DASH_RECOVERY_EMPTY_HTML = '<div style="text-align:center;padding:10px 0;color:var(--text3);font-size:12px;">ยังไม่มี Recovery Score วันนี้<br>'+
+  '<button onclick="showPage(\'fitness\');showFitnessTab(\'sleep\');" style="margin-top:8px;background:none;border:1px solid var(--border);border-radius:20px;padding:4px 14px;font-size:11px;color:var(--text2);cursor:pointer;">😴 กรอก Sleep Data</button>'+
+  '</div>';
 
 // แสดงน้ำหนักล่าสุด + เทรนด์บน dashboard (อ่านอย่างเดียว ไม่แก้ข้อมูล)
-function renderDashWeight() {
+// A past `date` shows that exact date's logged entry (no nearest-neighbor
+// guessing) instead of always the latest overall — otherwise browsing
+// history silently kept showing today's weight.
+var DASH_WEIGHT_EMPTY_HTML = '<div style="text-align:center;padding:10px 0;color:var(--text3);font-size:12px;">ยังไม่มีข้อมูลน้ำหนัก<br>'+
+  '<button onclick="showPage(\'weight\');" style="margin-top:8px;background:none;border:1px solid var(--border);border-radius:20px;padding:4px 14px;font-size:11px;color:var(--text2);cursor:pointer;">⚖️ บันทึกน้ำหนัก</button>'+
+  '</div>';
+function renderDashWeight(date) {
+  date = date || dashActiveDate();
+  var isToday = (date === localDateStr());
   var el = document.getElementById('dash-weight-result');
+  var titleEl = document.getElementById('dash-weight-title');
   if(!el) return;
+  if (titleEl) titleEl.textContent = isToday ? 'น้ำหนักล่าสุด' : 'น้ำหนักวันที่ ' + _dashDateShort(date);
   try {
     var log = (typeof WT !== 'undefined' && WT.log && WT.log.length) ? WT.log : JSON.parse(localStorage.getItem('gd_weight')||'[]');
-    if(!log || !log.length) return; // คง empty state เดิม
+    if (!isToday) {
+      var entry = (log||[]).find(function(e){ return e.date === date; });
+      var ew = entry ? parseFloat(entry.weight) : NaN;
+      el.innerHTML = isFinite(ew)
+        ? '<div><span class="dash-weight-big">'+ew.toFixed(1)+'</span><span class="dash-weight-unit"> kg</span></div>'
+        : '<div style="text-align:center;padding:10px 0;color:var(--text3);font-size:12px;">ไม่มีบันทึกน้ำหนักวันที่ '+_dashDateShort(date)+'</div>';
+      return;
+    }
+    if(!log || !log.length) { el.innerHTML = DASH_WEIGHT_EMPTY_HTML; return; }
     var sorted = [].concat(log).sort(function(a,b){ return (a.date<b.date)?-1:1; });
     var latest = sorted[sorted.length-1];
     var w = parseFloat(latest.weight);
-    if(!isFinite(w)) return;
+    if(!isFinite(w)) { el.innerHTML = DASH_WEIGHT_EMPTY_HTML; return; }
     // เทรนด์เทียบ ~7 วันก่อน (หาจุดที่ห่างสุดภายใน 10 รายการล่าสุด)
     var subText = '';
     if(sorted.length >= 2){
@@ -3993,12 +4075,113 @@ function mealHTML(m, showDel) {
     '<div style="display:flex;flex-direction:column;align-items:flex-end;gap:5px;"><div class="meal-cal">'+m.calories+'<br><span style="font-size:11px;color:var(--text3)">kcal</span></div><div class="meal-chevron">›</div></div></div>';
 }
 
+// ==================== QUICK LOG SHEET ====================
+// 1-tap re-log from the Dashboard "+ บันทึกมื้อ" button: favorites + recent
+// distinct meals, both routed through the existing openUseFavoriteModal()/
+// reuseMeal() flows (pre-filled favUseModal, qty/label/date still editable,
+// saved via the existing confirmUseFavorite()) — no new save path needed.
+function getRecentDistinctMeals(limit) {
+  limit = limit || 8;
+  var seen = {}, out = [];
+  for (var i = S.meals.length - 1; i >= 0 && out.length < limit; i--) {
+    var m = S.meals[i];
+    if (!m.foodName || seen[m.foodName]) continue;
+    seen[m.foodName] = true;
+    out.push(m);
+  }
+  return out;
+}
+function _quickLogRowHTML(name, kcal, pro, crb, fat, onclickExpr) {
+  return '<div class="meal-item" onclick="'+onclickExpr+'"><div class="meal-thumb-ph">🍽️</div>'+
+    '<div class="meal-info"><div class="meal-name">'+escapeHTML(name)+'</div>'+
+    '<div class="meal-macros"><span class="meal-tag" style="color:var(--blue)">P '+(pro||0)+'g</span><span class="meal-tag" style="color:var(--green)">C '+(crb||0)+'g</span><span class="meal-tag" style="color:var(--purple)">F '+(fat||0)+'g</span></div></div>'+
+    '<div style="display:flex;flex-direction:column;align-items:flex-end;gap:5px;"><div class="meal-cal">'+(kcal||0)+'<br><span style="font-size:11px;color:var(--text3)">kcal</span></div><div class="meal-chevron">›</div></div></div>';
+}
+function openQuickLogSheet() {
+  var favEl = document.getElementById('quicklog-fav-list');
+  var recentEl = document.getElementById('quicklog-recent-list');
+  var emptyEl = document.getElementById('quicklog-empty');
+  var favSection = document.getElementById('quicklog-fav-section');
+  var recentSection = document.getElementById('quicklog-recent-section');
+  var favs = (S.favorites||[]).slice(0, 8);
+  var recents = getRecentDistinctMeals(8);
+  if (favEl) favEl.innerHTML = favs.map(function(f){
+    return _quickLogRowHTML(f.foodName, f.calories, f.protein, f.carbs, f.fat, 'quickLogUseFavorite('+f.id+')');
+  }).join('');
+  if (recentEl) recentEl.innerHTML = recents.map(function(m){
+    return _quickLogRowHTML(m.foodName, m.calories, m.protein, m.carbs, m.fat, 'quickLogReuseMeal('+m.id+')');
+  }).join('');
+  if (favSection) favSection.style.display = favs.length ? 'block' : 'none';
+  if (recentSection) recentSection.style.display = recents.length ? 'block' : 'none';
+  if (emptyEl) emptyEl.style.display = (favs.length===0 && recents.length===0) ? 'block' : 'none';
+  var ov = document.getElementById('quicklog-sheet-overlay');
+  if (!ov) return;
+  ov.style.display = 'flex';
+  requestAnimationFrame(function(){ ov.classList.add('open'); });
+}
+function closeQuickLogSheet() {
+  var ov = document.getElementById('quicklog-sheet-overlay');
+  if (!ov) return;
+  ov.classList.remove('open');
+  setTimeout(function(){ ov.style.display = 'none'; }, 250);
+}
+function closeQuickLogSheetIfBg(e) { if (e.target === document.getElementById('quicklog-sheet-overlay')) closeQuickLogSheet(); }
+function quickLogUseFavorite(id) { closeQuickLogSheet(); openUseFavoriteModal(id); }
+function quickLogReuseMeal(id) { closeQuickLogSheet(); reuseMeal(id); }
+function quickLogGoToAnalyze() { closeQuickLogSheet(); showPage('analyze'); }
+
+// Log page has two modes sharing one search box + list container:
+// 'today' = todayMeals() only, 'all' = full history grouped by date.
+// Merged from what used to be separate page-log / page-history pages.
+var _logViewMode = 'today';
+function setLogViewMode(mode) {
+  _logViewMode = mode;
+  var tToday = document.getElementById('log-tab-today');
+  var tAll = document.getElementById('log-tab-all');
+  if (tToday) tToday.classList.toggle('active', mode === 'today');
+  if (tAll) tAll.classList.toggle('active', mode === 'all');
+  renderLog();
+}
 function renderLog() {
+  var titleEl = document.getElementById('log-title');
+  var searchInput = document.getElementById('logSearch');
+  var el = document.getElementById('todayList');
+  var q = (searchInput ? searchInput.value : '').trim().toLowerCase();
+  var clr = document.getElementById('logSearchClr'); if(clr) clr.style.display = q ? 'flex' : 'none';
+
+  if (_logViewMode === 'all') {
+    if (titleEl) titleEl.textContent = 'ประวัติทั้งหมด';
+    if (searchInput) searchInput.placeholder = 'ค้นหาเมนูจากประวัติ...';
+    if (S.meals.length === 0) {
+      document.getElementById('log-count').textContent = '0 มื้อ';
+      el.innerHTML='<div class="empty-state"><div class="empty-icon">📅</div><div class="empty-text">ยังไม่มีประวัติ</div><div class="empty-sub">เริ่มบันทึกมื้ออาหารแรกได้เลย</div><button onclick="showPage(\'analyze\')" style="margin-top:12px;padding:8px 20px;background:rgba(20,184,166,0.12);border:1px solid rgba(20,184,166,0.4);border-radius:20px;color:var(--accent);font-family:inherit;font-size:13px;font-weight:600;cursor:pointer;">📸 วิเคราะห์อาหารแรก</button></div>';
+      return;
+    }
+    var grouped = {}, totalShown = 0;
+    S.meals.forEach(function(m){
+      if(q && (m.foodName||'').toLowerCase().indexOf(q) === -1) return;
+      if(!grouped[m.date]) grouped[m.date]=[]; grouped[m.date].push(m); totalShown++;
+    });
+    document.getElementById('log-count').textContent = totalShown+' มื้อ';
+    var dates = Object.keys(grouped).sort(function(a,b){return b.localeCompare(a);});
+    if(dates.length===0){ el.innerHTML='<div class="meal-search-empty">🔍 ไม่พบเมนูที่ตรงกับ “'+escapeHTML(q)+'”</div>'; return; }
+    var html = '';
+    dates.forEach(function(date){
+      var d = new Date(date + 'T12:00:00');
+      var lbl = d.toLocaleDateString('th-TH',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
+      var total = grouped[date].reduce(function(a,m){return a+m.calories;},0);
+      html += '<div class="history-date-hdr">'+lbl+' — '+total+' kcal</div>';
+      html += [].concat(grouped[date]).reverse().map(function(m){return mealHTML(m,false);}).join('');
+    });
+    el.innerHTML = html;
+    return;
+  }
+
+  // 'today' mode
+  if (titleEl) titleEl.textContent = 'บันทึกวันนี้';
+  if (searchInput) searchInput.placeholder = 'ค้นหาเมนูในวันนี้...';
   var meals = todayMeals();
   document.getElementById('log-count').textContent = meals.length+' มื้อ';
-  var el = document.getElementById('todayList');
-  var q = (document.getElementById('logSearch') ? document.getElementById('logSearch').value : '').trim().toLowerCase();
-  var clr = document.getElementById('logSearchClr'); if(clr) clr.style.display = q ? 'flex' : 'none';
   if(meals.length===0){ el.innerHTML='<div class="empty-state"><div class="empty-icon">📋</div><div class="empty-text">ยังไม่มีบันทึก</div><div class="empty-sub">ไปที่แท็บวิเคราะห์เพื่อเพิ่มมื้ออาหาร</div><button onclick="showPage(\'analyze\')" style="margin-top:12px;padding:8px 20px;background:rgba(20,184,166,0.12);border:1px solid rgba(20,184,166,0.4);border-radius:20px;color:var(--accent);font-family:inherit;font-size:13px;font-weight:600;cursor:pointer;">📸 วิเคราะห์อาหารแรก</button></div>'; return; }
   var list = [].concat(meals).reverse();
   if(q){ list = list.filter(function(m){ return (m.foodName||'').toLowerCase().indexOf(q) !== -1; }); }
@@ -4022,29 +4205,6 @@ function delMeal(id) {
   });
 }
 
-function renderHistory() {
-  var el = document.getElementById('historyList');
-  if(S.meals.length===0){ el.innerHTML='<div class="empty-state"><div class="empty-icon">📅</div><div class="empty-text">ยังไม่มีประวัติ</div><div class="empty-sub">เริ่มบันทึกมื้ออาหารแรกได้เลย</div><button onclick="showPage(\'analyze\')" style="margin-top:12px;padding:8px 20px;background:rgba(20,184,166,0.12);border:1px solid rgba(20,184,166,0.4);border-radius:20px;color:var(--accent);font-family:inherit;font-size:13px;font-weight:600;cursor:pointer;">📸 วิเคราะห์อาหารแรก</button></div>'; return; }
-  var q = (document.getElementById('historySearch') ? document.getElementById('historySearch').value : '').trim().toLowerCase();
-  var clr = document.getElementById('historySearchClr'); if(clr) clr.style.display = q ? 'flex' : 'none';
-  var grouped = {};
-  S.meals.forEach(function(m){
-    if(q && (m.foodName||'').toLowerCase().indexOf(q) === -1) return;
-    if(!grouped[m.date]) grouped[m.date]=[]; grouped[m.date].push(m);
-  });
-  var dates = Object.keys(grouped).sort(function(a,b){return b.localeCompare(a);});
-  if(dates.length===0){ el.innerHTML='<div class="meal-search-empty">🔍 ไม่พบเมนูที่ตรงกับ “'+escapeHTML(q)+'”</div>'; return; }
-  var html = '';
-  dates.forEach(function(date){
-    var d = new Date(date + 'T12:00:00');
-    var lbl = d.toLocaleDateString('th-TH',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
-    var total = grouped[date].reduce(function(a,m){return a+m.calories;},0);
-    html += '<div class="history-date-hdr">'+lbl+' — '+total+' kcal</div>';
-    html += [].concat(grouped[date]).reverse().map(function(m){return mealHTML(m,false);}).join('');
-  });
-  el.innerHTML = html;
-}
-function clearHistorySearch() { var i=document.getElementById('historySearch'); if(i){ i.value=''; } renderHistory(); }
 
 
 // ─────────────────────────────────────────────
@@ -6043,7 +6203,7 @@ function addWater(ml) {
   log[date] = (log[date] || 0) + ml;
   setWaterLog(log);
   localStorage.setItem('gd_water_last_add', JSON.stringify({date:date, ml:ml}));
-  renderDashWater();
+  renderDashWater(date);
   showToast('💧 +' + ml + 'ml', 'success');
 }
 function undoLastWater() {
@@ -6053,25 +6213,39 @@ function undoLastWater() {
   log[last.date] = Math.max(0, (log[last.date] || 0) - last.ml);
   setWaterLog(log);
   localStorage.removeItem('gd_water_last_add');
-  renderDashWater();
+  renderDashWater(last.date);
   showToast('ยกเลิกแล้ว', 'info');
 }
-function renderDashWater() {
+// `date` defaults to whatever the Dashboard is currently browsing. Quick-add
+// only makes sense for today, so the +ml buttons hide for a past date and a
+// read-only note takes their place; the evening/afternoon nudges are
+// likewise today-only (a stale "drink more" nudge on a past date is noise).
+function renderDashWater(date) {
+  date = date || dashActiveDate();
+  var isToday = (date === localDateStr());
+  var titleEl = document.getElementById('dash-water-title');
   var valEl = document.getElementById('dash-water-val');
   var barEl = document.getElementById('dash-water-bar');
   var nudgeEl = document.getElementById('dash-water-nudge');
+  var actionsEl = document.getElementById('dash-water-actions');
+  var roNoteEl = document.getElementById('dash-water-readonly-note');
   if (!valEl) return;
-  var ml = getTodayWaterMl(), goal = getWaterGoalMl();
+  if (titleEl) titleEl.textContent = isToday ? 'น้ำดื่มวันนี้' : 'น้ำดื่มวันที่ ' + _dashDateShort(date);
+  if (actionsEl) actionsEl.style.display = isToday ? 'flex' : 'none';
+  if (roNoteEl) roNoteEl.style.display = isToday ? 'none' : 'block';
+  var ml = getWaterForDate(date), goal = getWaterGoalMl();
   valEl.textContent = ml + ' / ' + goal + ' ml';
   if (barEl) barEl.style.width = Math.min(100, (ml/goal)*100) + '%';
   if (nudgeEl) {
-    var hour = new Date().getHours();
-    var pct = ml / goal;
     var msg = '';
     // Passive, in-app nudge only (no background notification) — checked whenever
     // the dashboard renders, so it needs no polling/interval of its own.
-    if (hour >= 19 && pct < 0.6) msg = '⏰ ใกล้ค่ำแล้วแต่ดื่มน้ำได้แค่ ' + Math.round(pct*100) + '% ของเป้า';
-    else if (hour >= 14 && pct < 0.3) msg = '⏰ ยังดื่มน้ำน้อยมากวันนี้ ลองดื่มเพิ่มสักแก้ว';
+    if (isToday) {
+      var hour = new Date().getHours();
+      var pct = ml / goal;
+      if (hour >= 19 && pct < 0.6) msg = '⏰ ใกล้ค่ำแล้วแต่ดื่มน้ำได้แค่ ' + Math.round(pct*100) + '% ของเป้า';
+      else if (hour >= 14 && pct < 0.3) msg = '⏰ ยังดื่มน้ำน้อยมากวันนี้ ลองดื่มเพิ่มสักแก้ว';
+    }
     nudgeEl.style.display = msg ? 'block' : 'none';
     nudgeEl.textContent = msg;
   }
@@ -6201,7 +6375,15 @@ function showFitnessTab(tab) {
   if (tab === 'target') { loadFitnessTarget(); renderTargetDashboard(); renderTargetTrendChart(); }
   if (tab === 'plan') { loadSavedPlan(); renderProgressionOverview(); }
   if (tab === 'sleep') { loadSleepUI(); renderSleepTrendChart(); }
-  if (tab === 'insights') renderBehaviorInsights();
+  if (tab === 'insights') {
+    // WT.log may not be populated yet if the user never opened the Weight page
+    // this session — same fallback renderTargetDashboard() already uses, so the
+    // weight-trend card here works standalone.
+    if (typeof WT !== 'undefined' && !WT.log.length) WT.log = JSON.parse(localStorage.getItem('gd_weight')||'[]');
+    renderWeeklyReview();
+    renderCorrelations();
+    renderBehaviorInsights();
+  }
 }
 
 function renderFitnessCharts() {
@@ -8542,19 +8724,23 @@ function getSourceAwareStatusText(){
   return label+' calibration · BF '+(c.bf||'—')+'% · SMM '+(c.smm||'—')+'kg · VF '+(c.visceral||'—');
 }
 var _vpImgB64=null, _vpImgType='image/jpeg', _vpAnalysis=null;
-function compressProgressPhoto(dataUrl, callback){
+// Shared image compressor — draws onto a canvas capped at maxDim on the long
+// edge and re-encodes as JPEG, so large camera photos never go over the wire
+// (and to Gemini) at full resolution. Used by progress photos, food photos,
+// and sleep-screenshot import, each with their own size/quality tradeoff.
+function compressPhoto(dataUrl, maxDim, quality, callback){
   var img=new Image();
   img.onload=function(){
     var canvas=document.createElement('canvas');
-    var MAX=800; // max dimension px
     var w=img.width, h=img.height;
-    if(w>h){ if(w>MAX){h=Math.round(h*MAX/w);w=MAX;} } else { if(h>MAX){w=Math.round(w*MAX/h);h=MAX;} }
+    if(w>h){ if(w>maxDim){h=Math.round(h*maxDim/w);w=maxDim;} } else { if(h>maxDim){w=Math.round(w*maxDim/h);h=maxDim;} }
     canvas.width=w; canvas.height=h;
     canvas.getContext('2d').drawImage(img,0,0,w,h);
-    callback(canvas.toDataURL('image/jpeg',0.75)); // ~75% quality JPEG
+    callback(canvas.toDataURL('image/jpeg',quality));
   };
   img.src=dataUrl;
 }
+function compressProgressPhoto(dataUrl, callback){ compressPhoto(dataUrl, 800, 0.75, callback); }
 function handleProgressPhotoFile(e){
   if(!e.target.files || !e.target.files[0]) return;
   var file=e.target.files[0]; _vpImgType='image/jpeg'; // always jpeg after compress
@@ -9770,9 +9956,127 @@ function _setSleepReadOnly(readonly) {
   var saveBtn=document.getElementById('sleep-save-btn');
   var recovBtn=document.getElementById('morning-recovery-btn');
   var banner=document.getElementById('sleep-view-banner');
+  var importBtn=document.getElementById('sleep-import-btn');
   if(saveBtn) saveBtn.style.display=readonly?'none':'';
   if(recovBtn) recovBtn.style.display=readonly?'none':'';
   if(banner) banner.style.display=readonly?'block':'none';
+  if(importBtn) importBtn.style.display=readonly?'none':'';
+}
+
+// ==================== SCREENSHOT → SLEEP DATA (AI import) ====================
+// Lets the user photograph their watch/health-app sleep summary instead of
+// typing ~14 fields by hand every morning. Mirrors analyzeProgressPhotoAI()'s
+// shape: compress → vision call → strict JSON → fill form. Never auto-saves —
+// the user still reviews/edits and taps "บันทึก Sleep Data" themselves, same
+// as the food-photo and progress-photo analyzers.
+function _sleepImportSetHM(hId, mId, hours, minutes, label, filled, notFound) {
+  var hasH = (hours !== null && hours !== undefined && isFinite(hours) && hours > 0);
+  var hasM = (minutes !== null && minutes !== undefined && isFinite(minutes) && minutes > 0);
+  if (!hasH && !hasM) { notFound.push(label); return; }
+  var hEl = document.getElementById(hId), mEl = document.getElementById(mId);
+  if (hEl) hEl.value = hasH ? hours : 0;
+  if (mEl) mEl.value = hasM ? minutes : 0;
+  filled.push(label);
+}
+function _sleepImportSetVal(id, val, label, filled, notFound) {
+  if (val === null || val === undefined || val === '' || (typeof val === 'number' && !isFinite(val))) { notFound.push(label); return; }
+  var el = document.getElementById(id);
+  if (el) el.value = val;
+  filled.push(label);
+}
+function _sleepImportShowMsg(text, kind) {
+  var el = document.getElementById('sleep-import-result');
+  if (!el) return;
+  el.style.display = 'block';
+  el.textContent = text;
+  if (kind === 'error') { el.style.background='rgba(239,68,68,0.1)'; el.style.color='var(--red)'; el.style.border='1px solid rgba(239,68,68,0.3)'; }
+  else if (kind === 'success') { el.style.background='rgba(34,197,94,0.1)'; el.style.color='var(--green)'; el.style.border='1px solid rgba(34,197,94,0.3)'; }
+  else { el.style.background='var(--surface2)'; el.style.color='var(--text2)'; el.style.border='1px solid var(--border)'; }
+}
+function handleSleepScreenshotFile(e) {
+  if (!e.target.files || !e.target.files[0]) return;
+  var file = e.target.files[0];
+  var key = S.apiKeys[S.currentKeyIndex] || S.apiKeys[0] || '';
+  if (!S.apiKeys.length) { showToast('กรุณาตั้งค่า API Key ก่อน ⚙️', 'error'); e.target.value=''; return; }
+  var btn = document.getElementById('sleep-import-btn');
+  _sleepImportShowMsg('⏳ กำลังอ่านค่าจากรูป...', 'info');
+  if (btn) btn.disabled = true;
+  var reader = new FileReader();
+  reader.onload = function(ev) {
+    // Higher cap than progress photos (800px) — screenshot text needs to stay legible.
+    compressPhoto(ev.target.result, 1280, 0.85, function(compressed) {
+      var b64 = compressed.split(',')[1];
+      var prompt = 'คุณคือผู้ช่วยอ่านค่าจากภาพหน้าจอสรุปการนอนของแอปสุขภาพ/นาฬิกาสวมใส่ (เช่น Polar, Huawei Health, Samsung Health, Galaxy Wearable, Apple Health, Fitbit, Oura)\n' +
+        'อ่านเฉพาะค่าที่เห็นชัดเจนในรูปเท่านั้น ห้ามเดาหรือประมาณค่าที่ไม่ปรากฏ — ถ้าไม่เห็นค่าไหนให้ใส่ null สำหรับค่านั้น\n' +
+        'ถ้ารูปนี้ไม่ใช่หน้าจอสรุปการนอน/สุขภาพเลย ให้ตอบ recognized:false พร้อมเหตุผลสั้น ๆ\n\n' +
+        'ตอบด้วย JSON เท่านั้น ไม่มี markdown หรือ backtick รูปแบบ:\n' +
+        '{"recognized":true|false,"reason":"สั้นๆ ถ้า recognized=false",' +
+        '"timeInBedHours":<int|null>,"timeInBedMinutes":<int|null>,' +
+        '"sleepHours":<int|null>,"sleepMinutes":<int|null>,' +
+        '"deepSleepHours":<int|null>,"deepSleepMinutes":<int|null>,' +
+        '"remSleepHours":<int|null>,"remSleepMinutes":<int|null>,' +
+        '"restingHR":<int|null>,"hrv":<int|null>,"respiratoryRate":<number|null>,' +
+        '"bedtime":"HH:MM"|null,"wakeTime":"HH:MM"|null,' +
+        '"polarCardioStrain":<int|null>,"polarCardioTolerance":<int|null>}';
+      geminiCall(key, {
+        contents: [{ parts: [{ text: prompt }, { inline_data: { mime_type: 'image/jpeg', data: b64 } }] }],
+        generationConfig: { temperature: 0.1, responseMimeType: 'application/json' }
+      }, 30000, function(msg){ _sleepImportShowMsg(msg, 'info'); })
+      .then(function(data){
+        var candidates = data.candidates;
+        if (!candidates || !candidates[0]) throw new Error('AI ไม่ส่งผลลัพธ์กลับมา');
+        var parts = candidates[0].content && candidates[0].content.parts;
+        var text = parts && parts[0] ? parts[0].text : '';
+        if (!text) throw new Error('ไม่ได้รับข้อมูล');
+        var r = JSON.parse(text.replace(/```json|```/g,'').trim());
+
+        if (!r.recognized) {
+          _sleepImportShowMsg('❌ อ่านรูปนี้ไม่ได้: ' + (r.reason || 'ไม่พบข้อมูลการนอนในรูป — ลองรูปอื่น'), 'error');
+          showToast('อ่านรูปไม่สำเร็จ — ลองรูปอื่น', 'error');
+          return;
+        }
+
+        var filled = [], notFound = [];
+        _sleepImportSetHM('sleep-tib-h','sleep-tib-m', r.timeInBedHours, r.timeInBedMinutes, 'Time in Bed', filled, notFound);
+        _sleepImportSetHM('sleep-hours','sleep-minutes', r.sleepHours, r.sleepMinutes, 'Sleep Duration', filled, notFound);
+        _sleepImportSetHM('sleep-deep-h','sleep-deep-m', r.deepSleepHours, r.deepSleepMinutes, 'Deep Sleep', filled, notFound);
+        _sleepImportSetHM('sleep-rem-h','sleep-rem-m', r.remSleepHours, r.remSleepMinutes, 'REM Sleep', filled, notFound);
+        _sleepImportSetVal('sleep-rhr', r.restingHR, 'Resting HR', filled, notFound);
+        _sleepImportSetVal('sleep-hrv', r.hrv, 'HRV', filled, notFound);
+        _sleepImportSetVal('sleep-resp-rate', r.respiratoryRate, 'Respiratory Rate', filled, notFound);
+        _sleepImportSetVal('sleep-bedtime', r.bedtime, 'เวลาเข้านอน', filled, notFound);
+        _sleepImportSetVal('sleep-waketime', r.wakeTime, 'เวลาตื่น', filled, notFound);
+        _sleepImportSetVal('sleep-polar-strain', r.polarCardioStrain, 'Polar Strain', filled, notFound);
+        _sleepImportSetVal('sleep-polar-tolerance', r.polarCardioTolerance, 'Polar Tolerance', filled, notFound);
+
+        if (!filled.length) {
+          _sleepImportShowMsg('⚠️ อ่านค่าจากรูปไม่ได้เลย — กรอกเองด้านล่างได้เลย', 'error');
+        } else {
+          _sleepImportShowMsg('✅ กรอกให้แล้ว ' + filled.length + ' ค่า (' + filled.join(', ') + ')' +
+            (notFound.length ? ' — ไม่พบ: ' + notFound.join(', ') : '') +
+            ' · ตรวจสอบก่อนกดบันทึก', 'success');
+          showToast('อ่านค่าจากรูปได้ ' + filled.length + ' รายการ ✅', 'success');
+        }
+      })
+      .catch(function(err){
+        _sleepImportShowMsg('❌ ' + (err.message || 'เกิดข้อผิดพลาด'), 'error');
+        showToast('อ่านรูปไม่สำเร็จ: ' + (err.message || 'เกิดข้อผิดพลาด'), 'error');
+      })
+      .finally(function(){
+        if (btn) btn.disabled = false;
+        e.target.value = '';
+      });
+    });
+  };
+  reader.readAsDataURL(file);
+}
+// Shared lookup used by both the Sleep tab's date picker and the Dashboard
+// recovery card when browsing a past date.
+function getSleepLogEntryForDate(dateStr) {
+  if (S.sleepData && S.sleepData.date === dateStr) return S.sleepData;
+  var log=[]; try{ log=JSON.parse(localStorage.getItem('gd_sleep_log')||'[]'); }catch(e){}
+  for (var i=log.length-1;i>=0;i--){ if(log[i].date===dateStr) return log[i]; }
+  return null;
 }
 function onSleepDateChange(dateStr) {
   var today=localDateStr();
@@ -9797,11 +10101,7 @@ function onSleepDateChange(dateStr) {
     return;
   }
   // Past date — find in sleep log
-  var log=[]; try{log=JSON.parse(localStorage.getItem('gd_sleep_log')||'[]');}catch(e){}
-  var entry=null;
-  for(var i=log.length-1;i>=0;i--){if(log[i].date===dateStr){entry=log[i];break;}}
-  // Also check S.sleepData in case it matches
-  if(!entry && S.sleepData && S.sleepData.date===dateStr) entry=S.sleepData;
+  var entry = getSleepLogEntryForDate(dateStr);
   if(entry){
     _fillSleepForm(entry);
     document.getElementById('sleep-saved-badge').style.display='block';
@@ -10357,21 +10657,32 @@ if ('serviceWorker' in navigator) {
         console.log('SW registered:', reg.scope);
         // Check for an updated SW every time the app loads
         reg.update();
-        // When a new SW takes control, reload once to get fresh code
+        // Reload only once, right after the new SW actually takes control —
+        // this now only happens after the user taps the update banner below,
+        // never automatically. An auto-reload the instant an update installs
+        // used to wipe whatever the user was mid-typing (a meal, sleep data, ...).
         let refreshing = false;
         navigator.serviceWorker.addEventListener('controllerchange', () => {
           if (refreshing) return;
           refreshing = true;
           window.location.reload();
         });
-        // If an updated SW is waiting, activate it immediately
-        if (reg.waiting) reg.waiting.postMessage({ type: 'SKIP_WAITING' });
+        function showUpdateBanner() {
+          var el = document.getElementById('swUpdateBanner');
+          if (el) el.classList.add('show');
+        }
+        window._swActivateUpdate = function() {
+          if (reg.waiting) reg.waiting.postMessage({ type: 'SKIP_WAITING' });
+        };
+        // A waiting worker may already exist (update finished installing
+        // before this page load) — offer it via the banner, don't auto-swap.
+        if (reg.waiting) showUpdateBanner();
         reg.addEventListener('updatefound', () => {
           const nw = reg.installing;
           if (!nw) return;
           nw.addEventListener('statechange', () => {
             if (nw.state === 'installed' && navigator.serviceWorker.controller) {
-              nw.postMessage({ type: 'SKIP_WAITING' });
+              showUpdateBanner();
             }
           });
         });
