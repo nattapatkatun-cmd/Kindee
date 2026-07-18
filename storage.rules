@@ -1,0 +1,19 @@
+rules_version = '2';
+
+// กินดี — Firebase Storage Rules (รูป progress photo)
+// วางใน Firebase Console → Storage → Rules → Publish
+//
+// หมายเหตุ: รูปเก่าที่อัปโหลดไว้ใต้ users/nattapat ไม่ต้องย้าย — ลิงก์
+// download URL เดิม (แบบมี token) ใน photoMeta ยังใช้ได้ตามปกติ
+
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /users/{uid}/{allPaths=**} {
+      allow read, write: if request.auth != null && request.auth.uid == uid;
+    }
+    match /users/nattapat/{allPaths=**} {
+      allow read, delete: if request.auth != null
+        && request.auth.token.email == 'ojo0308@gmail.com';
+    }
+  }
+}
