@@ -168,6 +168,7 @@ body{font-family:'Sarabun',sans-serif;background:var(--bg);color:var(--text);min
 .set-row{display:flex;align-items:center;gap:7px;margin-bottom:7px;}
 .set-num{width:20px;font-size:11px;font-weight:700;color:var(--text3);flex-shrink:0;text-align:center;}
 .set-input{flex:1;min-width:0;background:var(--surface2);border:1px solid var(--border-md);border-radius:10px;color:var(--text);font-family:inherit;font-size:16px;font-weight:600;padding:8px 6px;text-align:center;}
+.set-rir{flex:0 0 44px;font-size:14px;padding:8px 2px;}
 .set-input:focus{outline:none;border-color:var(--accent);}
 .set-sep{font-size:12px;color:var(--text3);flex-shrink:0;}
 .set-done{width:30px;height:30px;border-radius:50%;border:2px solid var(--border-md);background:none;color:var(--text3);font-size:13px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all .15s;}
@@ -977,15 +978,17 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
             </div>
             <div id="ex-sheet-last" style="font-size:12px;color:var(--text3);margin-bottom:12px;background:var(--surface2);border:1px solid var(--border);border-radius:9px;padding:8px 11px;display:none;"></div>
             <div id="ex-sheet-target" style="font-size:12px;color:var(--text3);margin-bottom:12px;background:rgba(139,92,246,0.08);border:1px solid rgba(139,92,246,0.3);border-radius:9px;padding:8px 11px;display:none;"></div>
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
               <div style="font-size:13px;font-weight:700;">บันทึก Sets</div>
               <div id="ex-e1rm-display"></div>
             </div>
-            <div style="display:grid;grid-template-columns:20px 1fr 14px 1fr 30px 22px;gap:6px;margin-bottom:6px;">
+            <div style="font-size:10px;color:var(--text3);margin-bottom:8px;">RIR = เหลืออีกกี่ rep ถึงหมดแรง (0 = ถึง failure) — ใส่หรือเว้นว่างก็ได้ ช่วยให้ e1RM แม่นขึ้นและใช้เช็คความล้าสะสม</div>
+            <div style="display:grid;grid-template-columns:20px 1fr 14px 1fr 44px 30px 22px;gap:6px;margin-bottom:6px;">
               <div></div>
               <div style="text-align:center;font-size:11px;color:var(--text3);font-weight:600;">น้ำหนัก (kg)</div>
               <div></div>
               <div style="text-align:center;font-size:11px;color:var(--text3);font-weight:600;">ครั้ง (reps)</div>
+              <div style="text-align:center;font-size:11px;color:var(--text3);font-weight:600;">RIR</div>
               <div></div><div></div>
             </div>
             <div id="set-rows-container"></div>
@@ -3107,6 +3110,7 @@ function generateDailySummary() {
     'Total Intake (gross, before activity deduction): ' + nut.cal + ' kcal | P:' + nut.pro + 'g C:' + nut.crb + 'g F:' + nut.fat + 'g\n' +
     'Workouts:\n' + workoutStr + '\n' +
     (strengthVolumeSummary ? '\nStrength Volume Load (today, from strength log — the correct intensity signal for STRENGTH sessions, NOT avg HR):\n' + strengthVolumeSummary + '\n' : '') +
+    (function(){ var dl = (typeof checkDeloadNeed === 'function') ? checkDeloadNeed() : null; return dl ? 'Deload Check: DUE — ' + dl.signals.join('; ') + ' (แนะนำ deload week: ลด volume ~40-50% คง intensity — สะท้อนเรื่องนี้ใน strain/playbook ได้)\n' : ''; })() +
     'Workout Burn: ' + workoutBurn + ' kcal | Steps: ' + steps + ' ก้าว | NEAT: ' + Math.round(neatCal) + ' kcal\n' +
     (typeof getTodayWaterMl === 'function' ? 'Water Intake: ' + getTodayWaterMl() + ' / ' + getWaterGoalMl() + ' ml (ใช้เป็น context เสริมสำหรับ retention/performance เท่านั้น ไม่ใช่ macro)\n' : '') +
     'Net Calories (intake minus activity — for information only, NOT the primary comparison): ' + Math.round(netCal) + ' kcal\n' +
@@ -4911,10 +4915,14 @@ function migrateThaiExercisesToEnglish() {
 }
 var ST = {curExercise:null, sets:[], sessionExercises:[], curFilter:'all'};
 
-function calcE1RM(weight, reps) {
+function calcE1RM(weight, reps, rir) {
   if (!weight || !reps || reps <= 0) return 0;
-  if (reps === 1) return weight;
-  return Math.round(weight * (1 + reps / 30) * 10) / 10;
+  // RIR (reps in reserve) makes Epley honest: the formula assumes the set was
+  // taken to failure, so a set stopped short is really a (reps + rir)-rep max
+  // effort. Contribution capped at 4 — extrapolating further is guesswork.
+  var effReps = reps + Math.min(Math.max(parseInt(rir, 10) || 0, 0), 4);
+  if (effReps === 1) return weight;
+  return Math.round(weight * (1 + effReps / 30) * 10) / 10;
 }
 function getStrengthLog() { return JSON.parse(localStorage.getItem('gd_strength_log') || '[]'); }
 function saveStrengthLog(log) { localStorage.setItem('gd_strength_log', JSON.stringify(log)); }
@@ -5094,9 +5102,75 @@ function buildTodayStrengthVolumeSummary() {
       return (r.exerciseId === id && r.date !== today && r.e1RM > b) ? r.e1RM : b;
     }, 0);
     var prStr = (priorBest > 0 && bestE1RM > priorBest) ? ' | 🔥 NEW all-time e1RM PR (prev ' + priorBest + 'kg)' : '';
-    return '  - ' + (ex ? ex.name : id) + ': ' + Math.round(vol) + 'kg volume (' + rows.length + ' sets, best e1RM ' + bestE1RM + 'kg)' + trendStr + verdictStr + prStr;
+    var rirVals = rows.filter(function(r){ return r.rir != null && r.rir !== ''; }).map(function(r){ return +r.rir; });
+    var rirStr = rirVals.length ? ' | avg RIR ' + (rirVals.reduce(function(a,b){ return a+b; },0)/rirVals.length).toFixed(1) : '';
+    return '  - ' + (ex ? ex.name : id) + ': ' + Math.round(vol) + 'kg volume (' + rows.length + ' sets, best e1RM ' + bestE1RM + 'kg)' + trendStr + verdictStr + prStr + rirStr;
   });
-  return 'Total Volume Load: ' + Math.round(totalVolume) + 'kg across ' + totalSets + ' sets, ' + exIds.length + ' exercise(s) — do NOT compare this total to other days (different exercise mix); judge each exercise vs its own rolling avg below\n' + lines.join('\n');
+  return 'Total Volume Load: ' + Math.round(totalVolume) + 'kg across ' + totalSets + ' sets, ' + exIds.length + ' exercise(s) — do NOT compare this total to other days (different exercise mix); judge each exercise vs its own rolling avg below (RIR = reps in reserve; avg RIR 0-1 ติดกันหลายวัน = ความล้าสะสม, 3+ = ยังมี headroom)\n' + lines.join('\n');
+}
+
+// ── Deload Detection ─────────────────────────────────────────────
+// Deterministic multi-signal check across training + recovery data. No single
+// weak signal fires on its own — a deload is recommended only when >=2
+// independent fatigue signals stack up, so one bad night or one stalled lift
+// can't nag the user into an unnecessary light week.
+function checkDeloadNeed() {
+  var log = getStrengthLog();
+  if (!log.length) return null;
+  var today = localDateStr();
+  var signals = [];
+  var ids = {}; log.forEach(function(e){ ids[e.exerciseId] = true; });
+  // Signal 1: progression stalling — most tracked lifts not moving up.
+  var up = 0, down = 0, plateau = 0;
+  Object.keys(ids).forEach(function(id){
+    var v = getProgressionVerdict(id);
+    if (v === 'up') up++; else if (v === 'down') down++; else if (v === 'plateau') plateau++;
+  });
+  var tracked = up + down + plateau;
+  if (tracked >= 3 && down >= 1 && (down + plateau) / tracked >= 0.6) {
+    signals.push('ท่าที่ติดตาม ' + tracked + ' ท่า: นิ่ง/ถดถอย ' + (down + plateau) + ' ท่า (ถดถอย ' + down + ')');
+  }
+  // Signal 2: no light week — weekly tonnage never dropped below 65% of the
+  // heaviest week across the last up-to-6 weeks that have training.
+  var weekTon = {};
+  log.forEach(function(e){
+    var d = new Date(e.date + 'T12:00:00');
+    var mon = new Date(d); mon.setDate(d.getDate() - ((d.getDay() + 6) % 7)); // week starts Monday
+    var wk = localDateStr(mon);
+    weekTon[wk] = (weekTon[wk] || 0) + (+e.weight || 0) * (+e.reps || 0);
+  });
+  var weeks = Object.keys(weekTon).sort().slice(-6);
+  if (weeks.length >= 4) {
+    var maxTon = Math.max.apply(null, weeks.map(function(w){ return weekTon[w]; }));
+    var hasLight = weeks.some(function(w){ return weekTon[w] < maxTon * 0.65; });
+    if (maxTon > 0 && !hasLight) signals.push('เทรนต่อเนื่อง ' + weeks.length + ' สัปดาห์โดยไม่มีสัปดาห์เบาเลย (volume ไม่เคยต่ำกว่า 65% ของสัปดาห์หนักสุด)');
+  }
+  // Signal 3: overnight load overreaching (Polar Strain > Tolerance trend)
+  var strain = (typeof computeStrainLoadTrend === 'function') ? computeStrainLoadTrend(today) : null;
+  if (strain && strain.overreaching) signals.push('Polar Load: Strain เกิน Tolerance ' + strain.overCount + '/' + strain.days + ' คืนล่าสุด');
+  // Signal 4: accumulated sleep debt
+  var debt = (typeof computeSleepDebt === 'function') ? computeSleepDebt(today) : null;
+  if (debt && debt.hours >= SLEEP_DEBT_REST_THRESHOLD_H) signals.push('Sleep Debt สะสม ' + debt.hours + ' ชม.');
+  // Signal 5: RIR grinding — sets creeping toward failure (avg RIR <=1 and
+  // dropped >=1 vs previous session) while the lift is NOT progressing.
+  var grinding = [];
+  Object.keys(ids).forEach(function(id){
+    var sessions = getExerciseSessions(id, 3); // newest..oldest
+    if (sessions.length < 2) return;
+    function avgRIR(sess){
+      var vals = sess.sets.filter(function(x){ return x.rir != null && x.rir !== ''; }).map(function(x){ return +x.rir; });
+      return vals.length ? vals.reduce(function(a,b){ return a+b; },0)/vals.length : null;
+    }
+    var a0 = avgRIR(sessions[0]), a1 = avgRIR(sessions[1]);
+    if (a0 === null || a1 === null) return;
+    if (a0 <= 1 && a0 <= a1 - 1 && getProgressionVerdict(id) !== 'up') {
+      var ex = getExById(id);
+      grinding.push(ex ? ex.name : id);
+    }
+  });
+  if (grinding.length) signals.push('RIR บีบเข้าใกล้ failure โดยแรงไม่ขึ้น: ' + grinding.join(', '));
+  if (signals.length < 2) return null;
+  return { due: true, signals: signals, count: signals.length };
 }
 
 // Render the exercise-sheet "next target" line (called from openExSheet).
@@ -5129,7 +5203,15 @@ function renderProgressionOverview() {
     if (sessions.length < 2) return null;
     return {ex:ex, sessions:sessions, verdict:getProgressionVerdict(id), next:getNextTarget(id)};
   }).filter(Boolean);
-  if (!rows.length) { card.style.display = 'none'; return; }
+  var deload = (typeof checkDeloadNeed === 'function') ? checkDeloadNeed() : null;
+  if (!rows.length && !deload) { card.style.display = 'none'; return; }
+  var deloadHTML = deload
+    ? '<div style="background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.35);border-radius:10px;padding:10px 12px;margin-bottom:10px;">' +
+      '<div style="font-size:12px;font-weight:700;color:#f59e0b;margin-bottom:4px;">🪫 ถึงเวลา Deload — สัญญาณล้าสะสม ' + deload.count + ' อย่าง</div>' +
+      '<div style="font-size:11px;color:var(--text2);line-height:1.6;">' + deload.signals.map(function(s){ return '• ' + s; }).join('<br>') +
+      '<br><b>สัปดาห์นี้: ลด volume ~40-50% (ลดจำนวน sets) คงน้ำหนักใกล้เดิม แล้วกลับมาโหลดเต็มสัปดาห์หน้า</b></div></div>'
+    : '';
+  if (!rows.length) { listEl.innerHTML = deloadHTML; card.style.display = 'block'; return; }
   var order = {down:0, plateau:1, up:2};
   rows.sort(function(a,b){
     var oa = order[a.verdict] !== undefined ? order[a.verdict] : 1;
@@ -5142,7 +5224,7 @@ function renderProgressionOverview() {
     plateau: {icon:'⏸️', label:'นิ่ง',     color:'var(--text3)'},
     down:    {icon:'📉', label:'ถดถอย',   color:'var(--red)'}
   };
-  listEl.innerHTML = rows.map(function(r){
+  listEl.innerHTML = deloadHTML + rows.map(function(r){
     var m = vMeta[r.verdict] || vMeta.plateau;
     var trend = r.sessions.slice().reverse().map(function(s){ return s.bestE1RM; }).join(' → ');
     var t = r.next ? r.next.target : null;
@@ -5214,7 +5296,7 @@ function openExSheet(exerciseId) {
   ST.curExercise = ex;
   var existing = ST.sessionExercises.find(function(s){ return s.exerciseId === ex.id; });
   if (existing && existing.sets && existing.sets.length) {
-    ST.sets = existing.sets.map(function(s){ return {weight:s.weight,reps:s.reps,done:true}; });
+    ST.sets = existing.sets.map(function(s){ return {weight:s.weight,reps:s.reps,rir:(s.rir != null ? s.rir : ''),done:true}; });
   } else {
     var last = getExLastSession(ex.id);
     if (last && last.length) {
@@ -5256,6 +5338,7 @@ function setRowHTML(s, i, total) {
     '<input class="set-input" type="number" inputmode="decimal" placeholder="kg" min="0" step="0.5" value="'+(s.weight||'')+'" oninput="updateSet('+i+',\'weight\',this.value)" onchange="updateSet('+i+',\'weight\',this.value)">' +
     '<div class="set-sep">×</div>' +
     '<input class="set-input" type="number" inputmode="numeric" placeholder="reps" min="1" step="1" value="'+(s.reps||'')+'" oninput="updateSet('+i+',\'reps\',this.value)" onchange="updateSet('+i+',\'reps\',this.value)">' +
+    '<input class="set-input set-rir" type="number" inputmode="numeric" placeholder="RIR" min="0" max="9" step="1" value="'+(s.rir === 0 ? '0' : (s.rir || ''))+'" oninput="updateSet('+i+',\'rir\',this.value)" onchange="updateSet('+i+',\'rir\',this.value)">' +
     '<button type="button" class="set-done'+(s.done?' checked':'')+'" onclick="toggleSetDone('+i+')">'+(s.done?'✓':'○')+'</button>' +
     (total > 1 ? '<button type="button" class="set-del" onclick="removeSetRow('+i+')">✕</button>' : '<div style="width:22px"></div>') +
     '</div>';
@@ -5269,6 +5352,7 @@ function syncSetsFromDOM() {
     var inputs = row.querySelectorAll('input.set-input');
     if (inputs[0]) ST.sets[i].weight = inputs[0].value === '' ? '' : parseFloat(inputs[0].value);
     if (inputs[1]) ST.sets[i].reps = inputs[1].value === '' ? '' : parseInt(inputs[1].value);
+    if (inputs[2]) ST.sets[i].rir = inputs[2].value === '' ? '' : parseInt(inputs[2].value);
   });
 }
 function renderSetRows() {
@@ -5378,7 +5462,7 @@ function addSetRow() {
   // Capture current typed values first so nothing is lost on rebuild
   syncSetsFromDOM();
   var last = ST.sets.length ? ST.sets[ST.sets.length - 1] : {weight:'', reps:''};
-  ST.sets.push({weight:last.weight || '', reps:last.reps || '', done:false});
+  ST.sets.push({weight:last.weight || '', reps:last.reps || '', rir:(last.rir === 0 ? 0 : (last.rir || '')), done:false});
   // Append only the new row instead of rebuilding the whole list. This keeps the
   // existing rows (and the tap target) intact, fixing the intermittent "+ เพิ่ม Set"
   // miss on mobile where innerHTML rebuild swallowed the tap.
@@ -5403,7 +5487,7 @@ function removeSetRow(i) {
 function updateE1RMDisplay() {
   var best = 0, bestReps = 0;
   ST.sets.forEach(function(s){
-    var e = calcE1RM(s.weight,s.reps); if (e > best) best = e;
+    var e = calcE1RM(s.weight,s.reps,s.rir); if (e > best) best = e;
     if (+s.reps > bestReps) bestReps = +s.reps;
   });
   var el = document.getElementById('ex-e1rm-display');
@@ -5430,9 +5514,13 @@ function confirmExerciseFromSheet() {
   if (!ST.curExercise) { showExMsg('⚠️ ไม่พบท่าที่เลือก กรุณาเปิดท่าใหม่','error'); return; }
   // Weight is optional (bodyweight moves): a set counts if reps > 0.
   var validSets = ST.sets.filter(function(s){ return s.reps > 0; })
-    .map(function(s){ var w = parseFloat(s.weight); return {weight:(w > 0 ? w : 0), reps:s.reps, done:s.done}; });
+    .map(function(s){
+      var w = parseFloat(s.weight);
+      var rr = parseInt(s.rir, 10);
+      return {weight:(w > 0 ? w : 0), reps:s.reps, rir:(isNaN(rr) || rr < 0 ? null : rr), done:s.done};
+    });
   if (!validSets.length) { showExMsg('ใส่ reps อย่างน้อย 1 set (น้ำหนักเว้นว่างได้สำหรับ bodyweight)','error'); return; }
-  var bestE1RM = validSets.reduce(function(b,s){ var e=calcE1RM(s.weight,s.reps); return e>b?e:b; }, 0);
+  var bestE1RM = validSets.reduce(function(b,s){ var e=calcE1RM(s.weight,s.reps,s.rir); return e>b?e:b; }, 0);
   var today = localDateStr();
   // PR compares against previous days only. Bodyweight session (no weight on
   // any set → e1RM 0) PRs on best reps instead of e1RM.
@@ -5448,7 +5536,7 @@ function confirmExerciseFromSheet() {
   // Index of the single set that achieved the PR metric (first occurrence on ties)
   var bestSetIdx = -1;
   validSets.forEach(function(s, i){
-    if (bestSetIdx < 0 && (bwMode ? s.reps === bestReps : calcE1RM(s.weight,s.reps) === bestE1RM)) bestSetIdx = i;
+    if (bestSetIdx < 0 && (bwMode ? s.reps === bestReps : calcE1RM(s.weight,s.reps,s.rir) === bestE1RM)) bestSetIdx = i;
   });
   // Re-saving the same exercise today REPLACES today's rows — appending made
   // the first save the PR baseline for the second and double-counted volume.
@@ -5459,8 +5547,8 @@ function confirmExerciseFromSheet() {
   validSets.forEach(function(s, i) {
     log.push({id:Date.now()+i, date:today, exerciseId:exId,
       exerciseName:ST.curExercise.name, muscle:ST.curExercise.muscle,
-      set:i+1, weight:s.weight, reps:s.reps,
-      e1RM:calcE1RM(s.weight,s.reps), isPR:isPR&&i===bestSetIdx});
+      set:i+1, weight:s.weight, reps:s.reps, rir:s.rir,
+      e1RM:calcE1RM(s.weight,s.reps,s.rir), isPR:isPR&&i===bestSetIdx});
   });
   saveStrengthLog(log);
   if (window.FB_OK) {
@@ -5491,7 +5579,7 @@ function autoSyncStrengthLog(ex, sets, e1RM, isPR, date, bestSetIdx) {
       headers:{'Content-Type':'application/json','x-target-url':S.webhook},
       body:JSON.stringify({action:'addStrengthLog', row:{
         date:date, exercise:ex.name, muscle:ex.muscle,
-        set:i+1, weight:s.weight, reps:s.reps, e1RM:calcE1RM(s.weight,s.reps), isPR:(isPR&&i===bestSetIdx)
+        set:i+1, weight:s.weight, reps:s.reps, rir:(s.rir != null ? s.rir : ''), e1RM:calcE1RM(s.weight,s.reps,s.rir), isPR:(isPR&&i===bestSetIdx)
       }})
     }).catch(function(){});
   });
@@ -7335,6 +7423,12 @@ function generatePlan() {
   var progressionStr = progressionSummary
     ? '\n\nสถานะความก้าวหน้าแต่ละท่า (จาก strength log จริง, e1RM ล่าสุด 2-3 ครั้ง):\n' + progressionSummary + '\n'
     : '';
+  // Deterministic deload flag outranks the week-position periodization heuristic —
+  // it's computed from actual fatigue signals, not calendar position.
+  var deloadPlan = (typeof checkDeloadNeed === 'function') ? checkDeloadNeed() : null;
+  if (deloadPlan) {
+    progressionStr += '\n🪫 DELOAD DUE (ตรวจจากข้อมูลจริง ' + deloadPlan.count + ' สัญญาณ: ' + deloadPlan.signals.join('; ') + ') — แผนสัปดาห์นี้ต้องเป็น DELOAD WEEK: ลด volume ~40-50% (ลดจำนวน sets ของทุกท่า) คง intensity ใกล้เดิม ห้ามเพิ่ม volume ชดเชย และระบุใน summary ว่าเป็น deload week เพราะอะไร\n';
+  }
 
   var prompt =
     'คุณเป็นเทรนเนอร์ฟิตเนสผู้เชี่ยวชาญ\n' +
