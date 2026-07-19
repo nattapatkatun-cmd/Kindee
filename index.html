@@ -6275,7 +6275,7 @@ function updateStrengthSelectOptions() {
   sel.innerHTML = '<option value="">— เลือกท่าเพื่อดู trend —</option>';
   exIds.forEach(function(id) {
     var ex = getExById(id);
-    sel.innerHTML += '<option value="'+id+'"'+(cur===id?' selected':'')+'>'+(ex?ex.emoji+' '+ex.name:id)+'</option>';
+    sel.innerHTML += '<option value="'+escapeAttr(id)+'"'+(cur===id?' selected':'')+'>'+(ex?ex.emoji+' '+escapeHTML(ex.name):escapeHTML(id))+'</option>';
   });
   if (cur) renderStrengthChart();
   renderPRCard();
