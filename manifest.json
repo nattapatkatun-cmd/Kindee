@@ -5,7 +5,6 @@
   "start_url": "/Kindee/",
   "scope": "/Kindee/",
   "display": "standalone",
-  "orientation": "portrait",
   "background_color": "#181815",
   "theme_color": "#8fa87c",
   "lang": "th",
