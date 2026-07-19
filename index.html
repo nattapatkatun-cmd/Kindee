@@ -118,7 +118,7 @@ body{font-family:'Sarabun',sans-serif;background:var(--bg);color:var(--text);min
 .logo-icon{width:38px;height:38px;border-radius:12px;background:var(--accent);display:flex;align-items:center;justify-content:center;font-size:19px;flex-shrink:0;}
 .logo-text{font-size:19px;font-weight:800;letter-spacing:-0.3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .logo-sub{font-size:11px;color:var(--text3);margin-top:1px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-.date-badge{background:var(--surface2);border:1px solid var(--border-md);border-radius:20px;padding:5px 12px;font-size:11px;color:var(--text2);font-weight:500;}
+.date-badge{background:var(--surface2);border:1px solid var(--border-md);border-radius:20px;padding:5px 12px;font-size:11px;color:var(--text2);font-weight:500;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 
 /* ── AI Chat (ask your data) ── */
 .primary-fab{position:fixed;right:16px;bottom:calc(var(--nav-h) + 16px);width:54px;height:54px;border-radius:50%;background:var(--accent);border:none;color:#fff;font-size:26px;display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:300;transition:transform .2s,opacity .2s;}
@@ -265,7 +265,7 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
 
 /* ── Result card ── */
 .result-card{background:var(--surface2);border:1px solid var(--border-md);border-radius:16px;padding:16px;margin-top:12px;display:none;}
-.result-macros{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:12px 0;}
+.result-macros{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin:12px 0;}
 .result-macros>.result-macro{min-width:0;}
 .result-macro-val{font-size:16px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 @media(max-width:430px){.result-macros{gap:6px;}.result-macro{padding:11px 5px;}.result-macro-val{font-size:14px;}}
@@ -288,7 +288,7 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
 .ring-num{font-size:clamp(22px,7vw,28px);font-weight:800;line-height:1;letter-spacing:-0.5px;max-width:92px;text-align:center;}
 
 /* ── Macro grid (Dashboard) ── */
-.macro-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;flex:1;}
+.macro-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;flex:1;}
 .macro-name{font-size:11px;color:var(--text2);margin-bottom:2px;}
 .macro-val{font-size:17px;font-weight:800;letter-spacing:-0.3px;}
 .macro-bar{height:5px;border-radius:3px;margin-top:4px;background:var(--surface3);overflow:hidden;}
@@ -299,13 +299,13 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
 .hybrid-top{display:flex;align-items:center;gap:18px;margin-bottom:16px;}
 .hybrid-cal-meta{min-width:0;flex:1;}
 .hybrid-cal-big{font-size:40px;font-weight:800;line-height:.95;letter-spacing:-1.5px;color:var(--fire);}
-.macro-chips{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
-.mchip{border-radius:16px;padding:13px 14px;}
+.macro-chips{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;}
+.mchip{border-radius:16px;padding:13px 14px;min-width:0;overflow:hidden;}
 .mchip-p{background:var(--blue-soft);}
 .mchip-c{background:var(--green-soft);}
 .mchip-f{background:var(--purple-soft);}
 .mchip-g{background:var(--fire-soft);}
-.mchip-v{font-size:19px;font-weight:800;letter-spacing:-0.4px;line-height:1;}
+.mchip-v{font-size:clamp(14px,4.4vw,19px);font-weight:800;letter-spacing:-0.4px;line-height:1;white-space:nowrap;}
 .mchip-n{font-size:11px;color:var(--text2);font-weight:600;margin:3px 0 8px;}
 .mchip .macro-bar{height:5px;border-radius:3px;background:rgba(127,127,127,0.15);overflow:hidden;}
 .goal-details{margin-top:14px;}
@@ -433,7 +433,7 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
 .ai-playbook-bullet{width:6px;height:6px;border-radius:50%;background:var(--purple);margin-top:6px;flex-shrink:0;}
 
 /* ── FITNESS STYLES ── */
-.ft-stat-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:9px;margin-bottom:12px;}
+.ft-stat-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px;margin-bottom:12px;}
 .ft-stat{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:13px 8px;text-align:center;}
 .ft-stat-val{font-size:19px;font-weight:800;}
 .ft-stat-name{font-size:11px;color:var(--text3);margin-top:3px;font-weight:600;}
@@ -449,7 +449,7 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
 .workout-cal{font-size:14px;font-weight:800;color:var(--accent);text-align:right;white-space:nowrap;}
 .workout-del{background:none;border:none;color:var(--text3);cursor:pointer;font-size:15px;padding:2px;transition:color 0.2s;margin-left:6px;}
 .workout-del:hover{color:var(--red);}
-.preset-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:7px;margin-bottom:12px;}
+.preset-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;margin-bottom:12px;}
 .preset-btn{padding:9px 8px;background:var(--surface2);border:1px solid var(--border);border-radius:12px;color:var(--text2);font-family:inherit;font-size:12px;font-weight:500;cursor:pointer;text-align:center;transition:all 0.18s;}
 .preset-btn:hover,.preset-btn.selected{background:var(--accent-dim);border-color:var(--accent);color:var(--accent);font-weight:700;}
 .ft-chart-wrap{position:relative;width:100%;height:160px;}
@@ -483,7 +483,7 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
 .cv-bar-track{flex:1;height:7px;background:var(--surface3);border-radius:4px;overflow:hidden;}
 .cv-bar-fill{height:100%;border-radius:4px;transition:width 0.9s cubic-bezier(.4,0,.2,1);}
 .cv-val{font-size:12px;font-weight:700;width:42px;text-align:right;flex-shrink:0;}
-.target-summary-grid{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-bottom:12px;}
+.target-summary-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;margin-bottom:12px;}
 .target-summary-item{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:13px;text-align:center;}
 .target-summary-val{font-size:20px;font-weight:800;}
 .target-summary-label{font-size:11px;color:var(--text3);margin-top:2px;font-weight:600;}
@@ -510,7 +510,7 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
 .context-chip.med{background:color-mix(in srgb, var(--red) 18%, transparent);border-color:color-mix(in srgb, var(--red) 45%, transparent);color:var(--red);}
 .context-chip.high{background:color-mix(in srgb, var(--red) 28%, transparent);border-color:var(--red);color:var(--red);font-weight:800;}
 /* ── WEIGHT LOG STYLES ── */
-.wt-compare-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:9px;margin-bottom:4px;}
+.wt-compare-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px;margin-bottom:4px;}
 .wt-compare-item{background:var(--surface2);border:1px solid var(--border);border-radius:14px;padding:13px 8px;text-align:center;}
 .wt-compare-val{font-size:18px;font-weight:800;}
 .wt-compare-label{font-size:11px;color:var(--text3);margin-top:2px;font-weight:600;}
@@ -537,8 +537,9 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
 /* ── 1b hero: no ring/%, big number + flat macro columns ── */
 .hybrid-cal-card .ring-wrap{display:none;}
 .hybrid-cal-big{font-size:38px;}
-.hybrid-cal-card .macro-chips{display:grid;grid-template-columns:repeat(4,1fr);gap:0;border-top:1px solid var(--border);padding-top:12px;margin-top:12px;}
-.hybrid-cal-card .mchip{background:transparent;border:none;border-left:1px solid var(--border);border-radius:0;padding:2px 10px;}
+/* minmax(0,1fr) แทน 1fr: ไม่ให้ min-content ของตัวเลข (เช่นตอน user ตั้ง font ระบบใหญ่) ดันคอลัมน์จนแถวล้น card แล้วชิปสุดท้ายโดนตัด */
+.hybrid-cal-card .macro-chips{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:0;border-top:1px solid var(--border);padding-top:12px;margin-top:12px;}
+.hybrid-cal-card .mchip{background:transparent;border:none;border-left:1px solid var(--border);border-radius:0;padding:2px 8px;}
 .hybrid-cal-card .mchip:first-child{border-left:none;padding-left:0;}
 
 </style>
@@ -581,11 +582,12 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
         <div class="logo-sub">Let's Track</div>
       </div>
     </div>
-    <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;">
+    <!-- min-width:0 (ไม่ใช่ flex-shrink:0): ตอน font ระบบใหญ่ ให้ date badge หดแบบ ellipsis แทนที่จะดันโลโก้ฝั่งซ้ายจนไอคอนโดนตัด -->
+    <div style="display:flex;align-items:center;gap:8px;min-width:0;">
       <div class="date-badge" id="todayDate"></div>
-      <button onclick="openChat()" aria-label="ถามโค้ช AI" title="ถาม AI เกี่ยวกับข้อมูลของคุณ" style="background:var(--surface2);border:1px solid var(--border-md);border-radius:50%;width:34px;height:34px;font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text2)" stroke-width="2" stroke-linejoin="round"><path d="M21 11.5a8.5 8.5 0 0 1-8.5 8.5c-1.5 0-2.9-.4-4.1-1L3 20l1.1-5.4A8.5 8.5 0 1 1 21 11.5z"></path></svg></button>
-      <button onclick="toggleTheme()" id="theme-toggle" aria-label="สลับธีม" style="background:var(--surface2);border:1px solid var(--border-md);border-radius:50%;width:34px;height:34px;font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text2)" stroke-width="2" stroke-linejoin="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"></path></svg></button>
-      <button onclick="showPage('settings')" aria-label="ตั้งค่า" style="background:var(--surface2);border:1px solid var(--border-md);border-radius:50%;width:34px;height:34px;font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text2)" stroke-width="2" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19 12a7 7 0 0 0-.1-1.2l2-1.5-2-3.5-2.4 1a7 7 0 0 0-2-1.2L14 3h-4l-.5 2.6a7 7 0 0 0-2 1.2l-2.4-1-2 3.5 2 1.5A7 7 0 0 0 5 12c0 .4 0 .8.1 1.2l-2 1.5 2 3.5 2.4-1a7 7 0 0 0 2 1.2L10 21h4l.5-2.6a7 7 0 0 0 2-1.2l2.4 1 2-3.5-2-1.5c.07-.4.1-.8.1-1.2z"></path></svg></button>
+      <button onclick="openChat()" aria-label="ถามโค้ช AI" title="ถาม AI เกี่ยวกับข้อมูลของคุณ" style="background:var(--surface2);border:1px solid var(--border-md);border-radius:50%;width:34px;height:34px;font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;flex-shrink:0;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text2)" stroke-width="2" stroke-linejoin="round"><path d="M21 11.5a8.5 8.5 0 0 1-8.5 8.5c-1.5 0-2.9-.4-4.1-1L3 20l1.1-5.4A8.5 8.5 0 1 1 21 11.5z"></path></svg></button>
+      <button onclick="toggleTheme()" id="theme-toggle" aria-label="สลับธีม" style="background:var(--surface2);border:1px solid var(--border-md);border-radius:50%;width:34px;height:34px;font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;flex-shrink:0;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text2)" stroke-width="2" stroke-linejoin="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"></path></svg></button>
+      <button onclick="showPage('settings')" aria-label="ตั้งค่า" style="background:var(--surface2);border:1px solid var(--border-md);border-radius:50%;width:34px;height:34px;font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;flex-shrink:0;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text2)" stroke-width="2" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19 12a7 7 0 0 0-.1-1.2l2-1.5-2-3.5-2.4 1a7 7 0 0 0-2-1.2L14 3h-4l-.5 2.6a7 7 0 0 0-2 1.2l-2.4-1-2 3.5 2 1.5A7 7 0 0 0 5 12c0 .4 0 .8.1 1.2l-2 1.5 2 3.5 2.4-1a7 7 0 0 0 2 1.2L10 21h4l.5-2.6a7 7 0 0 0 2-1.2l2.4 1 2-3.5-2-1.5c.07-.4.1-.8.1-1.2z"></path></svg></button>
     </div>
   </div>
   </div><!-- end sticky-top -->
@@ -603,7 +605,7 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
     <div class="fold-full" style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:14px;flex-wrap:wrap;">
       <div class="section-title" style="margin:0" id="dash-title">สรุปวันนี้</div>
       <div style="display:flex;align-items:center;gap:6px;flex-shrink:0;">
-        <input type="date" required id="dash-date" style="width:auto;max-width:126px;padding:4px 6px;font-size:11px;border-radius:8px;background:var(--surface2);border:1px solid var(--border);color:var(--text2);font-family:inherit;" onchange="onDashDateChange()"/>
+        <input type="date" required id="dash-date" style="width:auto;max-width:min(170px,44vw);padding:4px 6px;font-size:11px;border-radius:8px;background:var(--surface2);border:1px solid var(--border);color:var(--text2);font-family:inherit;" onchange="onDashDateChange()"/>
         <button onclick="dashGoToday()" id="dash-today-btn" style="display:none;flex-shrink:0;padding:4px 10px;background:var(--accent-dim);border:1px solid var(--accent);border-radius:8px;color:var(--accent);font-family:inherit;font-size:11px;font-weight:600;cursor:pointer;">วันนี้</button>
         <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:3px 10px;font-size:11px;color:var(--text2);white-space:nowrap;" id="dash-count">0 มื้อ</div>
       </div>
@@ -4394,13 +4396,16 @@ function updateDash() {
     + ' · net '+Math.round(netEaten)+' kcal';
   remEl.style.color = isUnderGoal ? 'var(--green)' : 'var(--red)';
 
+  // ชิป hero มีที่แค่ ~1/4 ของ card — เลขยาวอย่าง "185.43g" ล้นคอลัมน์บนจอแคบ/ฟอนต์ระบบใหญ่
+  // เลข ≥100 ปัดเป็นจำนวนเต็ม ต่ำกว่านั้นคงทศนิยม 1 ตำแหน่ง (ค่าละเอียดยังดูได้ใน "เป้าหมายสารอาหารแบบละเอียด")
+  var fmtHeroG = function(v){ return (v >= 100 ? Math.round(v) : parseFloat(v.toFixed(1))) + 'g'; };
   var dispPro = parseFloat(t.pro.toFixed(2));
   var dispCrb = parseFloat(t.crb.toFixed(2));
   var dispFat = parseFloat(t.fat.toFixed(2));
   var dispCal = parseFloat(t.cal.toFixed(2));
-  document.getElementById('d-p').textContent = dispPro+'g';
-  document.getElementById('d-c').textContent = dispCrb+'g';
-  document.getElementById('d-f').textContent = dispFat+'g';
+  document.getElementById('d-p').textContent = fmtHeroG(t.pro);
+  document.getElementById('d-c').textContent = fmtHeroG(t.crb);
+  document.getElementById('d-f').textContent = fmtHeroG(t.fat);
   document.getElementById('d-g').textContent = g.cal;
 
   // Ring: fill capped at full circle, but % text shows real value (เกิน 100% ได้)
