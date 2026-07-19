@@ -113,11 +113,11 @@ body{font-family:'Sarabun',sans-serif;background:var(--bg);color:var(--text);min
 .sticky-top{position:sticky;top:0;z-index:100;background:var(--sticky-bg);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);}
 
 /* ── Header ── */
-.header{padding:16px 18px 14px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--border);}
-.logo{display:flex;align-items:center;gap:11px;}
-.logo-icon{width:38px;height:38px;border-radius:12px;background:var(--accent);display:flex;align-items:center;justify-content:center;font-size:19px;}
-.logo-text{font-size:19px;font-weight:800;letter-spacing:-0.3px;}
-.logo-sub{font-size:11px;color:var(--text3);margin-top:1px;font-weight:500;}
+.header{padding:16px 18px 14px;display:flex;align-items:center;justify-content:space-between;gap:8px;border-bottom:1px solid var(--border);}
+.logo{display:flex;align-items:center;gap:11px;min-width:0;overflow:hidden;}
+.logo-icon{width:38px;height:38px;border-radius:12px;background:var(--accent);display:flex;align-items:center;justify-content:center;font-size:19px;flex-shrink:0;}
+.logo-text{font-size:19px;font-weight:800;letter-spacing:-0.3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.logo-sub{font-size:11px;color:var(--text3);margin-top:1px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .date-badge{background:var(--surface2);border:1px solid var(--border-md);border-radius:20px;padding:5px 12px;font-size:11px;color:var(--text2);font-weight:500;}
 
 /* ── AI Chat (ask your data) ── */
@@ -576,12 +576,12 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
   <div class="header">
     <div class="logo">
       <div class="logo-icon">🥗</div>
-      <div>
-        <div class="logo-text">กินดี</div>
-        <div class="logo-sub">ติดตามแคลอรี่และโภชนาการ</div>
+      <div style="min-width:0;overflow:hidden;">
+        <div class="logo-text">KD</div>
+        <div class="logo-sub">Let's Track</div>
       </div>
     </div>
-    <div style="display:flex;align-items:center;gap:8px;">
+    <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;">
       <div class="date-badge" id="todayDate"></div>
       <button onclick="openChat()" aria-label="ถามโค้ช AI" title="ถาม AI เกี่ยวกับข้อมูลของคุณ" style="background:var(--surface2);border:1px solid var(--border-md);border-radius:50%;width:34px;height:34px;font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text2)" stroke-width="2" stroke-linejoin="round"><path d="M21 11.5a8.5 8.5 0 0 1-8.5 8.5c-1.5 0-2.9-.4-4.1-1L3 20l1.1-5.4A8.5 8.5 0 1 1 21 11.5z"></path></svg></button>
       <button onclick="toggleTheme()" id="theme-toggle" aria-label="สลับธีม" style="background:var(--surface2);border:1px solid var(--border-md);border-radius:50%;width:34px;height:34px;font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text2)" stroke-width="2" stroke-linejoin="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"></path></svg></button>
