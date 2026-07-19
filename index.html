@@ -1951,8 +1951,14 @@ function buildFB(db, storage) {
     loadWeights: function(){ return uref().collection('weightLog').orderBy('date','asc').get().then(function(s){ return s.docs.map(function(d){ return d.data(); }); }); },
     saveStrengthEntry: function(e){ return uref().collection('strengthLog').doc(String(e.id)).set(e); },
     delStrengthEntry: function(id){ return uref().collection('strengthLog').doc(String(id)).delete(); },
+    loadStrengthLog: function(){ return uref().collection('strengthLog').get().then(function(s){ return s.docs.map(function(d){return d.data();}).sort(function(a,b){ return String(a.date||'').localeCompare(String(b.date||'')) || (a.id-b.id); }); }); },
+    loadPhotoMetas: function(){ return uref().collection('photoMeta').get().then(function(s){ return s.docs.map(function(d){return d.data();}).sort(function(a,b){return a.id-b.id;}); }); },
+    delPhotoMeta: function(id){ return uref().collection('photoMeta').doc(String(id)).delete(); },
+    saveSleepLogEntry: function(rec){ return uref().collection('sleepLog').doc(String(rec.date)).set(rec); },
+    loadSleepLog: function(){ return uref().collection('sleepLog').get().then(function(s){ return s.docs.map(function(d){return d.data();}); }); },
     saveSleepDoc: function(data){ return uref().collection('settings').doc('sleep').set(data); },
-    updateSleepDoc: function(fields){ return uref().collection('settings').doc('sleep').update(fields); }
+    updateSleepDoc: function(fields){ return uref().collection('settings').doc('sleep').update(fields); },
+    loadSleepDoc: function(){ return uref().collection('settings').doc('sleep').get().then(function(s){ return s.exists ? s.data() : null; }); }
   };
 }
 
@@ -2382,7 +2388,19 @@ function loadRemoteData() {
     window.FB.loadSetting('behaviorLog', null),
     window.FB.loadSetting('webhook', null),
     window.FB.loadWorkouts().catch(function(){ return null; }),
-    window.FB.loadWeights().catch(function(){ return null; })
+    window.FB.loadWeights().catch(function(){ return null; }),
+    window.FB.loadSetting('fitnessTarget', null).catch(function(){ return null; }),
+    window.FB.loadSetting('steps', null).catch(function(){ return null; }),
+    window.FB.loadSetting('waterLog', null).catch(function(){ return null; }),
+    window.FB.loadSetting('customExercises', null).catch(function(){ return null; }),
+    window.FB.loadSetting('apiKeys', null).catch(function(){ return null; }),
+    window.FB.loadStrengthLog().catch(function(){ return null; }),
+    window.FB.loadPhotoMetas().catch(function(){ return null; }),
+    window.FB.loadSleepLog().catch(function(){ return null; }),
+    window.FB.loadSleepDoc().catch(function(){ return null; }),
+    window.FB.loadSetting('recoveryAdj', null).catch(function(){ return null; }),
+    window.FB.loadSetting('calorieContext', null).catch(function(){ return null; }),
+    window.FB.loadSetting('summaryLog', null).catch(function(){ return null; })
   ]).then(function(r){
     S.meals = r[0] || [];
     S.goals = r[1] || S.goals;
@@ -2411,6 +2429,106 @@ function loadRemoteData() {
       var merged = Object.keys(byId).map(function(k){ return byId[k]; }).sort(function(a,b){ return a.date.localeCompare(b.date)||a.id-b.id; });
       localStorage.setItem('gd_body_comp_logs', JSON.stringify(merged));
     }
+    // ── Hydrate the rest of the user-entered data ──
+    // Fitness target: remote wins, same convention as goals/profile.
+    // loadFitnessTarget() re-merges the latest InBody values afterwards.
+    if (r[10]) {
+      localStorage.setItem('gd_ft_target', JSON.stringify(r[10]));
+      window._fitnessTarget = r[10];
+    }
+    // Steps / water: per-date maps — merge with local winning per date (local
+    // may hold a just-typed value), then push the merge back so days logged
+    // while offline reach Firestore too.
+    mergeDateMapSetting('gd_steps', r[11], 'steps');
+    mergeDateMapSetting('gd_water_log', r[12], 'waterLog');
+    // Custom exercises: merge by id, local wins.
+    var localEx = safeJSON('gd_custom_ex', []);
+    if ((r[13] && r[13].length) || localEx.length) {
+      var byExId = {};
+      (r[13] || []).concat(localEx).forEach(function(e){ if (e && e.id) byExId[e.id] = e; });
+      var mergedEx = Object.keys(byExId).map(function(k){ return byExId[k]; });
+      localStorage.setItem('gd_custom_ex', JSON.stringify(mergedEx));
+      if (mergedEx.length !== (r[13] || []).length) window.FB.saveSetting('customExercises', mergedEx).catch(function(){});
+    }
+    // API keys: remote fills in only when this device has none (same rule as
+    // webhook); a device that already has keys uploads them on first login.
+    var hasLocalKeys = S.apiKeys.some(function(k){ return k && k.length; });
+    if (r[14] && r[14].length && !hasLocalKeys) {
+      S.apiKeys = r[14]; S.currentKeyIndex = 0;
+      localStorage.setItem('gd_keys', JSON.stringify(r[14]));
+      ['apiKey1','apiKey2','apiKey3','apiKey4'].forEach(function(id, i){
+        var el = document.getElementById(id); if (el) el.value = r[14][i] || '';
+      });
+      updateKeyStatusDots();
+    } else if (hasLocalKeys && (!r[14] || !r[14].length)) {
+      window.FB.saveSetting('apiKeys', S.apiKeys).catch(function(){});
+    }
+    // Strength log: merge by entry id, local wins.
+    if (r[15] && r[15].length) {
+      var bySt = {};
+      r[15].concat(getStrengthLog()).forEach(function(e){ if (e && e.id != null) bySt[e.id] = e; });
+      var mergedSt = Object.keys(bySt).map(function(k){ return bySt[k]; })
+        .sort(function(a,b){ return String(a.date||'').localeCompare(String(b.date||'')) || (a.id - b.id); });
+      saveStrengthLog(mergedSt);
+    }
+    // Progress-photo metadata: merge by id, keep the newest 20 (same cap as
+    // save time) and clean up evicted docs/blobs remotely.
+    if (r[16] && r[16].length) {
+      var byPh = {};
+      r[16].concat(getProgressPhotos()).forEach(function(p){ if (p && p.id) byPh[p.id] = p; });
+      var mergedPh = Object.keys(byPh).map(function(k){ return byPh[k]; }).sort(function(a,b){ return a.id - b.id; });
+      if (mergedPh.length > 20) {
+        var evictedPh = mergedPh.slice(0, mergedPh.length - 20);
+        mergedPh = mergedPh.slice(-20);
+        evictedPh.forEach(function(ev){
+          if (window.FB.delPhotoMeta) window.FB.delPhotoMeta(ev.id).catch(function(){});
+          if (ev.imageUrl && window.FB.deleteProgressPhotoBlob) window.FB.deleteProgressPhotoBlob(ev.id);
+        });
+      }
+      try { setProgressPhotos(mergedPh); } catch(e){}
+      if (typeof renderProgressPhotoSummary === 'function') renderProgressPhotoSummary();
+    }
+    // Sleep history: merge by date, local wins; upload dates Firestore lacks.
+    var localSl = safeJSON('gd_sleep_log', []);
+    if ((r[17] && r[17].length) || localSl.length) {
+      var bySlDate = {}, remoteSlDates = {};
+      (r[17] || []).forEach(function(s){ if (s && s.date) { bySlDate[s.date] = s; remoteSlDates[s.date] = true; } });
+      localSl.forEach(function(s){ if (s && s.date) bySlDate[s.date] = s; });
+      var slCutoff = new Date(); slCutoff.setDate(slCutoff.getDate() - 120);
+      var slCutoffStr = localDateStr(slCutoff);
+      var mergedSl = Object.keys(bySlDate).sort().filter(function(d){ return d >= slCutoffStr; })
+        .map(function(d){ return bySlDate[d]; });
+      localStorage.setItem('gd_sleep_log', JSON.stringify(mergedSl));
+      mergedSl.forEach(function(s){ if (!remoteSlDates[s.date]) window.FB.saveSleepLogEntry(s).catch(function(){}); });
+      if (typeof renderSleepTrendChart === 'function') renderSleepTrendChart();
+    }
+    // Today's sleep doc → dashboard recovery card on a fresh device.
+    if (r[18] && r[18].date === localDateStr() && (!S.sleepData || S.sleepData.date !== r[18].date)) {
+      S.sleepData = r[18];
+      localStorage.setItem('gd_sleep', JSON.stringify(r[18]));
+      if (r[18].recoveryScore && typeof updateDashRecoveryCard === 'function') updateDashRecoveryCard(r[18]);
+    }
+    // Recovery adjustment: today-only; adopt remote when this device has none.
+    var localAdj = safeJSON('gd_recovery_adj', null);
+    if (r[19] && r[19].date === localDateStr() && (!localAdj || localAdj.date !== r[19].date)) {
+      localStorage.setItem('gd_recovery_adj', JSON.stringify(r[19]));
+    }
+    // Calorie context (Goal Engine snapshot): newest date wins.
+    var localCtx = safeJSON('gd_calorie_context', null);
+    if (r[20] && r[20].date && (!localCtx || !localCtx.date || r[20].date > localCtx.date)) {
+      localStorage.setItem('gd_calorie_context', JSON.stringify(r[20]));
+    } else if (localCtx && !r[20]) {
+      window.FB.saveSetting('calorieContext', localCtx).catch(function(){});
+    }
+    // AI-memory snapshots: merge by date, keep the 4 newest.
+    var localSum = safeJSON('gd_summary_log', []);
+    if ((r[21] && r[21].length) || localSum.length) {
+      var bySumDate = {};
+      (r[21] || []).concat(localSum).forEach(function(e){ if (e && e.date) bySumDate[e.date] = e; });
+      var mergedSum = Object.keys(bySumDate).sort().reverse().slice(0, 4).map(function(d){ return bySumDate[d]; });
+      localStorage.setItem('gd_summary_log', JSON.stringify(mergedSum));
+      if (mergedSum.length !== (r[21] || []).length) window.FB.saveSetting('summaryLog', mergedSum).catch(function(){});
+    }
     if(S.profile) loadProfile();
     loadGoalInputs(); syncProfileWeightFromLatestCheckin(); render();
     updateFitnessUI();
@@ -2420,6 +2538,18 @@ function loadRemoteData() {
     console.error('Firebase load error:', e);
     showToast('โหลด Firebase ไม่สำเร็จ ใช้ข้อมูล local','error');
   });
+}
+
+// Merge a {date: value} map (steps, water) with its Firestore copy: local wins
+// per date, then the merged map is pushed back up if Firestore was missing or
+// behind on any date.
+function mergeDateMapSetting(localKey, remote, settingKey) {
+  var local = safeJSON(localKey, {}) || {};
+  if (!remote && !Object.keys(local).length) return;
+  var merged = Object.assign({}, remote || {}, local);
+  try { localStorage.setItem(localKey, JSON.stringify(merged)); } catch(e){}
+  var behind = Object.keys(merged).some(function(k){ return !remote || remote[k] !== merged[k]; });
+  if (behind && window.FB_OK && window.FB) window.FB.saveSetting(settingKey, merged).catch(function(){});
 }
 
 function render() { updateDash(); renderWeightCalChart(); renderLog(); renderFavorites(); updateSyncDot(); restoreDailySummary(); restoreRecoveryAdj(); detectAnomalies(); renderFitnessCharts(); }
@@ -3292,6 +3422,7 @@ function generateMorningRecovery() {
       }
       var adj = { date: today, rec: rec, delta: delta, carbDelta: carbDelta, proDelta: proDelta, reason: reason };
       localStorage.setItem('gd_recovery_adj', JSON.stringify(adj));
+      if (window.FB_OK && window.FB) window.FB.saveSetting('recoveryAdj', adj).catch(function(){});
       updateRecoveryAdjBanner(adj);
       updateDash();
     })();
@@ -3755,6 +3886,7 @@ function renderDailySummary(r) {
     log.unshift(snapshot);
     log = log.slice(0, 4);
     localStorage.setItem('gd_summary_log', JSON.stringify(log));
+    if (window.FB_OK && window.FB) window.FB.saveSetting('summaryLog', log).catch(function(){});
   })();
 }
 
@@ -3795,6 +3927,7 @@ function applyRecoveryAdj() {
   if (!adj || adj.date !== today) return;
   adj.confirmed = true;
   localStorage.setItem('gd_recovery_adj', JSON.stringify(adj));
+  if (window.FB_OK && window.FB) window.FB.saveSetting('recoveryAdj', adj).catch(function(){});
   updateRecoveryAdjBanner(adj);
   updateDash();
   showToast(adj.delta
@@ -3807,6 +3940,7 @@ function cancelRecoveryAdj() {
   if (!adj || adj.date !== today) return;
   adj.confirmed = false;
   localStorage.setItem('gd_recovery_adj', JSON.stringify(adj));
+  if (window.FB_OK && window.FB) window.FB.saveSetting('recoveryAdj', adj).catch(function(){});
   updateRecoveryAdjBanner(adj);
   updateDash();
 }
@@ -4766,6 +4900,7 @@ function saveAnalyzerCalorieContext(d) {
     statusLabel: d.statusLabel || null,
     source: 'weight-analyzer-goal-engine'
   }));
+  if (window.FB_OK && window.FB) window.FB.saveSetting('calorieContext', safeJSON('gd_calorie_context', null)).catch(function(){});
   localStorage.removeItem('gd_daily_summary');
   localStorage.removeItem('gd_wt_ai_result');
 }
@@ -4930,6 +5065,7 @@ function saveApiKeys() {
   S.apiKeys = keys;
   S.currentKeyIndex = 0;
   localStorage.setItem('gd_keys', JSON.stringify(keys));
+  if (window.FB_OK && window.FB) window.FB.saveSetting('apiKeys', keys).catch(function(){});
   updateKeyStatusDots();
   showToast('บันทึก ' + keys.length + ' API Key' + (keys.length > 1 ? 's (rotation เปิดอยู่ 🔄)' : '') + ' ✅', 'success');
 }
@@ -5298,7 +5434,10 @@ var GROUP_COLOR = {push:'#ef4444',pull:'#3b82f6',legs:'#22c55e',core:'#f59e0b',c
 
 // ---- Custom exercises (user/AI-added, not in EXERCISE_DB) ----
 function getCustomExercises() { return JSON.parse(localStorage.getItem('gd_custom_ex') || '[]'); }
-function saveCustomExercises(list) { localStorage.setItem('gd_custom_ex', JSON.stringify(list)); }
+function saveCustomExercises(list) {
+  localStorage.setItem('gd_custom_ex', JSON.stringify(list));
+  if (window.FB_OK && window.FB) window.FB.saveSetting('customExercises', list).catch(function(){});
+}
 // Single lookup point: built-in DB first, then customs
 function getExById(id) {
   return EXERCISE_DB.find(function(e){ return e.id === id; }) ||
@@ -6477,6 +6616,7 @@ function saveSteps() {
   var stepData = JSON.parse(localStorage.getItem('gd_steps') || '{}');
   stepData[date] = steps;
   localStorage.setItem('gd_steps', JSON.stringify(stepData));
+  if (window.FB_OK && window.FB) window.FB.saveSetting('steps', stepData).catch(function(){});
   updateFitnessUI();
 }
 
@@ -6490,7 +6630,10 @@ function getTodaySteps() {
 // Simple per-day ml total (mirrors the gd_steps pattern), plus a one-slot
 // undo for the last add — quick-tap logging has no natural "edit" affordance.
 function getWaterLog() { return JSON.parse(localStorage.getItem('gd_water_log') || '{}'); }
-function setWaterLog(log) { localStorage.setItem('gd_water_log', JSON.stringify(log)); }
+function setWaterLog(log) {
+  localStorage.setItem('gd_water_log', JSON.stringify(log));
+  if (window.FB_OK && window.FB) window.FB.saveSetting('waterLog', log).catch(function(){});
+}
 function getWaterForDate(date) { return getWaterLog()[date] || 0; }
 function getTodayWaterMl() { return getWaterForDate(localDateStr()); }
 // ~35ml/kg bodyweight is the common daily-intake guideline, clamped so an
@@ -8712,6 +8855,13 @@ function importSleepFromSheet() {
     });
     log.sort(function(a,b){ return a.date < b.date ? -1 : 1; });
     localStorage.setItem('gd_sleep_log', JSON.stringify(log));
+    // Push every imported/merged date up to Firestore so the Sheet import
+    // reaches other devices too.
+    if (window.FB_OK && window.FB && window.FB.saveSleepLogEntry) {
+      var importedDates = {};
+      incoming.forEach(function(d){ if (d.date) importedDates[d.date] = true; });
+      log.forEach(function(entry){ if (importedDates[entry.date]) window.FB.saveSleepLogEntry(entry).catch(function(){}); });
+    }
     showToast('นำเข้าสำเร็จ: เพิ่ม '+added+' รายการ, อัปเดต '+merged+' รายการ ✅','success');
   }).catch(function(err){ showToast('นำเข้าไม่สำเร็จ: '+err.message,'error'); });
 }
@@ -9063,7 +9213,10 @@ function saveProgressPhotoLog(){
     if(logs.length>20){
       var evicted=logs.slice(0, logs.length-20);
       logs=logs.slice(logs.length-20);
-      evicted.forEach(function(ev){ if(ev.imageUrl && window.FB.deleteProgressPhotoBlob) window.FB.deleteProgressPhotoBlob(ev.id); });
+      evicted.forEach(function(ev){
+        if(ev.imageUrl && window.FB.deleteProgressPhotoBlob) window.FB.deleteProgressPhotoBlob(ev.id);
+        if(window.FB && window.FB.delPhotoMeta) window.FB.delPhotoMeta(ev.id).catch(function(){});
+      });
     }
     try{
       setProgressPhotos(logs);
@@ -10715,6 +10868,7 @@ function syncSleepLog(data){
   var cstr=localDateStr(cutoff);
   log=log.filter(function(s){return s.date>=cstr;});
   localStorage.setItem('gd_sleep_log',JSON.stringify(log));
+  if (window.FB_OK && window.FB && window.FB.saveSleepLogEntry) window.FB.saveSleepLogEntry(rec).catch(function(){});
   if (typeof renderSleepTrendChart === 'function') renderSleepTrendChart();
 }
 
