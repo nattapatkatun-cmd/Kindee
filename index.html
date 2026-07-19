@@ -76,7 +76,7 @@ body{font-family:'Sarabun',sans-serif;background:var(--bg);color:var(--text);min
 @media (max-width:420px){
   /* Nav: shrink tabs to fit 8 items on ~400px */
   .nav-btn{min-width:44px;padding:6px 4px;font-size:10px;gap:2px;}
-  .nav-icon{font-size:17px;}
+  .nav-icon{width:19px;height:19px;}
 
   /* Hybrid card: chips อยู่ใต้วงแล้ว ไม่ต้อง scale วง */
   .macro-val{font-size:15px;}
@@ -113,7 +113,7 @@ body{font-family:'Sarabun',sans-serif;background:var(--bg);color:var(--text);min
 /* ── AI Chat (ask your data) ── */
 .primary-fab{position:fixed;right:16px;bottom:calc(var(--nav-h) + 16px);width:54px;height:54px;border-radius:50%;background:var(--accent);border:none;color:#fff;font-size:26px;display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:300;transition:transform .2s,opacity .2s;}
 .primary-fab:active{transform:scale(0.92);}
-@media(min-width:600px){.primary-fab{right:calc(50% - 430px + 16px);}}
+@media(min-width:600px){.primary-fab{right:max(16px, calc(50% - 430px + 16px));}}
 .chat-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:400;backdrop-filter:blur(2px);-webkit-backdrop-filter:blur(2px);}
 .chat-overlay.open{display:block;}
 .chat-panel{position:fixed;left:50%;transform:translateX(-50%) translateY(100%);bottom:0;width:100%;max-width:480px;height:80vh;max-height:80vh;background:var(--bg);border-top-left-radius:24px;border-top-right-radius:24px;border-top:1px solid var(--border-md);z-index:401;display:flex;flex-direction:column;transition:transform .3s cubic-bezier(.4,0,.2,1);}
@@ -195,11 +195,11 @@ body{font-family:'Sarabun',sans-serif;background:var(--bg);color:var(--text);min
 .nav::-webkit-scrollbar{display:none;}
 .nav-btn{flex:0 0 auto;min-width:60px;padding:7px 8px 5px;background:transparent;border:none;border-bottom:2px solid transparent;color:var(--text3);font-family:inherit;font-size:11px;font-weight:600;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:3px;border-radius:0;transition:color 0.18s,border-color 0.18s;letter-spacing:0.2px;}
 .nav-btn.active{background:transparent;border-bottom-color:var(--accent);color:var(--text);font-weight:700;}
-.nav-icon{font-size:17px;}
+.nav-icon{width:21px;height:21px;flex-shrink:0;}
 @media (min-width:600px){
   .nav{max-width:860px;justify-content:space-evenly;overflow-x:hidden;padding:6px 8px env(safe-area-inset-bottom,6px);}
   .nav-btn{flex:1;min-width:0;max-width:none;font-size:12px;padding:8px 6px;}
-  .nav-icon{font-size:18px;}
+  .nav-icon{width:22px;height:22px;}
 }
 
 /* ── Pages ── */
@@ -288,7 +288,7 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
 .hybrid-cal-card{padding:20px;}
 .hybrid-top{display:flex;align-items:center;gap:18px;margin-bottom:16px;}
 .hybrid-cal-meta{min-width:0;flex:1;}
-.hybrid-cal-big{font-size:40px;font-weight:800;line-height:.95;letter-spacing:-1.5px;color:var(--fire);}
+.hybrid-cal-big{font-size:40px;font-weight:800;line-height:.95;letter-spacing:-1.5px;color:var(--text);}
 .macro-chips{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
 .mchip{border-radius:16px;padding:13px 14px;}
 .mchip-p{background:var(--blue-soft);}
@@ -461,6 +461,10 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
 .wt-filter-btn.active{background:var(--blue-dim);border-color:var(--blue);color:var(--blue);font-weight:700;}
 /* ── FITNESS TARGET STYLES ── */
 .target-metric-card{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:15px;margin-bottom:10px;}
+summary.target-metric-header{cursor:pointer;list-style:none;}
+summary.target-metric-header::-webkit-details-marker{display:none;}
+summary.target-metric-header::before{content:'▸ ';color:var(--accent);font-size:11px;}
+details[open]>summary.target-metric-header::before{content:'▾ ';}
 .target-metric-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;}
 .target-metric-title{font-size:13px;font-weight:700;}
 .target-metric-badge{font-size:11px;padding:2px 10px;border-radius:20px;font-weight:700;}
@@ -557,11 +561,11 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
   </div><!-- end sticky-top -->
 
   <nav class="nav">
-    <button class="nav-btn active" onclick="showPage('dashboard')" id="nav-dashboard"><span class="nav-icon">📊</span>ภาพรวม</button>
-    <button class="nav-btn" onclick="showPage('analyze')" id="nav-analyze"><span class="nav-icon">📸</span>วิเคราะห์</button>
-    <button class="nav-btn" onclick="showPage('log')" id="nav-log"><span class="nav-icon">📋</span>บันทึก</button>
-    <button class="nav-btn" onclick="showPage('fitness')" id="nav-fitness"><span class="nav-icon">🏋️</span>ฟิตเนส</button>
-    <button class="nav-btn" onclick="showPage('weight')" id="nav-weight"><span class="nav-icon">⚖️</span>น้ำหนัก</button>
+    <button class="nav-btn active" onclick="showPage('dashboard')" id="nav-dashboard"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="8" height="8" rx="1.5"/><rect x="13" y="3" width="8" height="8" rx="1.5"/><rect x="3" y="13" width="8" height="8" rx="1.5"/><rect x="13" y="13" width="8" height="8" rx="1.5"/></svg>ภาพรวม</button>
+    <button class="nav-btn" onclick="showPage('analyze')" id="nav-analyze"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h3l1.5-2h7L17 8h3a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z"/><circle cx="12" cy="13" r="3.3"/></svg>วิเคราะห์</button>
+    <button class="nav-btn" onclick="showPage('log')" id="nav-log"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="18" x2="14" y2="18"/></svg>บันทึก</button>
+    <button class="nav-btn" onclick="showPage('fitness')" id="nav-fitness"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="1.5" y="9" width="3" height="6" rx="1"/><rect x="19.5" y="9" width="3" height="6" rx="1"/><line x1="4.5" y1="12" x2="19.5" y2="12"/><rect x="6.5" y="7" width="2.5" height="10" rx="1"/><rect x="15" y="7" width="2.5" height="10" rx="1"/></svg>ฟิตเนส</button>
+    <button class="nav-btn" onclick="showPage('weight')" id="nav-weight"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="3,17 9,11 13,15 21,6"/><polyline points="15,6 21,6 21,12"/></svg>น้ำหนัก</button>
   </nav>
 
   <!-- DASHBOARD -->
@@ -586,30 +590,22 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
     </div>
 
     <div class="fold-grid">
-    <!-- HYBRID: ring + แคลโต + macro chips -->
+    <!-- HERO: แคลอรี่ที่กิน — แถบ progress แนวนอน (ไม่ใช้วงแหวน ตามดีไซน์ 1b) -->
     <div class="card hybrid-cal-card">
-      <div class="hybrid-top">
-        <div class="ring-wrap">
-          <svg class="ring-svg" width="104" height="104" viewBox="0 0 104 104">
-            <circle class="ring-bg" cx="52" cy="52" r="44"/>
-            <circle class="ring-fill" id="ringFill" cx="52" cy="52" r="44" stroke-dasharray="276" stroke-dashoffset="276" stroke="var(--fire)"/>
-          </svg>
-          <div class="ring-text">
-            <div id="dash-ring-pct" style="font-size:15px;font-weight:800;color:var(--text2);line-height:1;">0%</div>
-          </div>
-        </div>
-        <div class="hybrid-cal-meta">
-          <div class="card-title" style="margin-bottom:4px;">แคลอรี่ที่กิน</div>
-          <div class="hybrid-cal-big" id="dash-cal">0</div>
-          <div style="font-size:12px;font-weight:600;color:var(--accent);margin-top:2px;" id="dash-rem"></div>
-          <div style="font-size:10px;font-weight:600;margin-top:2px;color:var(--green);display:none;" id="dash-daytype-note"></div>
-        </div>
+      <div style="display:flex;align-items:baseline;justify-content:space-between;gap:8px;">
+        <div class="card-title" style="margin:0;">แคลอรี่ที่กิน</div>
+        <div id="dash-rem" style="font-size:13px;font-weight:700;white-space:nowrap;"></div>
       </div>
-      <div class="macro-chips">
-        <div class="mchip mchip-p"><div class="mchip-v" id="d-p" style="color:var(--blue)">0g</div><div class="mchip-n">โปรตีน</div><div class="macro-bar"><div class="macro-bar-fill" id="b-p" style="background:var(--blue);width:0%"></div></div></div>
-        <div class="mchip mchip-c"><div class="mchip-v" id="d-c" style="color:var(--green)">0g</div><div class="mchip-n">คาร์บ</div><div class="macro-bar"><div class="macro-bar-fill" id="b-c" style="background:var(--green);width:0%"></div></div></div>
-        <div class="mchip mchip-f"><div class="mchip-v" id="d-f" style="color:var(--purple)">0g</div><div class="mchip-n">ไขมัน</div><div class="macro-bar"><div class="macro-bar-fill" id="b-f" style="background:var(--purple);width:0%"></div></div></div>
-        <div class="mchip mchip-g"><div class="mchip-v" id="d-g" style="color:var(--fire)">0</div><div class="mchip-n">เป้าแคล</div><div class="macro-bar"><div class="macro-bar-fill" id="b-g" style="background:var(--fire);width:0%"></div></div></div>
+      <div style="display:flex;align-items:baseline;gap:6px;margin-top:6px;">
+        <div class="hybrid-cal-big" id="dash-cal">0</div>
+        <div style="font-size:16px;color:var(--text3);font-weight:600;">/ <span id="dash-goal-cal">0</span></div>
+      </div>
+      <div class="macro-bar" style="height:6px;margin-top:12px;"><div class="macro-bar-fill" id="dash-cal-bar" style="background:var(--accent);width:0%"></div></div>
+      <div style="font-size:10px;font-weight:600;margin-top:6px;color:var(--green);display:none;" id="dash-daytype-note"></div>
+      <div class="fold-full" style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:16px;padding-top:14px;border-top:1px solid var(--border);">
+        <div><div class="macro-val" id="d-p">0g</div><div class="macro-name">โปรตีน · <span id="d-p-pct">0%</span></div></div>
+        <div><div class="macro-val" id="d-c">0g</div><div class="macro-name">คาร์บ · <span id="d-c-pct">0%</span></div></div>
+        <div><div class="macro-val" id="d-f">0g</div><div class="macro-name">ไขมัน · <span id="d-f-pct">0%</span></div></div>
       </div>
       <details class="goal-details">
         <summary>เป้าหมายสารอาหารแบบละเอียด</summary>
@@ -856,11 +852,13 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
   <div class="page" id="page-fitness">
     <!-- Sub-tabs -->
     <div class="tab-row">
-      <button class="tab-pill active" id="ftab-today" onclick="showFitnessTab('today')">📝 บันทึก</button>
-      <button class="tab-pill" id="ftab-chart" onclick="showFitnessTab('chart')">📊 กราฟ</button>
-      <button class="tab-pill" id="ftab-strength" onclick="showFitnessTab('strength')">💪 Strength</button>
-      <button class="tab-pill" id="ftab-targetplan" onclick="showFitnessTab('target')">🎯 เป้าหมาย+แผน</button>
-      <button class="tab-pill" id="ftab-sleep" onclick="showFitnessTab('sleep')">😴 Sleep</button>
+      <button class="tab-pill active" id="ftab-today" onclick="showFitnessTab('today')">บันทึก</button>
+      <button class="tab-pill" id="ftab-chart" onclick="showFitnessTab('chart')">กราฟ</button>
+      <button class="tab-pill" id="ftab-strength" onclick="showFitnessTab('strength')">Strength</button>
+      <button class="tab-pill" id="ftab-target" onclick="showFitnessTab('target')">เป้าหมาย</button>
+      <button class="tab-pill" id="ftab-plan" onclick="showFitnessTab('plan')">แผน</button>
+      <button class="tab-pill" id="ftab-sleep" onclick="showFitnessTab('sleep')">Sleep</button>
+      <button class="tab-pill" id="ftab-insights" onclick="showFitnessTab('insights')">Insights</button>
     </div>
 
     <!-- TAB: TODAY -->
@@ -871,13 +869,13 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
         <div class="ft-net-val" id="ft-net-val" style="color:var(--green)">0</div>
         <div class="ft-net-sub">kcal คงเหลือ</div>
         <div class="ft-net-row" style="margin-top:6px;">
-          <span>🍽️ กิน <b id="ft-eaten">0</b></span>
+          <span>กิน <b id="ft-eaten">0</b></span>
           <span style="color:var(--text3)">/</span>
-          <span>🎯 เป้า <b id="ft-goal-disp">0</b></span>
+          <span>เป้า <b id="ft-goal-disp">0</b></span>
         </div>
         <div style="font-size:11px;color:var(--text3);margin-top:8px;padding-top:8px;border-top:1px solid var(--border);">
           net <b id="ft-net-result">0</b> kcal · หักเผา <b id="ft-burned">0</b> + ก้าว <b id="ft-step-cal">0</b><br>
-          <span style="font-size:10px;opacity:0.8;">💡 กิจกรรมรวมใน TDEE แล้ว — คุมที่ยอดกินตามเป้า</span>
+          <span style="font-size:10px;opacity:0.8;">กิจกรรมรวมใน TDEE แล้ว — คุมที่ยอดกินตามเป้า</span>
         </div>
       </div>
 
@@ -1060,6 +1058,25 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
         <div style="position:relative;height:120px;width:100%;"><canvas id="ftChartNet"></canvas></div>
       </div>
       </div><!-- end ft-chart-section -->
+      <!-- Per-category trend: kept OUTSIDE ft-chart-section so the chart
+           canvas survives that section's innerHTML re-renders -->
+      <div class="card" id="target-trend-card" style="margin-top:14px;">
+        <div class="card-title" style="margin-bottom:8px;">เทรนด์ตามหมวด</div>
+        <div id="target-outlier-banner" style="display:none;"></div>
+        <select class="input-field" id="target-trend-select" onchange="renderTargetTrendChart()" style="margin-bottom:10px;">
+          <option value="weight">น้ำหนัก (กก.)</option>
+          <option value="bf">% Body Fat</option>
+          <option value="muscle">Skeletal Muscle %</option>
+          <option value="visceral">Visceral Fat</option>
+          <option value="bmi">BMI</option>
+          <option value="lean">Lean Mass (กก.)</option>
+        </select>
+        <div id="target-trend-empty" style="display:none;text-align:center;padding:16px 0;color:var(--text3);font-size:12px;">ยังไม่มีข้อมูลหมวดนี้พอ — บันทึกน้ำหนัก/Body Composition อย่างน้อย 2 ครั้งเพื่อดู trend</div>
+        <div id="target-trend-wrap" style="position:relative;height:180px;width:100%;">
+          <canvas id="targetTrendChart"></canvas>
+        </div>
+        <div id="target-trend-note" style="font-size:11px;color:var(--text3);margin-top:6px;text-align:center;">เส้นประ = เป้าหมายจาก Fitness Target</div>
+      </div>
     </div>
 
     <!-- TAB: STRENGTH -->
@@ -1075,6 +1092,13 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
       </div>
       <div class="card" id="str-pr-card" style="display:none;">
         <div class="card-title">🏆 Personal Records</div>
+        <div class="ex-filter-row" id="pr-group-filter" style="margin-bottom:8px;">
+          <button class="ex-pill active" onclick="filterPRGroup('all',this)">ทั้งหมด</button>
+          <button class="ex-pill" onclick="filterPRGroup('push',this)">🔴 Push</button>
+          <button class="ex-pill" onclick="filterPRGroup('pull',this)">🔵 Pull</button>
+          <button class="ex-pill" onclick="filterPRGroup('legs',this)">🟢 Legs</button>
+          <button class="ex-pill" onclick="filterPRGroup('core',this)">🟡 Core</button>
+        </div>
         <div id="str-pr-list"></div>
       </div>
     </div>
@@ -1083,25 +1107,6 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
     <div id="ftab-content-target" style="display:none;">
       <div id="ft-target-dashboard">
         <div class="empty-state"><div class="empty-icon">🎯</div><div class="empty-text">ยังไม่มี Fitness Target</div><div class="empty-sub">ไปที่ ⚙️ ตั้งค่า → Fitness Target เพื่อกรอกข้อมูล</div></div>
-      </div>
-      <!-- Per-category trend: kept OUTSIDE ft-target-dashboard so the chart
-           canvas survives that card's innerHTML re-renders -->
-      <div class="card" id="target-trend-card" style="margin-top:14px;">
-        <div class="card-title" style="margin-bottom:8px;">📈 เทรนด์ตามหมวด</div>
-        <div id="target-outlier-banner" style="display:none;"></div>
-        <select class="input-field" id="target-trend-select" onchange="renderTargetTrendChart()" style="margin-bottom:10px;">
-          <option value="weight">⚖️ น้ำหนัก (กก.)</option>
-          <option value="bf">🔥 % Body Fat</option>
-          <option value="muscle">💪 Skeletal Muscle %</option>
-          <option value="visceral">🫀 Visceral Fat</option>
-          <option value="bmi">📊 BMI</option>
-          <option value="lean">🦾 Lean Mass (กก.)</option>
-        </select>
-        <div id="target-trend-empty" style="display:none;text-align:center;padding:16px 0;color:var(--text3);font-size:12px;">ยังไม่มีข้อมูลหมวดนี้พอ — บันทึกน้ำหนัก/Body Composition อย่างน้อย 2 ครั้งเพื่อดู trend</div>
-        <div id="target-trend-wrap" style="position:relative;height:180px;width:100%;">
-          <canvas id="targetTrendChart"></canvas>
-        </div>
-        <div id="target-trend-note" style="font-size:11px;color:var(--text3);margin-top:6px;text-align:center;">🟢 เส้นประ = เป้าหมายจาก Fitness Target</div>
       </div>
     </div>
 
@@ -4332,10 +4337,9 @@ function updateDash() {
   document.getElementById('dash-count').textContent = meals.length+' มื้อ';
   document.getElementById('dash-cal').textContent = Math.round(t.cal);
 
-  // rem label + color (อิง gross intake) — รวม net (ข้อมูลเสริมหลังหักกิจกรรม) เป็นบรรทัดเดียว
+  // rem label + color (อิง gross intake) — สั้น กระชับ ตามดีไซน์ 1b (รายละเอียด net ดูได้ที่การ์ด "กินวันนี้ vs เป้า" ในฟิตเนส)
   var remEl = document.getElementById('dash-rem');
-  remEl.textContent = (isUnderGoal ? 'เหลือกินได้ '+Math.round(grossRem)+' kcal' : 'กินเกิน '+Math.round(Math.abs(grossRem))+' kcal')
-    + ' · net '+Math.round(netEaten)+' kcal';
+  remEl.textContent = isUnderGoal ? 'เหลือ '+Math.round(grossRem) : 'เกิน '+Math.round(Math.abs(grossRem));
   remEl.style.color = isUnderGoal ? 'var(--green)' : 'var(--red)';
 
   var dispPro = parseFloat(t.pro.toFixed(2));
@@ -4345,18 +4349,17 @@ function updateDash() {
   document.getElementById('d-p').textContent = dispPro+'g';
   document.getElementById('d-c').textContent = dispCrb+'g';
   document.getElementById('d-f').textContent = dispFat+'g';
-  document.getElementById('d-g').textContent = g.cal;
+  document.getElementById('dash-goal-cal').textContent = g.cal;
+  document.getElementById('d-p-pct').textContent = (g.pro>0 ? Math.round(t.pro/g.pro*100) : 0)+'%';
+  document.getElementById('d-c-pct').textContent = (g.crb>0 ? Math.round(t.crb/g.crb*100) : 0)+'%';
+  document.getElementById('d-f-pct').textContent = (g.fat>0 ? Math.round(t.fat/g.fat*100) : 0)+'%';
 
-  // Ring: fill capped at full circle, but % text shows real value (เกิน 100% ได้)
-  var pctReal = g.cal > 0 ? (t.cal / g.cal) : 0;       // ค่าจริง ไม่ cap
-  var pctFill = Math.min(Math.max(pctReal, 0), 1);     // สำหรับวาดวง (0–100%)
-  var offset = 276 - (276 * pctFill);
-  document.getElementById('ringFill').style.strokeDashoffset = offset;
-  document.getElementById('ringFill').style.stroke = isUnderGoal ? 'var(--green)' : 'var(--red)';
-  var pctEl = document.getElementById('dash-ring-pct');
-  if(pctEl){ pctEl.textContent = Math.round(pctReal*100)+'%'; pctEl.style.color = isUnderGoal ? 'var(--green)' : 'var(--red)'; }
+  // Progress bar: เต็มแถบเมื่อถึงเป้า สีเปลี่ยนเมื่อกินเกิน
+  var pctReal = g.cal > 0 ? (t.cal / g.cal) : 0;
+  var pctFill = Math.min(Math.max(pctReal, 0), 1) * 100;
+  var calBarEl = document.getElementById('dash-cal-bar');
+  if (calBarEl) { calBarEl.style.width = pctFill+'%'; calBarEl.style.background = isUnderGoal ? 'var(--accent)' : 'var(--red)'; }
 
-  setW('b-p',t.pro,g.pro); setW('b-c',t.crb,g.crb); setW('b-f',t.fat,g.fat); setW('b-g',t.cal,g.cal);
   document.getElementById('gb-cal').textContent = dispCal+'/'+g.cal+' kcal';
   document.getElementById('gb-p').textContent = dispPro+'/'+g.pro+'g';
   document.getElementById('gb-c').textContent = dispCrb+'/'+g.crb+'g';
@@ -6258,6 +6261,13 @@ function renderStrengthChart() {
       }}
   });
 }
+var _prGroupFilter = 'all';
+function filterPRGroup(group, btn) {
+  _prGroupFilter = group;
+  document.querySelectorAll('#pr-group-filter .ex-pill').forEach(function(b){ b.classList.remove('active'); });
+  if (btn) btn.classList.add('active');
+  renderPRCard();
+}
 function renderPRCard() {
   var log = getStrengthLog();
   var exIds = [];
@@ -6265,6 +6275,12 @@ function renderPRCard() {
   var card = document.getElementById('str-pr-card');
   if (!exIds.length||!card) { if(card) card.style.display='none'; return; }
   card.style.display = 'block';
+  // แบ่งตามหมวด push/pull/legs/core เหมือน filter ตอนเลือกท่ายกเวท — ดูทีละหมวดแทนแสดงรวดเดียว
+  if (_prGroupFilter !== 'all') {
+    exIds = exIds.filter(function(id){ var ex = getExById(id); return ex && ex.group === _prGroupFilter; });
+  }
+  var listEl = document.getElementById('str-pr-list');
+  if (!exIds.length) { listEl.innerHTML = '<div style="text-align:center;color:var(--text3);font-size:12px;padding:16px 0;">ยังไม่มี PR ในหมวดนี้</div>'; return; }
   var html = '';
   exIds.forEach(function(id) {
     var entries = log.filter(function(e){ return e.exerciseId===id; });
@@ -6277,7 +6293,7 @@ function renderPRCard() {
       '<div style="font-size:11px;color:var(--text3);">'+(best.weight>0?best.weight+'kg':'BW')+' × '+best.reps+' reps · '+best.date+'</div></div></div>' +
       '<div style="background:'+c+'22;border:1px solid '+c+';border-radius:8px;padding:3px 10px;font-size:12px;font-weight:800;color:'+c+';">'+(best.e1RM>0?best.e1RM+'kg':'×'+best.reps)+'</div></div>';
   });
-  document.getElementById('str-pr-list').innerHTML = html;
+  listEl.innerHTML = html;
 }
 
 
@@ -6818,22 +6834,18 @@ function renderWorkoutHistory() {
 // Fitness sub-tabs
 var ftCharts = {};
 function showFitnessTab(tab) {
-  // "target" and "plan" share one combined sub-tab pill (🎯 เป้าหมาย+แผน) — both content
-  // blocks show together, so either name activates the same merged group.
-  if (tab === 'plan') tab = 'target';
-  var visible = (tab === 'target') ? ['target','plan'] : [tab];
   ['today','chart','strength','target','plan','sleep','insights'].forEach(function(t){
     var contentEl = document.getElementById('ftab-content-'+t);
-    if (contentEl) contentEl.style.display = visible.indexOf(t)>=0 ? 'block' : 'none';
-  });
-  ['ftab-today','ftab-chart','ftab-strength','ftab-targetplan','ftab-sleep'].forEach(function(id){
-    var btnEl = document.getElementById(id);
-    if (btnEl) btnEl.classList.toggle('active', id === (tab==='target' ? 'ftab-targetplan' : 'ftab-'+tab));
+    if (contentEl) contentEl.style.display = t===tab ? 'block' : 'none';
+    var btnEl = document.getElementById('ftab-'+t);
+    if (btnEl) btnEl.classList.toggle('active', t===tab);
   });
   if (tab === 'today') { if (typeof renderTodayPlanCard === 'function') renderTodayPlanCard(); }
-  if (tab === 'chart') renderFitnessCharts();
+  // เทรนด์ตามหมวด (target-trend-card) ย้ายมาอยู่ในแท็บกราฟ อยู่ด้วยกับกราฟหลัก
+  if (tab === 'chart') { renderFitnessCharts(); loadFitnessTarget(); renderTargetTrendChart(); }
   if (tab === 'strength') updateStrengthSelectOptions();
-  if (tab === 'target') { loadFitnessTarget(); renderTargetDashboard(); renderTargetTrendChart(); loadSavedPlan(); renderProgressionOverview(); }
+  if (tab === 'target') { loadFitnessTarget(); renderTargetDashboard(); }
+  if (tab === 'plan') { loadSavedPlan(); renderProgressionOverview(); }
   if (tab === 'sleep') { loadSleepUI(); renderSleepTrendChart(); }
   if (tab === 'insights') {
     // WT.log may not be populated yet if the user never opened the Weight page
@@ -7666,9 +7678,9 @@ function renderTargetDashboard() {
 
     var barColor = isOver ? 'var(--green)' : pct >= 75 ? '#eab308' : 'var(--accent)';
 
-    html += '<div class="target-metric-card" style="background:rgba(143,168,124,0.04);border-color:rgba(143,168,124,0.25);">';
-    html += '<div class="target-metric-header"><span class="target-metric-title">⏱️ Timeline & Trend</span>';
-    html += '<span class="target-metric-badge" style="background:rgba(143,168,124,0.12);color:var(--accent);">'+target.duration+' สัปดาห์</span></div>';
+    html += '<details class="target-metric-card" open style="background:rgba(143,168,124,0.04);border-color:rgba(143,168,124,0.25);">';
+    html += '<summary class="target-metric-header"><span class="target-metric-title">⏱️ Timeline & Trend</span>';
+    html += '<span class="target-metric-badge" style="background:rgba(143,168,124,0.12);color:var(--accent);">'+target.duration+' สัปดาห์</span></summary>';
 
     // ── A: Progress bar ──
     html += '<div style="height:10px;background:var(--surface2);border-radius:5px;overflow:hidden;margin-bottom:6px;">';
@@ -7795,15 +7807,15 @@ function renderTargetDashboard() {
 
     // Reset button
     html += '<button onclick="resetTargetStartDate()" style="width:100%;padding:6px;background:none;border:1px solid var(--border);border-radius:8px;color:var(--text3);font-family:inherit;font-size:11px;cursor:pointer;">🔄 รีเซ็ตวันเริ่มต้นใหม่</button>';
-    html += '</div>';
+    html += '</details>';
 
     // ── 1.6 %BF Trajectory: start → now → target ──
     if (bfTrajTL && (bfTrajTL.currBF != null || bfTrajTL.startBF != null) && tgtBF) {
       var bfStart = bfTrajTL.startBF != null ? bfTrajTL.startBF : bfTrajTL.currBF;
       var bfNow   = bfTrajTL.currBF != null ? bfTrajTL.currBF : bfStart;
-      html += '<div class="target-metric-card" style="background:rgba(249,115,22,0.04);border-color:rgba(249,115,22,0.25);">';
-      html += '<div class="target-metric-header"><span class="target-metric-title">🔥 %BF Progress — เป้าหมายจริงของโปรแกรม</span>';
-      html += '<span class="target-metric-badge" style="background:rgba(249,115,22,0.12);color:var(--accent);">'+tgtBF+'%</span></div>';
+      html += '<details class="target-metric-card" style="background:rgba(249,115,22,0.04);border-color:rgba(249,115,22,0.25);">';
+      html += '<summary class="target-metric-header"><span class="target-metric-title">🔥 %BF Progress — เป้าหมายจริงของโปรแกรม</span>';
+      html += '<span class="target-metric-badge" style="background:rgba(249,115,22,0.12);color:var(--accent);">'+tgtBF+'%</span></summary>';
       // start → now → target row
       html += '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:10px;">';
       html += '<div style="text-align:center;padding:8px;background:var(--surface2);border-radius:10px;"><div style="font-size:11px;color:var(--text3);">🏁 ตอนเริ่ม</div><div style="font-size:18px;font-weight:700;">'+(bfStart!=null?bfStart+'%':'—')+'</div></div>';
@@ -7844,37 +7856,37 @@ function renderTargetDashboard() {
         var fzLabel = fz.status==='unrealistic' ? '❌ เร็วเกินไป' : fz.status==='aggressive' ? '⚠️ ตึง' : '✅ สมเหตุสมผล';
         html += '<div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border);font-size:11px;color:var(--text3);">แผนต้องลดไขมัน '+fz.weeklyFatLoss+' กก./สัปดาห์ (deficit ~'+fz.requiredDeficit+' kcal/วัน) — <b style="color:'+fzColor+';">'+fzLabel+'</b>'+(fz.status!=='ok'&&fz.recommendedWeeks?' · แนะนำ '+fz.recommendedWeeks+' สัปดาห์':'')+'</div>';
       }
-      html += '</div>';
+      html += '</details>';
     }
   }
 
   // ── 2. BMI Bar ──
   if (currBMI||tgtBMI) {
     var maxB = Math.max(currBMI||0, tgtBMI||0, 30);
-    html += '<div class="target-metric-card">'+
-      '<div class="target-metric-header"><span class="target-metric-title">📊 BMI — Current vs Target</span>'+
-      '<span class="target-metric-badge" style="background:rgba(34,197,94,0.15);color:var(--green)">'+target.duration+' สัปดาห์</span></div>'+
+    html += '<details class="target-metric-card">'+
+      '<summary class="target-metric-header"><span class="target-metric-title">📊 BMI — Current vs Target</span>'+
+      '<span class="target-metric-badge" style="background:rgba(34,197,94,0.15);color:var(--green)">'+target.duration+' สัปดาห์</span></summary>'+
       cvBar('',currBMI,tgtBMI,maxB+2,bmiCat(currBMI).color,bmiCat(tgtBMI).color,'')+
       '<div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:8px;">'+
       [['<18.5','น้อย','var(--blue)'],['18.5-23','สมส่วน','var(--green)'],['23-25','เกินเล็กน้อย','#eab308'],['25-30','เกิน','var(--accent)'],['30+','อ้วน','var(--red)']].map(function(z){
         return '<span style="font-size:11px;color:'+z[2]+'">● '+z[0]+' '+z[1]+'</span>';
-      }).join('<span style="color:var(--border);margin:0 2px">|</span>')+'</div></div>';
+      }).join('<span style="color:var(--border);margin:0 2px">|</span>')+'</div></details>';
   }
 
   // ── 3. Body Fat Bar ──
   if (currBF||tgtBF) {
     var maxBF = Math.max(currBF||0, tgtBF||0, 35);
-    html += '<div class="target-metric-card">'+
-      '<div class="target-metric-header"><span class="target-metric-title">🔥 % Body Fat — Current vs Target</span>'+
-      '<span class="target-metric-badge" style="background:rgba(143,168,124,0.12);color:var(--accent)">'+(gender==='male'?'ชาย':'หญิง')+'</span></div>'+
+    html += '<details class="target-metric-card">'+
+      '<summary class="target-metric-header"><span class="target-metric-title">🔥 % Body Fat — Current vs Target</span>'+
+      '<span class="target-metric-badge" style="background:rgba(143,168,124,0.12);color:var(--accent)">'+(gender==='male'?'ชาย':'หญิง')+'</span></summary>'+
       cvBar('',currBF,tgtBF,maxBF+5,bfCat(currBF,gender).color,bfCat(tgtBF,gender).color,'%')+
-      '<div style="font-size:11px;color:var(--text3);margin-top:6px;">'+(gender==='male'?'Elite <6% | Fitness 6-14% | ค่าเฉลี่ย 14-18% | ยอมรับได้ 18-25% | อ้วน >25%':'Elite <14% | Fitness 14-21% | ค่าเฉลี่ย 21-25% | ยอมรับได้ 25-32% | อ้วน >32%')+'</div></div>';
+      '<div style="font-size:11px;color:var(--text3);margin-top:6px;">'+(gender==='male'?'Elite <6% | Fitness 6-14% | ค่าเฉลี่ย 14-18% | ยอมรับได้ 18-25% | อ้วน >25%':'Elite <14% | Fitness 14-21% | ค่าเฉลี่ย 21-25% | ยอมรับได้ 25-32% | อ้วน >32%')+'</div></details>';
   }
 
   // ── 4. Lean Mass breakdown ──
   if ((currLean||tgtLean) && (currFatKg||tgtFatKg)) {
-    html += '<div class="target-metric-card">'+
-      '<div class="target-metric-header"><span class="target-metric-title">💪 Lean Mass vs ไขมัน</span></div>';
+    html += '<details class="target-metric-card">'+
+      '<summary class="target-metric-header"><span class="target-metric-title">💪 Lean Mass vs ไขมัน</span></summary>';
     if (currLean && currFatKg) {
       var cTot = currLean+currFatKg;
       html += '<div style="font-size:12px;color:var(--text2);margin-bottom:6px;">ปัจจุบัน ('+cTot.toFixed(1)+' กก.)</div>'+
@@ -7895,26 +7907,26 @@ function renderTargetDashboard() {
           '🔥 ไขมัน '+(fatDiff<0?'<span style="color:var(--green)">'+fatDiff+'</span>':'<span style="color:var(--accent)">+'+fatDiff+'</span>')+' กก.</div>';
       }
     }
-    html += '<div style="display:flex;gap:12px;margin-top:8px;font-size:11px;"><span><span style="color:var(--blue)">■</span> Lean Mass</span><span><span style="color:var(--accent)">■</span> ไขมัน</span><span><span style="color:var(--green)">■</span> Lean (เป้า)</span></div></div>';
+    html += '<div style="display:flex;gap:12px;margin-top:8px;font-size:11px;"><span><span style="color:var(--blue)">■</span> Lean Mass</span><span><span style="color:var(--accent)">■</span> ไขมัน</span><span><span style="color:var(--green)">■</span> Lean (เป้า)</span></div></details>';
   }
 
   // ── 5. Skeletal Muscle ──
   if (currMuscle||tgtMuscle) {
     var maxM = Math.max(currMuscle||0, tgtMuscle||0, 50);
-    html += '<div class="target-metric-card">'+
-      '<div class="target-metric-header"><span class="target-metric-title">💪 Skeletal Muscle % — Current vs Target</span>'+
-      '<span class="target-metric-badge" style="background:rgba(59,130,246,0.12);color:var(--blue)">'+(gender==='male'?'ชาย':'หญิง')+'</span></div>'+
+    html += '<details class="target-metric-card">'+
+      '<summary class="target-metric-header"><span class="target-metric-title">💪 Skeletal Muscle % — Current vs Target</span>'+
+      '<span class="target-metric-badge" style="background:rgba(59,130,246,0.12);color:var(--blue)">'+(gender==='male'?'ชาย':'หญิง')+'</span></summary>'+
       cvBar('',currMuscle,tgtMuscle,maxM+5,muscleCat(currMuscle,gender).color,muscleCat(tgtMuscle,gender).color,'%')+
-      '<div style="font-size:11px;color:var(--text3);margin-top:6px;">'+(gender==='male'?'ชาย: ต่ำ <32% | ค่าเฉลี่ย 32-38% | Fitness 38-44% | Elite 44%+':'หญิง: ต่ำ <26% | ค่าเฉลี่ย 26-32% | Fitness 32-38% | Elite 38%+')+'</div></div>';
+      '<div style="font-size:11px;color:var(--text3);margin-top:6px;">'+(gender==='male'?'ชาย: ต่ำ <32% | ค่าเฉลี่ย 32-38% | Fitness 38-44% | Elite 44%+':'หญิง: ต่ำ <26% | ค่าเฉลี่ย 26-32% | Fitness 32-38% | Elite 38%+')+'</div></details>';
   }
   // ── 5b. Visceral Fat ──
   if (currVisceral||tgtVisceral) {
     var maxV = Math.max(currVisceral||0, tgtVisceral||0, 15);
-    html += '<div class="target-metric-card">'+
-      '<div class="target-metric-header"><span class="target-metric-title">🫀 Visceral Fat Level — Current vs Target</span>'+
-      '<span class="target-metric-badge" style="background:rgba(239,68,68,0.12);color:var(--red)">เป้า ≤ 9</span></div>'+
+    html += '<details class="target-metric-card">'+
+      '<summary class="target-metric-header"><span class="target-metric-title">🫀 Visceral Fat Level — Current vs Target</span>'+
+      '<span class="target-metric-badge" style="background:rgba(239,68,68,0.12);color:var(--red)">เป้า ≤ 9</span></summary>'+
       cvBar('',currVisceral,tgtVisceral,maxV+3,visceralCat(currVisceral).color,visceralCat(tgtVisceral).color,'')+
-      '<div style="font-size:11px;color:var(--text3);margin-top:6px;">ปกติ 1-9 | เสี่ยงปานกลาง 10-14 | สูง 15+ (ความเสี่ยงโรคเมตาบอลิก/เบาหวาน/หัวใจ)</div></div>';
+      '<div style="font-size:11px;color:var(--text3);margin-top:6px;">ปกติ 1-9 | เสี่ยงปานกลาง 10-14 | สูง 15+ (ความเสี่ยงโรคเมตาบอลิก/เบาหวาน/หัวใจ)</div></details>';
   }
 
   // ── 6. Summary call-to-action ──
@@ -8158,58 +8170,83 @@ function generatePlan() {
   });
 }
 
+var _planCurrent = null;
+var _planActiveIdx = 0;
 function renderPlan(plan) {
-  var html = '<div class="card" style="margin-bottom:14px;"><div style="font-size:13px;color:var(--text2);line-height:1.7;">'+plan.summary+'</div></div>';
-  plan.days.forEach(function(day){
-    var isRest = !day.exercises || day.exercises.length===0 || (day.theme&&day.theme.toLowerCase().includes('พัก'));
-    html += '<div class="plan-day">'+
-      '<div class="plan-day-hdr"><span class="plan-day-badge">'+day.day+'</span>'+
-      '<span style="font-size:13px;font-weight:600;">'+day.theme+'</span></div>';
-    if (isRest) {
-      html += '<div style="font-size:13px;color:var(--text3);padding:6px 0;">😴 วันพักฟื้น — ร่างกายต้องการเวลาซ่อมแซม</div>';
-    } else {
-      // Table header
-      html += '<div style="overflow-x:auto;">'+
-        '<table style="width:100%;border-collapse:collapse;font-size:12px;">'+
-        '<thead><tr style="border-bottom:1px solid var(--border);">'+
-        '<th style="text-align:left;padding:5px 6px;color:var(--text3);font-weight:600;">ท่าออกกำลังกาย</th>'+
-        '<th style="text-align:center;padding:5px 6px;color:var(--text3);font-weight:600;">รอบ</th>'+
-        '<th style="text-align:center;padding:5px 6px;color:var(--text3);font-weight:600;">ครั้ง/เวลา</th>'+
-        '<th style="text-align:center;padding:5px 6px;color:var(--text3);font-weight:600;">ระดับ</th>'+
-        '<th style="text-align:right;padding:5px 6px;color:var(--text3);font-weight:600;">kcal</th>'+
-        '</tr></thead><tbody>';
-      day.exercises.forEach(function(ex, i){
-        var isCardio = ex.type === 'cardio' || ex.duration_min;
-        var rowBg = i%2===0 ? '' : 'background:rgba(255,255,255,0.02);';
-        var setsCell = isCardio ? '<td style="text-align:center;padding:5px 6px;color:var(--text3);">—</td>' :
-          '<td style="text-align:center;padding:5px 6px;font-weight:600;color:var(--blue);">'+(ex.sets||'—')+'</td>';
-        var repsCell = isCardio ?
-          '<td style="text-align:center;padding:5px 6px;font-weight:600;color:var(--accent);">'+ex.duration_min+' นาที</td>' :
-          '<td style="text-align:center;padding:5px 6px;font-weight:600;color:var(--green);">'+(ex.reps||'—')+'</td>';
-        var typeIcon = isCardio ? '🏃' : '🏋️';
-        html += '<tr style="'+rowBg+'border-bottom:1px solid rgba(45,55,72,0.5);">'+
-          '<td style="padding:6px 6px;font-weight:500;">'+typeIcon+' '+ex.name+
-          (ex.note ? '<div style="font-size:10px;font-weight:400;color:var(--accent);margin-top:2px;">💡 '+ex.note+'</div>' : '')+'</td>'+
-          setsCell+
-          repsCell+
-          '<td style="text-align:center;padding:5px 6px;color:var(--text3);font-size:11px;">'+ex.intensity+'</td>'+
-          '<td style="text-align:right;padding:5px 6px;color:var(--accent);font-weight:600;">~'+(ex.cal||0)+'</td>'+
-          '</tr>';
-      });
-      // Total kcal row
-      var totalCal = day.exercises.reduce(function(a,e){return a+(e.cal||0);},0);
-      html += '<tr style="border-top:1px solid var(--border);">'+
-        '<td colspan="4" style="padding:5px 6px;font-size:11px;color:var(--text3);">รวม</td>'+
-        '<td style="text-align:right;padding:5px 6px;color:var(--accent);font-weight:700;">~'+totalCal+' kcal</td>'+
-        '</tr>';
-      html += '</tbody></table></div>';
-    }
-    html += '</div>';
-  });
-  // Sanitize once here — day/exercise names, notes, and the summary line all
-  // come straight from the Gemini response, same treatment as renderDailySummary().
-  document.getElementById('planResult').innerHTML = sanitizeHTML(html);
+  _planCurrent = plan;
+  // เดิมแสดงทั้ง 7 วันรวดเดียว (ยาวมาก ไถลำบาก) — ตอนนี้ใช้ filter ให้ดูทีละวันแทน
+  var defaultIdx = plan.days.findIndex(function(d){ return d.day === PLAN_DAY_NAMES[appTodayWeekday()]; });
+  _planActiveIdx = defaultIdx >= 0 ? defaultIdx : 0;
+  var summaryHtml = '<div class="card" style="margin-bottom:14px;"><div style="font-size:13px;color:var(--text2);line-height:1.7;">'+plan.summary+'</div></div>';
+  // ปุ่ม filter ใช้ index (ไม่ใช่ string จาก AI) ในการอ้างอิง + escape ข้อความที่แสดง
+  // กันปัญหา sanitizeHTML() ตัด onclick ทิ้ง (เป็น denylist สำหรับ on* attribute ทุกตัว)
+  var filterHtml = '<div class="ex-filter-row" id="plan-day-filter" style="margin-bottom:12px;">'+
+    plan.days.map(function(day, i){
+      var isRest = !day.exercises || day.exercises.length===0 || (day.theme&&day.theme.toLowerCase().includes('พัก'));
+      var shortLabel = escapeHTML((day.day||'').replace(/^วัน/,''));
+      return '<button class="ex-pill'+(i===_planActiveIdx?' active':'')+'" onclick="selectPlanDay('+i+')">'+shortLabel+(isRest?' 😴':'')+'</button>';
+    }).join('')+
+    '</div>';
+  // Sanitize เฉพาะส่วนที่มีข้อความอิสระจาก Gemini (summary) — filterHtml คุมเนื้อหาเองแล้วด้านบน
+  document.getElementById('planResult').innerHTML = sanitizeHTML(summaryHtml) + filterHtml + '<div id="plan-day-body"></div>';
+  renderPlanDayBody();
   renderTodayPlanCard();
+}
+function selectPlanDay(idx) {
+  _planActiveIdx = idx;
+  document.querySelectorAll('#plan-day-filter .ex-pill').forEach(function(b, i){
+    b.classList.toggle('active', i === idx);
+  });
+  renderPlanDayBody();
+}
+function renderPlanDayBody() {
+  var bodyEl = document.getElementById('plan-day-body');
+  if (!bodyEl || !_planCurrent) return;
+  var day = _planCurrent.days[_planActiveIdx] || _planCurrent.days[0];
+  if (!day) { bodyEl.innerHTML = ''; return; }
+  var isRest = !day.exercises || day.exercises.length===0 || (day.theme&&day.theme.toLowerCase().includes('พัก'));
+  var html = '<div class="plan-day">'+
+    '<div class="plan-day-hdr"><span class="plan-day-badge">'+day.day+'</span>'+
+    '<span style="font-size:13px;font-weight:600;">'+day.theme+'</span></div>';
+  if (isRest) {
+    html += '<div style="font-size:13px;color:var(--text3);padding:6px 0;">😴 วันพักฟื้น — ร่างกายต้องการเวลาซ่อมแซม</div>';
+  } else {
+    html += '<div style="overflow-x:auto;">'+
+      '<table style="width:100%;border-collapse:collapse;font-size:12px;">'+
+      '<thead><tr style="border-bottom:1px solid var(--border);">'+
+      '<th style="text-align:left;padding:5px 6px;color:var(--text3);font-weight:600;">ท่าออกกำลังกาย</th>'+
+      '<th style="text-align:center;padding:5px 6px;color:var(--text3);font-weight:600;">รอบ</th>'+
+      '<th style="text-align:center;padding:5px 6px;color:var(--text3);font-weight:600;">ครั้ง/เวลา</th>'+
+      '<th style="text-align:center;padding:5px 6px;color:var(--text3);font-weight:600;">ระดับ</th>'+
+      '<th style="text-align:right;padding:5px 6px;color:var(--text3);font-weight:600;">kcal</th>'+
+      '</tr></thead><tbody>';
+    day.exercises.forEach(function(ex, i){
+      var isCardio = ex.type === 'cardio' || ex.duration_min;
+      var rowBg = i%2===0 ? '' : 'background:rgba(255,255,255,0.02);';
+      var setsCell = isCardio ? '<td style="text-align:center;padding:5px 6px;color:var(--text3);">—</td>' :
+        '<td style="text-align:center;padding:5px 6px;font-weight:600;color:var(--blue);">'+(ex.sets||'—')+'</td>';
+      var repsCell = isCardio ?
+        '<td style="text-align:center;padding:5px 6px;font-weight:600;color:var(--accent);">'+ex.duration_min+' นาที</td>' :
+        '<td style="text-align:center;padding:5px 6px;font-weight:600;color:var(--green);">'+(ex.reps||'—')+'</td>';
+      var typeIcon = isCardio ? '🏃' : '🏋️';
+      html += '<tr style="'+rowBg+'border-bottom:1px solid rgba(45,55,72,0.5);">'+
+        '<td style="padding:6px 6px;font-weight:500;">'+typeIcon+' '+ex.name+
+        (ex.note ? '<div style="font-size:10px;font-weight:400;color:var(--accent);margin-top:2px;">💡 '+ex.note+'</div>' : '')+'</td>'+
+        setsCell+
+        repsCell+
+        '<td style="text-align:center;padding:5px 6px;color:var(--text3);font-size:11px;">'+ex.intensity+'</td>'+
+        '<td style="text-align:right;padding:5px 6px;color:var(--accent);font-weight:600;">~'+(ex.cal||0)+'</td>'+
+        '</tr>';
+    });
+    var totalCal = day.exercises.reduce(function(a,e){return a+(e.cal||0);},0);
+    html += '<tr style="border-top:1px solid var(--border);">'+
+      '<td colspan="4" style="padding:5px 6px;font-size:11px;color:var(--text3);">รวม</td>'+
+      '<td style="text-align:right;padding:5px 6px;color:var(--accent);font-weight:700;">~'+totalCal+' kcal</td>'+
+      '</tr>';
+    html += '</tbody></table></div>';
+  }
+  html += '</div>';
+  bodyEl.innerHTML = sanitizeHTML(html);
 }
 
 // Map a Thai weekday index (0=Sun) to the plan's day labels
