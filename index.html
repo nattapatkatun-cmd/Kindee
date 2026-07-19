@@ -56,8 +56,8 @@
   --red:#a1503f;--yellow:#8f7736;
 }
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
-html{scroll-behavior:smooth;}
-body{font-family:'Sarabun',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;-webkit-font-smoothing:antialiased;}
+html{scroll-behavior:smooth;overflow-x:hidden;}
+body{font-family:'Sarabun',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;-webkit-font-smoothing:antialiased;overflow-x:hidden;width:100%;}
 .app{max-width:480px;margin:0 auto;padding:0 0 calc(var(--nav-h) + 16px);}
 
 /* ── Foldable / tablet responsive (≥600px = unfolded inner screen) ── */
@@ -471,9 +471,13 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
 .wt-filter-btn.active{background:var(--blue-dim);border-color:var(--blue);color:var(--blue);font-weight:700;}
 /* ── FITNESS TARGET STYLES ── */
 .target-metric-card{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:15px;margin-bottom:10px;}
-.target-metric-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;}
+.target-metric-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;position:relative;padding-right:20px;cursor:pointer;user-select:none;}
 .target-metric-title{font-size:13px;font-weight:700;}
 .target-metric-badge{font-size:11px;padding:2px 10px;border-radius:20px;font-weight:700;}
+.tmc-chevron{position:absolute;right:0;top:50%;transform:translateY(-50%);font-size:11px;color:var(--text3);transition:transform .2s;}
+.target-metric-card.collapsed .target-metric-header{margin-bottom:0;}
+.target-metric-card.collapsed .tmc-chevron{transform:translateY(-50%) rotate(-90deg);}
+.target-metric-card.collapsed .tmc-body{display:none;}
 .cv-row{display:flex;align-items:center;gap:8px;margin-bottom:8px;}
 .cv-label{font-size:11px;color:var(--text2);width:50px;flex-shrink:0;}
 .cv-bar-track{flex:1;height:7px;background:var(--surface3);border-radius:4px;overflow:hidden;}
@@ -889,8 +893,10 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
       <button class="tab-pill active" id="ftab-today" onclick="showFitnessTab('today')">บันทึก</button>
       <button class="tab-pill" id="ftab-chart" onclick="showFitnessTab('chart')">กราฟ</button>
       <button class="tab-pill" id="ftab-strength" onclick="showFitnessTab('strength')">Strength</button>
-      <button class="tab-pill" id="ftab-targetplan" onclick="showFitnessTab('target')">เป้าหมาย+แผน</button>
+      <button class="tab-pill" id="ftab-target" onclick="showFitnessTab('target')">เป้าหมาย</button>
+      <button class="tab-pill" id="ftab-plan" onclick="showFitnessTab('plan')">แผน</button>
       <button class="tab-pill" id="ftab-sleep" onclick="showFitnessTab('sleep')">Sleep</button>
+      <button class="tab-pill" id="ftab-insights" onclick="showFitnessTab('insights')">Insights</button>
     </div>
 
     <!-- TAB: TODAY -->
@@ -1090,30 +1096,6 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
         <div style="position:relative;height:120px;width:100%;"><canvas id="ftChartNet"></canvas></div>
       </div>
       </div><!-- end ft-chart-section -->
-    </div>
-
-    <!-- TAB: STRENGTH -->
-    <div id="ftab-content-strength" style="display:none;">
-      <div class="card">
-        <div class="card-title">Strength Progress</div>
-        <div style="font-size:11px;color:var(--text3);margin-bottom:10px;">e1RM = weight × (1 + reps/30) — Epley formula</div>
-        <select class="str-exercise-select" id="str-exercise-select" onchange="renderStrengthChart()">
-          <option value="">— เลือกท่าเพื่อดู trend —</option>
-        </select>
-        <div style="position:relative;height:160px;width:100%;"><canvas id="strChart"></canvas></div>
-        <div id="str-chart-empty" style="display:none;text-align:center;color:var(--text3);font-size:13px;padding:24px 0;">ยังไม่มีข้อมูลสำหรับท่านี้</div>
-      </div>
-      <div class="card" id="str-pr-card" style="display:none;">
-        <div class="card-title">🏆 Personal Records</div>
-        <div id="str-pr-list"></div>
-      </div>
-    </div>
-
-    <!-- TAB: TARGET -->
-    <div id="ftab-content-target" style="display:none;">
-      <div id="ft-target-dashboard">
-        <div class="empty-state"><div class="empty-icon">🎯</div><div class="empty-text">ยังไม่มี Fitness Target</div><div class="empty-sub">ไปที่ ⚙️ ตั้งค่า → Fitness Target เพื่อกรอกข้อมูล</div></div>
-      </div>
       <!-- Per-category trend: kept OUTSIDE ft-target-dashboard so the chart
            canvas survives that card's innerHTML re-renders -->
       <div class="card" id="target-trend-card" style="margin-top:14px;">
@@ -1132,6 +1114,37 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
           <canvas id="targetTrendChart"></canvas>
         </div>
         <div id="target-trend-note" style="font-size:11px;color:var(--text3);margin-top:6px;text-align:center;">🟢 เส้นประ = เป้าหมายจาก Fitness Target</div>
+      </div>
+    </div>
+
+    <!-- TAB: STRENGTH -->
+    <div id="ftab-content-strength" style="display:none;">
+      <div class="card">
+        <div class="card-title">Strength Progress</div>
+        <div style="font-size:11px;color:var(--text3);margin-bottom:10px;">e1RM = weight × (1 + reps/30) — Epley formula</div>
+        <select class="str-exercise-select" id="str-exercise-select" onchange="renderStrengthChart()">
+          <option value="">— เลือกท่าเพื่อดู trend —</option>
+        </select>
+        <div style="position:relative;height:160px;width:100%;"><canvas id="strChart"></canvas></div>
+        <div id="str-chart-empty" style="display:none;text-align:center;color:var(--text3);font-size:13px;padding:24px 0;">ยังไม่มีข้อมูลสำหรับท่านี้</div>
+      </div>
+      <div class="card" id="str-pr-card" style="display:none;">
+        <div class="card-title">🏆 Personal Records</div>
+        <div class="ex-filter-row" id="pr-filter-row" style="margin-bottom:8px;">
+          <button class="ex-pill active" onclick="filterPRGroup('all',this)">ทั้งหมด</button>
+          <button class="ex-pill" onclick="filterPRGroup('push',this)">🔴 Push</button>
+          <button class="ex-pill" onclick="filterPRGroup('pull',this)">🔵 Pull</button>
+          <button class="ex-pill" onclick="filterPRGroup('legs',this)">🟢 Legs</button>
+          <button class="ex-pill" onclick="filterPRGroup('core',this)">🟡 Core</button>
+        </div>
+        <div id="str-pr-list"></div>
+      </div>
+    </div>
+
+    <!-- TAB: TARGET -->
+    <div id="ftab-content-target" style="display:none;">
+      <div id="ft-target-dashboard">
+        <div class="empty-state"><div class="empty-icon">🎯</div><div class="empty-text">ยังไม่มี Fitness Target</div><div class="empty-sub">ไปที่ ⚙️ ตั้งค่า → Fitness Target เพื่อกรอกข้อมูล</div></div>
       </div>
     </div>
 
@@ -1156,6 +1169,19 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
         <div id="progression-list"></div>
       </div>
       <div class="loading" id="planLoading"><div class="spinner"></div><div style="font-size:14px;color:var(--text2);">AI กำลังวิเคราะห์...</div></div>
+      <div class="input-group" id="plan-day-filter-row" style="margin-bottom:10px;display:none;">
+        <label class="input-label">กรองดูเฉพาะวัน</label>
+        <select class="input-field" id="plan-day-filter" onchange="renderPlanFiltered()">
+          <option value="all">ทั้งสัปดาห์ (7 วัน)</option>
+          <option value="วันอาทิตย์">วันอาทิตย์</option>
+          <option value="วันจันทร์">วันจันทร์</option>
+          <option value="วันอังคาร">วันอังคาร</option>
+          <option value="วันพุธ">วันพุธ</option>
+          <option value="วันพฤหัสบดี">วันพฤหัสบดี</option>
+          <option value="วันศุกร์">วันศุกร์</option>
+          <option value="วันเสาร์">วันเสาร์</option>
+        </select>
+      </div>
       <div id="planResult"></div>
     </div>
 
@@ -5564,7 +5590,7 @@ function migrateThaiExercisesToEnglish() {
   var names = ids.map(function(id){ var ex = getExById(moves[id]); return ex ? ex.name : moves[id]; });
   showToast('🔄 รวมประวัติท่าชื่อไทย '+ids.length+' ท่าเข้ากับท่าอังกฤษ: '+names.join(', '), 'info');
 }
-var ST = {curExercise:null, sets:[], sessionExercises:[], curFilter:'all'};
+var ST = {curExercise:null, sets:[], sessionExercises:[], curFilter:'all', prFilter:'all'};
 
 function calcE1RM(weight, reps, rir) {
   if (!weight || !reps || reps <= 0) return 0;
@@ -6288,6 +6314,12 @@ function renderStrengthChart() {
       }}
   });
 }
+function filterPRGroup(group, btn) {
+  ST.prFilter = group;
+  document.querySelectorAll('#pr-filter-row .ex-pill').forEach(function(p){ p.classList.remove('active'); });
+  if (btn) btn.classList.add('active');
+  renderPRCard();
+}
 function renderPRCard() {
   var log = getStrengthLog();
   var exIds = [];
@@ -6295,11 +6327,15 @@ function renderPRCard() {
   var card = document.getElementById('str-pr-card');
   if (!exIds.length||!card) { if(card) card.style.display='none'; return; }
   card.style.display = 'block';
+  var filter = ST.prFilter || 'all';
   var html = '';
+  var shown = 0;
   exIds.forEach(function(id) {
+    var ex = getExById(id);
+    if (filter !== 'all' && (!ex || ex.group !== filter)) return;
+    shown++;
     var entries = log.filter(function(e){ return e.exerciseId===id; });
     var best = entries.reduce(function(b,e){ return e.e1RM>b.e1RM?e:b; }, entries[0]);
-    var ex = getExById(id);
     var c = ex ? (GROUP_COLOR[ex.group]||'var(--accent)') : 'var(--accent)';
     html += '<div style="display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-bottom:1px solid var(--border);">' +
       '<div style="display:flex;align-items:center;gap:8px;"><div style="font-size:18px;">'+(ex?ex.emoji:'💪')+'</div>' +
@@ -6307,6 +6343,7 @@ function renderPRCard() {
       '<div style="font-size:11px;color:var(--text3);">'+(best.weight>0?best.weight+'kg':'BW')+' × '+best.reps+' reps · '+best.date+'</div></div></div>' +
       '<div style="background:'+c+'22;border:1px solid '+c+';border-radius:8px;padding:3px 10px;font-size:12px;font-weight:800;color:'+c+';">'+(best.e1RM>0?best.e1RM+'kg':'×'+best.reps)+'</div></div>';
   });
+  if (!shown) html = '<div style="text-align:center;padding:16px 0;color:var(--text3);font-size:12px;">ยังไม่มี PR ในหมวดนี้</div>';
   document.getElementById('str-pr-list').innerHTML = html;
 }
 
@@ -6848,22 +6885,20 @@ function renderWorkoutHistory() {
 // Fitness sub-tabs
 var ftCharts = {};
 function showFitnessTab(tab) {
-  // "target" and "plan" share one combined sub-tab pill (🎯 เป้าหมาย+แผน) — both content
-  // blocks show together, so either name activates the same merged group.
-  if (tab === 'plan') tab = 'target';
-  var visible = (tab === 'target') ? ['target','plan'] : [tab];
-  ['today','chart','strength','target','plan','sleep','insights'].forEach(function(t){
+  var allTabs = ['today','chart','strength','target','plan','sleep','insights'];
+  allTabs.forEach(function(t){
     var contentEl = document.getElementById('ftab-content-'+t);
-    if (contentEl) contentEl.style.display = visible.indexOf(t)>=0 ? 'block' : 'none';
+    if (contentEl) contentEl.style.display = (t===tab) ? 'block' : 'none';
   });
-  ['ftab-today','ftab-chart','ftab-strength','ftab-targetplan','ftab-sleep'].forEach(function(id){
+  ['ftab-today','ftab-chart','ftab-strength','ftab-target','ftab-plan','ftab-sleep','ftab-insights'].forEach(function(id){
     var btnEl = document.getElementById(id);
-    if (btnEl) btnEl.classList.toggle('active', id === (tab==='target' ? 'ftab-targetplan' : 'ftab-'+tab));
+    if (btnEl) btnEl.classList.toggle('active', id === 'ftab-'+tab);
   });
   if (tab === 'today') { if (typeof renderTodayPlanCard === 'function') renderTodayPlanCard(); }
-  if (tab === 'chart') renderFitnessCharts();
+  if (tab === 'chart') { renderFitnessCharts(); renderTargetTrendChart(); }
   if (tab === 'strength') updateStrengthSelectOptions();
-  if (tab === 'target') { loadFitnessTarget(); renderTargetDashboard(); renderTargetTrendChart(); loadSavedPlan(); renderProgressionOverview(); }
+  if (tab === 'target') { loadFitnessTarget(); renderTargetDashboard(); }
+  if (tab === 'plan') { loadFitnessTarget(); loadSavedPlan(); renderProgressionOverview(); }
   if (tab === 'sleep') { loadSleepUI(); renderSleepTrendChart(); }
   if (tab === 'insights') {
     // WT.log may not be populated yet if the user never opened the Weight page
@@ -7957,6 +7992,27 @@ function renderTargetDashboard() {
     '</div></div>';
 
   el.innerHTML = html;
+  makeTargetCardsCollapsible(el);
+}
+
+// Turn every .target-metric-card into a tap-to-expand/collapse section: everything
+// after the header gets moved into a .tmc-body wrapper that CSS hides when the
+// card has the .collapsed class. Runs generically over whatever renderTargetDashboard
+// just built, so individual card sections above don't need per-card wiring.
+function makeTargetCardsCollapsible(container) {
+  container.querySelectorAll('.target-metric-card').forEach(function(card){
+    var header = card.querySelector('.target-metric-header');
+    if (!header || card.querySelector('.tmc-body')) return;
+    var chevron = document.createElement('span');
+    chevron.className = 'tmc-chevron';
+    chevron.textContent = '▾';
+    header.appendChild(chevron);
+    var body = document.createElement('div');
+    body.className = 'tmc-body';
+    while (header.nextSibling) body.appendChild(header.nextSibling);
+    card.appendChild(body);
+    header.addEventListener('click', function(){ card.classList.toggle('collapsed'); });
+  });
 }
 
 // AI Weekly Plan
@@ -8188,9 +8244,21 @@ function generatePlan() {
   });
 }
 
+var _planFullData = null;
 function renderPlan(plan) {
+  _planFullData = plan;
+  var filterRow = document.getElementById('plan-day-filter-row');
+  if (filterRow) filterRow.style.display = 'block';
+  renderPlanFiltered();
+}
+function renderPlanFiltered() {
+  var plan = _planFullData;
+  if (!plan) return;
+  var filterEl = document.getElementById('plan-day-filter');
+  var filterVal = filterEl ? filterEl.value : 'all';
+  var daysToShow = (filterVal === 'all') ? plan.days : plan.days.filter(function(d){ return d.day === filterVal; });
   var html = '<div class="card" style="margin-bottom:14px;"><div style="font-size:13px;color:var(--text2);line-height:1.7;">'+plan.summary+'</div></div>';
-  plan.days.forEach(function(day){
+  daysToShow.forEach(function(day){
     var isRest = !day.exercises || day.exercises.length===0 || (day.theme&&day.theme.toLowerCase().includes('พัก'));
     html += '<div class="plan-day">'+
       '<div class="plan-day-hdr"><span class="plan-day-badge">'+day.day+'</span>'+
