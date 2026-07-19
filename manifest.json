@@ -6,8 +6,8 @@
   "scope": "/Kindee/",
   "display": "standalone",
   "orientation": "portrait",
-  "background_color": "#0b0d14",
-  "theme_color": "#f97316",
+  "background_color": "#181815",
+  "theme_color": "#8fa87c",
   "lang": "th",
   "categories": ["health", "fitness"],
   "icons": [

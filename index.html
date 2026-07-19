@@ -6,7 +6,7 @@
 <title>กินดี - ติดตามแคลอรี่</title>
 <!-- PWA -->
 <link rel="manifest" href="manifest.json">
-<meta name="theme-color" content="#14b8a6" id="meta-theme-color">
+<meta name="theme-color" content="#181815" id="meta-theme-color">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -23,33 +23,37 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <style>
 :root{
-  /* accent หลัก = teal ; fire = ส้ม (สงวนไว้สำหรับแคลอรี่/พลังงาน) */
-  --accent:#14b8a6;--accent-dim:rgba(20,184,166,0.16);--accent-glow:rgba(20,184,166,0.30);
-  --fire:#f97316;--fire-dim:rgba(249,115,22,0.14);
-  --green:#22c55e;--green-dim:rgba(34,197,94,0.14);
-  --blue:#3b82f6;--blue-dim:rgba(59,130,246,0.14);
-  --purple:#a855f7;--purple-dim:rgba(168,85,247,0.14);
-  --red:#ef4444;--yellow:#eab308;
+  /* Calm Journal — accent = เขียวมอส ; fire = เอิร์ธโทนทอง (แคลอรี่/พลังงาน) ; สีทั้งชุดลดความสดลงให้ chroma/lightness ใกล้เคียงกัน */
+  --accent:#8fa87c;--accent-dim:rgba(143,168,124,0.16);--accent-glow:rgba(143,168,124,0.20);
+  --fire:#c7a873;--fire-dim:rgba(199,168,115,0.14);
+  --green:#9fb98a;--green-dim:rgba(159,185,138,0.14);
+  --blue:#8fa7bd;--blue-dim:rgba(143,167,189,0.14);
+  --purple:#ad93a8;--purple-dim:rgba(173,147,168,0.14);
+  --red:#c98072;--yellow:#c9b273;
   --nav-h:68px;
-  --radius-card:22px;--radius-btn:14px;--radius-input:12px;--radius-sm:10px;
+  --radius-card:16px;--radius-btn:12px;--radius-input:10px;--radius-sm:8px;
 }
-/* ===== DARK (default) ===== */
+/* ===== DARK — หมึกเข้ม (default) ===== */
 :root,[data-theme="dark"]{
-  --bg:#0b0d14;--surface:#12151e;--surface2:#181c28;--surface3:#202535;--ring-track:rgba(255,255,255,.13);
-  --border:rgba(255,255,255,0.07);--border-md:rgba(255,255,255,0.11);
-  --text:#edf0f8;--text2:#6e7a90;--text3:#5d6a80;
-  --card-shadow:0 1px 3px rgba(0,0,0,0.4);
-  --nav-bg:rgba(11,13,20,0.97);--sticky-bg:rgba(11,13,20,0.92);
+  --bg:#181815;--surface:#1f1f1b;--surface2:#26261f;--surface3:#2f2f27;--ring-track:rgba(255,255,250,.13);
+  --border:rgba(255,255,250,0.08);--border-md:rgba(255,255,250,0.13);
+  --text:#eeece2;--text2:#9a9a8c;--text3:#75756a;
+  --card-shadow:none;
+  --nav-bg:rgba(24,24,21,0.97);--sticky-bg:rgba(24,24,21,0.92);
 }
-/* ===== LIGHT เย็น ===== */
+/* ===== LIGHT — กระดาษ off-white ===== */
 [data-theme="light"]{
-  --bg:#f4f6fa;--surface:#ffffff;--surface2:#eef1f6;--surface3:#e3e8f0;--ring-track:rgba(15,23,42,.13);
-  --border:rgba(15,23,42,0.08);--border-md:rgba(15,23,42,0.13);
-  --text:#1a2233;--text2:#5a6678;--text3:#8a96a8;
-  --card-shadow:0 1px 3px rgba(15,23,42,0.06),0 1px 2px rgba(15,23,42,0.04);
-  --nav-bg:rgba(255,255,255,0.97);--sticky-bg:rgba(244,246,250,0.92);
-  --accent:#0d9488;--accent-dim:rgba(13,148,136,0.12);
-  --fire:#ea6a0c;--fire-dim:rgba(234,106,12,0.12);
+  --bg:#f6f4ee;--surface:#fffdf8;--surface2:#efece1;--surface3:#e5e1d2;--ring-track:rgba(30,28,20,.13);
+  --border:rgba(30,28,20,0.10);--border-md:rgba(30,28,20,0.16);
+  --text:#22221c;--text2:#5c5c50;--text3:#8c8c7c;
+  --card-shadow:none;
+  --nav-bg:rgba(255,253,248,0.97);--sticky-bg:rgba(246,244,238,0.92);
+  --accent:#55704a;--accent-dim:rgba(85,112,74,0.12);--accent-glow:rgba(85,112,74,0.16);
+  --fire:#96793f;--fire-dim:rgba(150,121,63,0.12);
+  --green:#6c8354;--green-dim:rgba(108,131,84,0.14);
+  --blue:#5b7590;--blue-dim:rgba(91,117,144,0.14);
+  --purple:#7c5f78;--purple-dim:rgba(124,95,120,0.14);
+  --red:#a1503f;--yellow:#8f7736;
 }
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
 html{scroll-behavior:smooth;}
@@ -101,26 +105,26 @@ body{font-family:'Sarabun',sans-serif;background:var(--bg);color:var(--text);min
 /* ── Header ── */
 .header{padding:16px 18px 14px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--border);}
 .logo{display:flex;align-items:center;gap:11px;}
-.logo-icon{width:38px;height:38px;border-radius:12px;background:linear-gradient(135deg,var(--accent),#0f766e);display:flex;align-items:center;justify-content:center;font-size:19px;box-shadow:0 4px 14px var(--accent-glow);}
+.logo-icon{width:38px;height:38px;border-radius:12px;background:var(--accent);display:flex;align-items:center;justify-content:center;font-size:19px;}
 .logo-text{font-size:19px;font-weight:800;letter-spacing:-0.3px;}
 .logo-sub{font-size:11px;color:var(--text3);margin-top:1px;font-weight:500;}
 .date-badge{background:var(--surface2);border:1px solid var(--border-md);border-radius:20px;padding:5px 12px;font-size:11px;color:var(--text2);font-weight:500;}
 
 /* ── AI Chat (ask your data) ── */
-.chat-fab{position:fixed;right:16px;bottom:calc(var(--nav-h) + 16px);width:54px;height:54px;border-radius:50%;background:linear-gradient(135deg,var(--purple),var(--blue));border:none;color:#fff;font-size:24px;display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:300;box-shadow:0 6px 20px rgba(99,102,241,0.45);transition:transform .2s,opacity .2s;}
-.chat-fab:active{transform:scale(0.92);}
-@media(min-width:600px){.chat-fab{right:calc(50% - 430px + 16px);}}
+.primary-fab{position:fixed;right:16px;bottom:calc(var(--nav-h) + 16px);width:54px;height:54px;border-radius:50%;background:var(--accent);border:none;color:#fff;font-size:26px;display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:300;transition:transform .2s,opacity .2s;}
+.primary-fab:active{transform:scale(0.92);}
+@media(min-width:600px){.primary-fab{right:calc(50% - 430px + 16px);}}
 .chat-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:400;backdrop-filter:blur(2px);-webkit-backdrop-filter:blur(2px);}
 .chat-overlay.open{display:block;}
 .chat-panel{position:fixed;left:50%;transform:translateX(-50%) translateY(100%);bottom:0;width:100%;max-width:480px;height:80vh;max-height:80vh;background:var(--bg);border-top-left-radius:24px;border-top-right-radius:24px;border-top:1px solid var(--border-md);z-index:401;display:flex;flex-direction:column;transition:transform .3s cubic-bezier(.4,0,.2,1);}
 .chat-overlay.open .chat-panel{transform:translateX(-50%) translateY(0);}
 .chat-head{display:flex;align-items:center;justify-content:space-between;padding:16px 18px 12px;border-bottom:1px solid var(--border);flex-shrink:0;}
 .chat-head-title{display:flex;align-items:center;gap:9px;}
-.chat-head-icon{width:30px;height:30px;border-radius:9px;background:linear-gradient(135deg,var(--purple),var(--blue));display:flex;align-items:center;justify-content:center;font-size:15px;}
+.chat-head-icon{width:30px;height:30px;border-radius:9px;background:var(--purple);display:flex;align-items:center;justify-content:center;font-size:15px;}
 .chat-close{background:var(--surface3);border:1px solid var(--border-md);border-radius:50%;width:30px;height:30px;color:var(--text2);font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center;}
 .chat-body{flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:12px;}
 .chat-msg{max-width:85%;padding:10px 14px;border-radius:16px;font-size:13.5px;line-height:1.55;white-space:pre-wrap;word-wrap:break-word;}
-.chat-msg.user{align-self:flex-end;background:linear-gradient(135deg,var(--purple),var(--blue));color:#fff;border-bottom-right-radius:5px;}
+.chat-msg.user{align-self:flex-end;background:var(--purple);color:#fff;border-bottom-right-radius:5px;}
 .chat-msg.ai{align-self:flex-start;background:var(--surface2);color:var(--text);border:1px solid var(--border);border-bottom-left-radius:5px;}
 .chat-msg.ai b,.chat-msg.ai strong{color:var(--accent);font-weight:700;}
 .chat-typing{align-self:flex-start;display:flex;gap:4px;padding:12px 16px;background:var(--surface2);border:1px solid var(--border);border-radius:16px;border-bottom-left-radius:5px;}
@@ -134,13 +138,13 @@ body{font-family:'Sarabun',sans-serif;background:var(--bg);color:var(--text);min
 .chat-input-row{display:flex;gap:8px;padding:10px 14px calc(env(safe-area-inset-bottom,10px) + 10px);border-top:1px solid var(--border);flex-shrink:0;align-items:flex-end;}
 .chat-input-row textarea{flex:1;background:var(--surface2);border:1px solid var(--border-md);border-radius:14px;color:var(--text);font-family:inherit;font-size:16px;padding:10px 13px;resize:none;max-height:96px;line-height:1.4;}
 .chat-input-row textarea:focus{outline:none;border-color:var(--purple);}
-.chat-send{background:linear-gradient(135deg,var(--purple),var(--blue));border:none;border-radius:50%;width:42px;height:42px;color:#fff;font-size:18px;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center;}
+.chat-send{background:var(--purple);border:none;border-radius:50%;width:42px;height:42px;color:#fff;font-size:18px;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center;}
 .chat-send:disabled{opacity:0.4;cursor:not-allowed;}
 .chat-mic{background:var(--surface2);border:1px solid var(--border-md);border-radius:50%;width:42px;height:42px;color:var(--text2);font-size:17px;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center;transition:all .15s;}
 .chat-mic.recording{background:var(--red);border-color:var(--red);color:#fff;animation:chatMicPulse 1.2s infinite;}
 @keyframes chatMicPulse{0%,100%{opacity:1;}50%{opacity:0.55;}}
 .chat-meal-card-actions{display:flex;gap:8px;}
-.chat-meal-btn{flex:1;padding:8px;border-radius:10px;border:none;background:linear-gradient(135deg,var(--accent),#0f766e);color:#fff;font-family:inherit;font-size:12px;font-weight:700;cursor:pointer;}
+.chat-meal-btn{flex:1;padding:8px;border-radius:10px;border:none;background:var(--accent);color:#fff;font-family:inherit;font-size:12px;font-weight:700;cursor:pointer;}
 .chat-meal-cancel{padding:8px 12px;border-radius:10px;border:1px solid var(--border-md);background:var(--surface3);color:var(--text2);font-family:inherit;font-size:12px;cursor:pointer;}
 .chat-usage{font-size:11px;color:var(--text3);text-align:center;padding:0 16px 4px;flex-shrink:0;}
 
@@ -183,16 +187,15 @@ body{font-family:'Sarabun',sans-serif;background:var(--bg);color:var(--text);min
 .rest-timer-actions{display:flex;gap:6px;flex-shrink:0;}
 .rest-timer-btn{background:var(--surface);border:1px solid var(--border-md);border-radius:10px;padding:11px 13px;font-size:13px;font-weight:600;color:var(--text2);cursor:pointer;font-family:inherit;touch-action:manipulation;user-select:none;-webkit-user-select:none;}
 .e1rm-badge{display:inline-flex;align-items:center;gap:5px;background:var(--accent-dim);border:1px solid var(--accent);border-radius:10px;padding:4px 10px;font-size:12px;font-weight:700;color:var(--accent);}
-.pr-badge{background:linear-gradient(135deg,#f59e0b,#ef4444);color:#fff;border-radius:6px;padding:1px 6px;font-size:11px;font-weight:800;}
+.pr-badge{background:var(--fire);color:#fff;border-radius:6px;padding:1px 6px;font-size:11px;font-weight:800;}
 .str-exercise-select{width:100%;background:var(--surface2);border:1px solid var(--border-md);border-radius:10px;color:var(--text);font-family:inherit;font-size:16px;padding:8px 10px;margin-bottom:12px;}
 
 /* ── Nav (bottom fixed) ── */
 .nav{position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:100%;max-width:480px;display:flex;background:var(--nav-bg);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border-top:1px solid var(--border);overflow-x:auto;scrollbar-width:none;padding:6px 8px env(safe-area-inset-bottom,6px);gap:2px;z-index:200;}
 .nav::-webkit-scrollbar{display:none;}
-.nav-btn{flex:0 0 auto;min-width:60px;padding:7px 8px;background:transparent;border:none;color:var(--text3);font-family:inherit;font-size:11px;font-weight:600;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:3px;border-radius:14px;transition:all 0.18s;letter-spacing:0.2px;}
-.nav-btn.active{background:var(--accent-dim);color:var(--accent);font-weight:700;}
-.nav-btn.active .nav-icon{transform:scale(1.1);}
-.nav-icon{font-size:17px;transition:transform 0.18s;}
+.nav-btn{flex:0 0 auto;min-width:60px;padding:7px 8px 5px;background:transparent;border:none;border-bottom:2px solid transparent;color:var(--text3);font-family:inherit;font-size:11px;font-weight:600;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:3px;border-radius:0;transition:color 0.18s,border-color 0.18s;letter-spacing:0.2px;}
+.nav-btn.active{background:transparent;border-bottom-color:var(--accent);color:var(--text);font-weight:700;}
+.nav-icon{font-size:17px;}
 @media (min-width:600px){
   .nav{max-width:860px;justify-content:space-evenly;overflow-x:hidden;padding:6px 8px env(safe-area-inset-bottom,6px);}
   .nav-btn{flex:1;min-width:0;max-width:none;font-size:12px;padding:8px 6px;}
@@ -211,15 +214,14 @@ body{font-family:'Sarabun',sans-serif;background:var(--bg);color:var(--text);min
 .section-title{font-size:17px;font-weight:800;margin-bottom:14px;letter-spacing:-0.2px;}
 
 /* ── Cards ── */
-.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-card);padding:20px;margin-bottom:16px;position:relative;overflow:hidden;box-shadow:var(--card-shadow);}
-.card::after{content:'';position:absolute;top:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent 0%,rgba(255,255,255,0.06) 40%,rgba(255,255,255,0.06) 60%,transparent 100%);}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-card);padding:20px;margin-bottom:16px;position:relative;overflow:hidden;}
 .card-title{font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:0.8px;margin-bottom:13px;}
 
 /* ── Buttons ── */
-.btn-primary{width:100%;padding:14px;background:linear-gradient(135deg,var(--accent),#0f766e);border:none;border-radius:var(--radius-btn);color:white;font-family:inherit;font-size:15px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;transition:all 0.2s;box-shadow:0 4px 18px var(--accent-glow);}
-.btn-primary:hover{box-shadow:0 6px 24px rgba(20,184,166,0.38);}
+.btn-primary{width:100%;padding:14px;background:var(--accent);border:none;border-radius:var(--radius-btn);color:white;font-family:inherit;font-size:15px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;transition:opacity 0.2s;}
+.btn-primary:hover{opacity:0.9;}
 .btn-primary:active{transform:translateY(0);}
-.btn-primary:disabled{opacity:0.45;cursor:not-allowed;transform:none;box-shadow:none;}
+.btn-primary:disabled{opacity:0.45;cursor:not-allowed;transform:none;}
 .btn-secondary{width:100%;padding:12px;background:var(--surface2);border:1px solid var(--border-md);border-radius:var(--radius-input);color:var(--text2);font-family:inherit;font-size:13px;font-weight:600;cursor:pointer;margin-top:8px;transition:all 0.18s;}
 .btn-secondary:hover{background:var(--surface3);color:var(--text);}
 
@@ -242,7 +244,7 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
 .mode-btn.active{background:var(--accent-dim);border-color:var(--accent);color:var(--accent);}
 
 /* ── Upload ── */
-.upload-area{border:2px dashed var(--border-md);border-radius:16px;padding:28px 20px;text-align:center;cursor:pointer;background:var(--surface2);transition:border-color 0.2s,background 0.2s;}
+.upload-area{border:2px dashed var(--border-md);border-radius:16px;padding:16px 20px;text-align:center;cursor:pointer;background:var(--surface2);transition:border-color 0.2s,background 0.2s;}
 .upload-area:hover{border-color:var(--accent);background:var(--accent-dim);}
 .preview-img{width:100%;border-radius:14px;margin-bottom:12px;max-height:220px;object-fit:cover;display:none;}
 
@@ -261,7 +263,7 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
 .result-macro-name{font-size:11px;color:var(--text3);margin-top:2px;font-weight:600;}
 
 /* ── Clarify ── */
-.clarify-box{background:rgba(20,184,166,0.07);border:1px solid rgba(20,184,166,0.25);border-radius:14px;padding:14px;margin-top:12px;display:none;}
+.clarify-box{background:rgba(143,168,124,0.07);border:1px solid rgba(143,168,124,0.25);border-radius:14px;padding:14px;margin-top:12px;display:none;}
 .clarify-input{width:100%;background:var(--surface);border:1px solid var(--border-md);border-radius:var(--radius-sm);padding:10px 14px;color:var(--text);font-family:inherit;font-size:16px;resize:none;outline:none;}
 .clarify-input:focus{border-color:var(--accent);}
 
@@ -351,7 +353,7 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
 .meal-sheet-macro{font-size:12px;color:var(--text3);text-align:center;margin-bottom:16px;}
 .meal-sheet-act{width:100%;box-sizing:border-box;padding:14px;margin-bottom:9px;border-radius:14px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-family:inherit;font-size:15px;font-weight:600;cursor:pointer;touch-action:manipulation;-webkit-tap-highlight-color:transparent;transition:transform .12s;}
 .meal-sheet-act:active{transform:scale(0.98);}
-.meal-sheet-act.reuse{background:rgba(20,184,166,0.12);border-color:rgba(20,184,166,0.4);color:var(--accent);}
+.meal-sheet-act.reuse{background:rgba(143,168,124,0.12);border-color:rgba(143,168,124,0.4);color:var(--accent);}
 .meal-sheet-act.fav{background:rgba(251,191,36,0.12);border-color:rgba(251,191,36,0.4);color:#fbbf24;}
 .meal-sheet-act.del{background:rgba(239,68,68,0.1);border-color:rgba(239,68,68,0.35);color:#ef4444;}
 .meal-sheet-act.cancel{background:var(--surface3);color:var(--text3);margin-top:4px;margin-bottom:0;}
@@ -372,7 +374,7 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
 
 /* ── Sync dot ── */
 .sync-dot{width:8px;height:8px;border-radius:50%;background:var(--surface3);flex-shrink:0;transition:all 0.3s;}
-.sync-dot.on{background:var(--green);box-shadow:0 0 7px var(--green);}
+.sync-dot.on{background:var(--green);}
 
 /* ── Menu items (text mode) ── */
 .menu-item-row{background:var(--surface2);border:1px solid var(--border);border-radius:14px;padding:13px;margin-bottom:10px;position:relative;}
@@ -381,7 +383,7 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
 .menu-item-del:hover{color:var(--red);}
 
 /* ── SW update banner (tap-to-refresh, never auto-reloads) ── */
-.sw-update-banner{position:fixed;top:calc(env(safe-area-inset-top,0px) + 10px);left:50%;transform:translateX(-50%) translateY(-16px);background:var(--accent);color:#fff;font-size:12.5px;font-weight:700;padding:9px 16px;border-radius:20px;box-shadow:0 6px 20px rgba(0,0,0,0.28);z-index:1200;cursor:pointer;opacity:0;pointer-events:none;transition:all 0.28s cubic-bezier(.4,0,.2,1);white-space:nowrap;}
+.sw-update-banner{position:fixed;top:calc(env(safe-area-inset-top,0px) + 10px);left:50%;transform:translateX(-50%) translateY(-16px);background:var(--accent);color:#fff;font-size:12.5px;font-weight:700;padding:9px 16px;border-radius:20px;z-index:1200;cursor:pointer;opacity:0;pointer-events:none;transition:all 0.28s cubic-bezier(.4,0,.2,1);white-space:nowrap;}
 .sw-update-banner.show{opacity:1;pointer-events:auto;transform:translateX(-50%) translateY(0);}
 
 /* ── Toast ── */
@@ -389,7 +391,7 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
 .toast.show{opacity:1;pointer-events:auto;transform:translateX(-50%) translateY(0);}
 .toast.success{border-color:rgba(34,197,94,0.4);color:var(--green);}
 .toast.error{border-color:rgba(239,68,68,0.4);color:var(--red);}
-.toast.info{border-color:rgba(20,184,166,0.4);color:var(--accent);}
+.toast.info{border-color:rgba(143,168,124,0.4);color:var(--accent);}
 
 /* ── Alert popup ── */
 .alert-popup{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.72);z-index:998;align-items:center;justify-content:center;padding:20px;}
@@ -425,7 +427,7 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
 .ft-stat{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:13px 8px;text-align:center;}
 .ft-stat-val{font-size:19px;font-weight:800;}
 .ft-stat-name{font-size:11px;color:var(--text3);margin-top:3px;font-weight:600;}
-.ft-net-card{background:linear-gradient(135deg,rgba(249,115,22,0.10),rgba(168,85,247,0.07));border:1px solid rgba(249,115,22,0.2);border-radius:var(--radius-card);padding:18px;margin-bottom:12px;text-align:center;}
+.ft-net-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-card);padding:18px;margin-bottom:12px;text-align:center;}
 .ft-net-val{font-size:34px;font-weight:800;line-height:1;}
 .ft-net-sub{font-size:11px;color:var(--text2);margin-top:5px;font-weight:600;}
 .ft-net-row{display:flex;justify-content:center;align-items:center;gap:8px;font-size:12px;color:var(--text2);margin-top:10px;flex-wrap:wrap;}
@@ -450,16 +452,11 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
 .plan-ex-detail{color:var(--text3);font-size:12px;}
 
 /* ── Tab pills ── */
-.tab-row{display:flex;gap:6px;margin-bottom:14px;background:var(--surface2);padding:4px;border-radius:14px;overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch;
-  /* fade ขอบขวาบอกใบ้ว่าเลื่อนได้ — เกาะขอบกล่องด้วย background-attachment:local */
-  background-image:linear-gradient(to right,var(--surface2),var(--surface2)),linear-gradient(to right,var(--surface2),var(--surface2)),linear-gradient(to right,rgba(0,0,0,0.18),rgba(0,0,0,0)),linear-gradient(to left,rgba(0,0,0,0.18),rgba(0,0,0,0));
-  background-position:left center,right center,left center,right center;
-  background-repeat:no-repeat;
-  background-size:24px 100%,24px 100%,14px 100%,14px 100%;
-  background-attachment:local,local,scroll,scroll;}
+.tab-row{display:flex;gap:16px;margin-bottom:14px;border-bottom:1px solid var(--border);overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch;}
 .tab-row::-webkit-scrollbar{display:none;}
-.tab-pill{flex:0 0 auto;padding:8px 10px;background:transparent;border:none;border-radius:10px;color:var(--text2);font-family:inherit;font-size:11px;font-weight:600;cursor:pointer;text-align:center;transition:all 0.18s;letter-spacing:0.1px;white-space:nowrap;}
-.tab-pill.active{background:var(--surface);color:var(--text);box-shadow:0 1px 6px rgba(0,0,0,0.4);}
+.tab-pill{flex:0 0 auto;padding:8px 1px;margin-bottom:-1px;background:transparent;border:none;border-bottom:2px solid transparent;border-radius:0;color:var(--text3);font-family:inherit;font-size:12px;font-weight:600;cursor:pointer;text-align:center;transition:color 0.18s,border-color 0.18s;letter-spacing:0.1px;white-space:nowrap;}
+.tab-pill.active{background:transparent;border-bottom-color:var(--accent);color:var(--text);font-weight:700;}
+.link-btn{background:none;border:none;color:var(--text2);font-family:inherit;font-size:12px;font-weight:600;cursor:pointer;padding:4px 2px;text-decoration:underline;text-underline-offset:2px;}
 .wt-filter-btn{padding:4px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:20px;color:var(--text3);font-family:inherit;font-size:11px;font-weight:500;cursor:pointer;transition:all 0.2s;}
 .wt-filter-btn.active{background:var(--blue-dim);border-color:var(--blue);color:var(--blue);font-weight:700;}
 /* ── FITNESS TARGET STYLES ── */
@@ -494,9 +491,10 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
 /* ── RETENTION / CONTEXT CHIPS ── */
 .context-chip-row{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0 4px;}
 .context-chip{display:inline-flex;align-items:center;gap:4px;padding:4px 8px;border-radius:20px;background:var(--surface);border:1px solid var(--border);font-size:11px;font-weight:700;color:var(--text2);}
-.context-chip.high{background:rgba(239,68,68,0.10);border-color:rgba(239,68,68,0.30);color:var(--red);}
-.context-chip.med{background:rgba(234,179,8,0.10);border-color:rgba(234,179,8,0.30);color:var(--yellow);}
-.context-chip.low{background:rgba(34,197,94,0.10);border-color:rgba(34,197,94,0.25);color:var(--green);}
+/* สเกลสีเดียว (red/terracotta) 3 ระดับ ไล่ตามความเข้ม แทนสีแดง-เหลือง-เขียวปนกัน */
+.context-chip.low{background:color-mix(in srgb, var(--red) 10%, transparent);border-color:color-mix(in srgb, var(--red) 25%, transparent);color:var(--text2);}
+.context-chip.med{background:color-mix(in srgb, var(--red) 18%, transparent);border-color:color-mix(in srgb, var(--red) 45%, transparent);color:var(--red);}
+.context-chip.high{background:color-mix(in srgb, var(--red) 28%, transparent);border-color:var(--red);color:var(--red);font-weight:800;}
 /* ── WEIGHT LOG STYLES ── */
 .wt-compare-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:9px;margin-bottom:4px;}
 .wt-compare-item{background:var(--surface2);border:1px solid var(--border);border-radius:14px;padding:13px 8px;text-align:center;}
@@ -515,7 +513,7 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
 <!-- AUTH GATE: covers the app until Firebase resolves auth state. Hidden when
      signed in, or when Firebase itself is unreachable (offline/local mode). -->
 <div id="authGate" style="display:flex;position:fixed;inset:0;z-index:2000;background:var(--bg);flex-direction:column;align-items:center;justify-content:center;gap:18px;padding:24px;text-align:center;">
-  <div style="width:72px;height:72px;border-radius:20px;background:linear-gradient(135deg,var(--accent),#0f766e);display:flex;align-items:center;justify-content:center;font-size:36px;box-shadow:0 8px 28px var(--accent-glow);">🥗</div>
+  <div style="width:72px;height:72px;border-radius:20px;background:var(--accent);display:flex;align-items:center;justify-content:center;font-size:36px;">🥗</div>
   <div>
     <div style="font-size:24px;font-weight:800;letter-spacing:-0.3px;">กินดี</div>
     <div style="font-size:13px;color:var(--text2);margin-top:4px;">ติดตามแคลอรี่ ฟิตเนส การนอน และน้ำหนัก</div>
@@ -551,6 +549,7 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
     </div>
     <div style="display:flex;align-items:center;gap:8px;">
       <div class="date-badge" id="todayDate"></div>
+      <button onclick="openChat()" aria-label="ถามโค้ช AI" title="ถาม AI เกี่ยวกับข้อมูลของคุณ" style="background:var(--surface2);border:1px solid var(--border-md);border-radius:50%;width:34px;height:34px;font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;">💬</button>
       <button onclick="toggleTheme()" id="theme-toggle" aria-label="สลับธีม" style="background:var(--surface2);border:1px solid var(--border-md);border-radius:50%;width:34px;height:34px;font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;">🌙</button>
       <button onclick="showPage('settings')" aria-label="ตั้งค่า" style="background:var(--surface2);border:1px solid var(--border-md);border-radius:50%;width:34px;height:34px;font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;">⚙️</button>
     </div>
@@ -567,13 +566,13 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
 
   <!-- DASHBOARD -->
   <div class="page active" id="page-dashboard">
-    <div class="fold-full" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+    <div class="fold-full" style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:14px;flex-wrap:wrap;">
       <div class="section-title" style="margin:0" id="dash-title">สรุปวันนี้</div>
-      <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:3px 10px;font-size:11px;color:var(--text2);" id="dash-count">0 มื้อ</div>
-    </div>
-    <div class="fold-full" style="display:flex;align-items:center;gap:8px;margin-bottom:14px;">
-      <input class="input-field" type="date" id="dash-date" style="flex:1;min-width:0;" onchange="onDashDateChange()"/>
-      <button onclick="dashGoToday()" id="dash-today-btn" style="flex-shrink:0;padding:9px 14px;background:rgba(20,184,166,0.12);border:1px solid rgba(20,184,166,0.4);border-radius:10px;color:var(--accent);font-family:inherit;font-size:12px;font-weight:600;cursor:pointer;">วันนี้</button>
+      <div style="display:flex;align-items:center;gap:6px;flex-shrink:0;">
+        <input type="date" id="dash-date" style="width:auto;max-width:126px;padding:4px 6px;font-size:11px;border-radius:8px;background:var(--surface2);border:1px solid var(--border);color:var(--text2);font-family:inherit;" onchange="onDashDateChange()"/>
+        <button onclick="dashGoToday()" id="dash-today-btn" style="display:none;flex-shrink:0;padding:4px 10px;background:var(--accent-dim);border:1px solid var(--accent);border-radius:8px;color:var(--accent);font-family:inherit;font-size:11px;font-weight:600;cursor:pointer;">วันนี้</button>
+        <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:3px 10px;font-size:11px;color:var(--text2);white-space:nowrap;" id="dash-count">0 มื้อ</div>
+      </div>
     </div>
     <!-- ANOMALY FLAGS -->
     <div id="anomaly-banner-card" style="display:none;margin:0 16px 14px;">
@@ -603,7 +602,6 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
           <div class="card-title" style="margin-bottom:4px;">แคลอรี่ที่กิน</div>
           <div class="hybrid-cal-big" id="dash-cal">0</div>
           <div style="font-size:12px;font-weight:600;color:var(--accent);margin-top:2px;" id="dash-rem"></div>
-          <div style="font-size:10px;font-weight:500;margin-top:2px;color:var(--text3);" id="dash-net-note"></div>
           <div style="font-size:10px;font-weight:600;margin-top:2px;color:var(--green);display:none;" id="dash-daytype-note"></div>
         </div>
       </div>
@@ -626,7 +624,7 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
     <div class="card fold-full">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
         <div class="card-title" style="margin:0;">มื้ออาหารวันนี้</div>
-        <button onclick="openQuickLogSheet()" style="padding:5px 12px;background:rgba(20,184,166,0.12);border:1px solid rgba(20,184,166,0.4);border-radius:20px;color:var(--accent);font-family:inherit;font-size:12px;font-weight:600;cursor:pointer;">+ บันทึกมื้อ</button>
+        <button onclick="openQuickLogSheet()" style="padding:5px 12px;background:rgba(143,168,124,0.12);border:1px solid rgba(143,168,124,0.4);border-radius:20px;color:var(--accent);font-family:inherit;font-size:12px;font-weight:600;cursor:pointer;">+ บันทึกมื้อ</button>
       </div>
       <div id="dash-meals"></div>
     </div>
@@ -636,10 +634,7 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
     <div class="stat-pair">
     <!-- Weight stat card (hero number) -->
     <div class="card stat-card" id="dash-weight-card">
-      <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
-        <div style="width:28px;height:28px;border-radius:8px;background:linear-gradient(135deg,#14b8a6,#0d9488);display:flex;align-items:center;justify-content:center;font-size:14px;">⚖️</div>
-        <div style="font-size:13px;font-weight:700;color:var(--text);" id="dash-weight-title">น้ำหนักล่าสุด</div>
-      </div>
+      <div class="card-title" style="margin-bottom:10px;" id="dash-weight-title">⚖️ น้ำหนักล่าสุด</div>
       <div id="dash-weight-result">
         <div style="text-align:center;padding:10px 0;color:var(--text3);font-size:12px;">ยังไม่มีข้อมูลน้ำหนัก<br>
           <button onclick="showPage('weight');" style="margin-top:8px;background:none;border:1px solid var(--border);border-radius:20px;padding:4px 14px;font-size:11px;color:var(--text2);cursor:pointer;">⚖️ บันทึกน้ำหนัก</button>
@@ -649,12 +644,9 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
     <!-- SLEEP TRACKER CARD -->
     <!-- Recovery Card (Dashboard) -->
     <div class="card" id="dash-recovery-card">
-      <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
-        <div style="width:28px;height:28px;border-radius:8px;background:linear-gradient(135deg,#22c55e,#16a34a);display:flex;align-items:center;justify-content:center;font-size:14px;">🌅</div>
-        <div>
-          <div style="font-size:13px;font-weight:700;color:var(--text);" id="dash-recovery-title">Recovery วันนี้</div>
-          <div style="font-size:11px;color:var(--text3);">กรอก sleep ที่ Fitness → 😴 Sleep</div>
-        </div>
+      <div style="margin-bottom:10px;">
+        <div class="card-title" style="margin:0;" id="dash-recovery-title">🌅 Recovery วันนี้</div>
+        <div style="font-size:11px;color:var(--text3);margin-top:2px;">กรอก sleep ที่ Fitness → 😴 Sleep</div>
       </div>
       <div id="dash-recovery-result">
         <div style="text-align:center;padding:10px 0;color:var(--text3);font-size:12px;">ยังไม่มี Recovery Score วันนี้<br>
@@ -668,10 +660,7 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
     <!-- WATER INTAKE CARD -->
     <div class="card" id="dash-water-card">
       <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;">
-        <div style="display:flex;align-items:center;gap:8px;">
-          <div style="width:28px;height:28px;border-radius:8px;background:linear-gradient(135deg,#3b82f6,#2563eb);display:flex;align-items:center;justify-content:center;font-size:14px;">💧</div>
-          <div class="card-title" style="margin:0;" id="dash-water-title">น้ำดื่มวันนี้</div>
-        </div>
+        <div class="card-title" style="margin:0;" id="dash-water-title">💧 น้ำดื่มวันนี้</div>
         <div style="font-size:12px;font-weight:700;color:var(--blue);" id="dash-water-val">0 / 0 ml</div>
       </div>
       <div class="macro-bar" style="height:8px;margin-bottom:8px;"><div class="macro-bar-fill" id="dash-water-bar" style="background:var(--blue);width:0%"></div></div>
@@ -688,21 +677,18 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
     <!-- AI DAILY SUMMARY CARD -->
     <div class="card" id="ai-summary-card">
       <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px;flex-wrap:wrap;">
-        <div style="display:flex;align-items:center;gap:8px;min-width:0;flex:1 1 auto;">
-          <div style="width:28px;height:28px;border-radius:8px;background:linear-gradient(135deg,#a855f7,#6366f1);display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0;">🤖</div>
-          <div style="min-width:0;">
-            <div style="font-size:13px;font-weight:700;color:var(--text);">AI Daily Coach</div>
-            <div style="font-size:11px;color:var(--text3);">วิเคราะห์วันนี้ + แนะนำพรุ่งนี้</div>
-          </div>
+        <div style="min-width:0;flex:1 1 auto;">
+          <div class="card-title" style="margin:0;">🤖 AI Daily Coach</div>
+          <div style="font-size:11px;color:var(--text3);margin-top:2px;">วิเคราะห์วันนี้ + แนะนำพรุ่งนี้</div>
         </div>
         <div style="display:flex;align-items:center;gap:6px;flex-shrink:0;">
           <input type="date" id="ai-summary-history-date" onchange="loadDailySummaryHistory()" style="padding:5px 8px;border:1px solid var(--border-md);border-radius:12px;background:var(--surface2);color:var(--text2);font-family:inherit;font-size:11px;cursor:pointer;max-width:140px;min-width:0;">
-          <button id="ai-summary-btn" onclick="generateDailySummary()" style="padding:7px 14px;background:linear-gradient(135deg,#a855f7,#6366f1);border:none;border-radius:20px;color:white;font-family:inherit;font-size:12px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:5px;transition:all 0.2s;white-space:nowrap;flex-shrink:0;" onmouseover="this.style.opacity='0.85'" onmouseout="this.style.opacity='1'">
+          <button id="ai-summary-btn" onclick="generateDailySummary()" style="padding:7px 14px;background:var(--purple);border:none;border-radius:20px;color:white;font-family:inherit;font-size:12px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:5px;transition:all 0.2s;white-space:nowrap;flex-shrink:0;" onmouseover="this.style.opacity='0.85'" onmouseout="this.style.opacity='1'">
             <span>✨</span><span>สรุปวันนี้</span>
           </button>
         </div>
       </div>
-      <div id="ai-summary-history-banner" style="display:none;background:linear-gradient(135deg,rgba(168,85,247,0.12),rgba(99,102,241,0.12));border:1px solid rgba(168,85,247,0.3);border-radius:12px;padding:8px 12px;margin-bottom:10px;align-items:center;justify-content:space-between;">
+      <div id="ai-summary-history-banner" style="display:none;background:var(--purple-dim);border:1px solid var(--purple);border-radius:12px;padding:8px 12px;margin-bottom:10px;align-items:center;justify-content:space-between;">
         <div style="font-size:12px;color:#a855f7;font-weight:600;" id="ai-summary-history-label">📖 ดูย้อนหลัง</div>
         <button onclick="exitDailySummaryHistory()" style="padding:3px 10px;background:rgba(168,85,247,0.15);border:1px solid rgba(168,85,247,0.4);border-radius:20px;color:#a855f7;font-family:inherit;font-size:11px;font-weight:600;cursor:pointer;">กลับวันนี้</button>
       </div>
@@ -730,6 +716,12 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
       </div>
     </div>
 
+    <!-- Insights entry point -->
+    <button onclick="showPage('fitness');showFitnessTab('insights');" class="card" style="display:flex;align-items:center;justify-content:space-between;gap:10px;cursor:pointer;font-family:inherit;text-align:left;color:var(--text);background:var(--surface);border:1px solid var(--border);width:100%;">
+      <div class="card-title" style="margin:0;">🔬 Insights — เทรนด์และความสัมพันธ์รายสัปดาห์</div>
+      <span style="color:var(--text3);font-size:18px;line-height:1;flex-shrink:0;">→</span>
+    </button>
+
   </div><!-- /page-dashboard -->
   <!-- ANALYZE -->
   <div class="page" id="page-analyze">
@@ -743,21 +735,25 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
         <button class="label-btn" onclick="selLabel(this,'ของว่าง')">🍿 ของว่าง</button>
       </div>
     </div>
-    <div style="display:flex;gap:8px;margin-bottom:14px;">
-      <button class="mode-btn active" id="modePhotoBtn" onclick="switchMode('photo')">📷 อัปโหลดรูป</button>
-      <button class="mode-btn" id="modeTextBtn" onclick="switchMode('text')">⌨️ พิมพ์ชื่อเมนู</button>
-      <button class="mode-btn" style="flex:0 0 auto;" onclick="showPage('favorites')">⭐ โปรด</button>
-      <button class="mode-btn" id="modeManualBtn" onclick="switchMode('manual')">✏️ ป้อนเอง</button>
+    <div class="tab-row" style="margin-bottom:2px;">
+      <button class="tab-pill active" id="modePhotoBtn" onclick="switchMode('photo')">📷 อัปโหลดรูป</button>
+      <button class="tab-pill" id="modeTextBtn" onclick="switchMode('text')">⌨️ พิมพ์ชื่อเมนู</button>
+      <button class="tab-pill" id="modeManualBtn" onclick="switchMode('manual')">✏️ ป้อนเอง</button>
+    </div>
+    <div style="display:flex;justify-content:flex-end;margin-bottom:12px;">
+      <button class="link-btn" onclick="showPage('favorites')">⭐ เมนูโปรด</button>
     </div>
     <div id="photoMode">
       <div class="card">
         <div class="card-title">อัปโหลดรูปอาหาร</div>
         <img id="previewImg" class="preview-img" src="" alt="preview"/>
         <button class="btn-secondary" id="changePhotoBtn" type="button" onclick="document.getElementById('fileInput').click()" style="display:none;margin-bottom:12px;">🔄 เปลี่ยนรูป</button>
-        <div class="upload-area" id="uploadArea" onclick="document.getElementById('fileInput').click()">
-          <div style="font-size:36px;margin-bottom:8px;">📷</div>
-          <div style="font-size:15px;font-weight:600;">แตะเพื่ออัปโหลดรูปภาพ</div>
-          <div style="font-size:12px;color:var(--text3);margin-top:4px;">รองรับ JPG, PNG</div>
+        <div class="upload-area" id="uploadArea" onclick="document.getElementById('fileInput').click()" style="display:flex;align-items:center;gap:12px;text-align:left;">
+          <div style="font-size:26px;flex-shrink:0;">📷</div>
+          <div>
+            <div style="font-size:14px;font-weight:600;">แตะเพื่ออัปโหลดรูปภาพ</div>
+            <div style="font-size:11px;color:var(--text3);margin-top:2px;">รองรับ JPG, PNG</div>
+          </div>
         </div>
         <input type="file" id="fileInput" accept="image/*" style="display:none" onchange="handleFile(event)"/>
         <div style="margin-top:12px;">
@@ -863,10 +859,8 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
       <button class="tab-pill active" id="ftab-today" onclick="showFitnessTab('today')">📝 บันทึก</button>
       <button class="tab-pill" id="ftab-chart" onclick="showFitnessTab('chart')">📊 กราฟ</button>
       <button class="tab-pill" id="ftab-strength" onclick="showFitnessTab('strength')">💪 Strength</button>
-      <button class="tab-pill" id="ftab-target" onclick="showFitnessTab('target')">🎯 เป้าหมาย</button>
-      <button class="tab-pill" id="ftab-plan" onclick="showFitnessTab('plan')">🤖 แผน</button>
+      <button class="tab-pill" id="ftab-targetplan" onclick="showFitnessTab('target')">🎯 เป้าหมาย+แผน</button>
       <button class="tab-pill" id="ftab-sleep" onclick="showFitnessTab('sleep')">😴 Sleep</button>
-      <button class="tab-pill" id="ftab-insights" onclick="showFitnessTab('insights')">🔬 Insights</button>
     </div>
 
     <!-- TAB: TODAY -->
@@ -890,8 +884,8 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
       <!-- Today stats -->
       <div class="ft-stat-grid">
         <div class="ft-stat"><div class="ft-stat-val" id="ft-total-burn" style="color:var(--accent)">0</div><div class="ft-stat-name">kcal เผา</div></div>
-        <div class="ft-stat"><div class="ft-stat-val" id="ft-total-min" style="color:var(--blue)">0</div><div class="ft-stat-name">นาที</div></div>
-        <div class="ft-stat"><div class="ft-stat-val" id="ft-workout-count" style="color:var(--purple)">0</div><div class="ft-stat-name">session</div></div>
+        <div class="ft-stat"><div class="ft-stat-val" id="ft-total-min" style="color:var(--text)">0</div><div class="ft-stat-name">นาที</div></div>
+        <div class="ft-stat"><div class="ft-stat-val" id="ft-workout-count" style="color:var(--text)">0</div><div class="ft-stat-name">session</div></div>
       </div>
 
       <!-- Today's AI plan (quick reference + tap-to-fill) -->
@@ -1027,7 +1021,7 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
           </div>
         </div>
         <div style="font-size:11px;color:var(--text3);margin-top:6px;">
-          📱 ดูก้าวจาก Samsung Health / Apple Health แล้วกรอกที่นี่<br>
+          📱 ดูจำนวนก้าวจากแอปสุขภาพหรือนาฬิกาที่คุณใช้ แล้วกรอกที่นี่<br>
           สูตร: ก้าว × 0.04 × (น้ำหนัก÷70) — นับรวมใน Net Calories อัตโนมัติ
         </div>
       </div>
@@ -1146,10 +1140,9 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
       </div>
       <div class="card">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
-          <div style="display:flex;align-items:center;gap:8px;">
-            <div style="width:28px;height:28px;border-radius:8px;background:linear-gradient(135deg,#3b82f6,#6366f1);display:flex;align-items:center;justify-content:center;font-size:14px;">😴</div>
-            <div><div style="font-size:13px;font-weight:700;color:var(--text);">Sleep Tracker</div>
-            <div style="font-size:11px;color:var(--text3);">Polar Loop / Huawei Watch 5 Pro / Galaxy Ring</div></div>
+          <div>
+            <div class="card-title" style="margin:0;">😴 Sleep Tracker</div>
+            <div style="font-size:11px;color:var(--text3);margin-top:2px;">กรอกเองหรือแนบภาพหน้าจอจากแอปสุขภาพ/นาฬิกาที่คุณใช้ ให้ AI ช่วยกรอกให้</div>
           </div>
           <div id="sleep-saved-badge" style="display:none;font-size:11px;color:var(--green);font-weight:600;background:rgba(34,197,94,0.1);border:1px solid rgba(34,197,94,0.3);border-radius:20px;padding:3px 10px;">✓ บันทึกแล้ว</div>
         </div>
@@ -1160,7 +1153,7 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
         <div class="input-group" style="margin-bottom:14px;">
           <input type="file" id="sleep-screenshot-file" accept="image/*" style="display:none" onchange="handleSleepScreenshotFile(event)"/>
           <button type="button" class="btn-secondary" id="sleep-import-btn" style="margin-top:0;" onclick="document.getElementById('sleep-screenshot-file').click()">📷 นำเข้าจาก Screenshot (นาฬิกา/แอปสุขภาพ)</button>
-          <div style="font-size:11px;color:var(--text3);margin-top:5px;">ถ่าย/แนบภาพหน้าจอสรุปการนอนจาก Polar, Huawei, Galaxy Wearable, Samsung Health ฯลฯ — AI จะกรอกช่องที่อ่านได้ให้ ตรวจสอบก่อนกดบันทึก</div>
+          <div style="font-size:11px;color:var(--text3);margin-top:5px;">ถ่าย/แนบภาพหน้าจอสรุปการนอนจากแอปสุขภาพหรือนาฬิกาที่คุณใช้ — AI จะกรอกช่องที่อ่านได้ให้ ตรวจสอบก่อนกดบันทึก</div>
           <div id="sleep-import-result" style="display:none;font-size:11px;line-height:1.6;border-radius:8px;padding:7px 10px;margin-top:8px;"></div>
         </div>
         <div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px;">⏱️ ระยะเวลาการนอน</div>
@@ -1208,7 +1201,7 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
         <div id="hrv-baseline-hint" style="font-size:10px;color:var(--text3);margin:-10px 0 14px;line-height:1.4;"></div>
         <div id="sleep-view-banner" style="display:none;background:rgba(99,102,241,0.1);border:1px solid rgba(99,102,241,0.3);border-radius:10px;padding:8px 12px;font-size:12px;color:#818cf8;margin-bottom:10px;">📖 โหมดดูย้อนหลัง — แก้ไขไม่ได้ <button onclick="onSleepDateChange(localDateStr())" style="background:none;border:none;color:#818cf8;font-size:12px;cursor:pointer;text-decoration:underline;padding:0;margin-left:6px;">กลับวันนี้</button></div>
         <button class="btn-primary" id="sleep-save-btn" onclick="saveSleep()">💾 บันทึก Sleep Data</button>
-        <div style="font-size:11px;color:var(--text3);text-align:center;margin-top:10px;">🌅 วิเคราะห์ Recovery ย้ายไปรวมกับ Insights อื่น ๆ แล้ว — ไปที่ <a href="#" onclick="event.preventDefault();showFitnessTab('insights');" style="color:var(--accent);font-weight:600;">🔬 Insights</a> หลังบันทึก Sleep วันนี้</div>
+        <div style="font-size:11px;color:var(--text3);text-align:center;margin-top:10px;">🌅 ดูผลวิเคราะห์ Recovery ได้ที่ <a href="#" onclick="event.preventDefault();showFitnessTab('insights');" style="color:var(--accent);font-weight:600;">🔬 Insights</a> หลังบันทึก Sleep วันนี้</div>
       </div>
     </div>
     <div id="ftab-content-insights" style="display:none;">
@@ -1240,7 +1233,7 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
       <div class="card fold-full" id="wt-analyzer-card" style="margin:0 0 14px;">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
           <div class="card-title" style="margin:0;">🔬 วิเคราะห์ Trend น้ำหนัก</div>
-          <button onclick="runWeightAnalysis()" style="padding:6px 14px;background:linear-gradient(135deg,#3b82f6,#1d4ed8);border:none;border-radius:20px;color:white;font-family:inherit;font-size:12px;font-weight:600;cursor:pointer;transition:all 0.2s;" onmouseover="this.style.opacity='0.85'" onmouseout="this.style.opacity='1'">📊 วิเคราะห์</button>
+          <button onclick="runWeightAnalysis()" style="padding:6px 14px;background:var(--blue);border:none;border-radius:20px;color:white;font-family:inherit;font-size:12px;font-weight:600;cursor:pointer;transition:all 0.2s;" onmouseover="this.style.opacity='0.85'" onmouseout="this.style.opacity='1'">📊 วิเคราะห์</button>
         </div>
         <div id="wt-analysis-result" style="min-height:40px;">
           <div style="text-align:center;padding:16px 0;color:var(--text3);font-size:13px;">กด วิเคราะห์ เพื่อดู Diagnosis จาก data 14 วันล่าสุด</div>
@@ -1250,7 +1243,7 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
       <div class="card fold-full" id="recovery-analysis-card" style="margin:0 0 14px;">
         <div class="card-title" style="margin-bottom:10px;">🌅 วิเคราะห์ Recovery วันนี้</div>
         <div style="font-size:11px;color:var(--text3);margin-bottom:10px;">ต้องบันทึก Sleep Data วันนี้ก่อน (แท็บ 😴 Sleep)</div>
-        <button id="morning-recovery-btn" onclick="generateMorningRecovery()" style="width:100%;padding:10px;background:linear-gradient(135deg,#22c55e,#16a34a);border:none;border-radius:12px;color:white;font-family:inherit;font-size:13px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;transition:all 0.2s;" onmouseover="this.style.opacity='0.85'" onmouseout="this.style.opacity='1'">
+        <button id="morning-recovery-btn" onclick="generateMorningRecovery()" style="width:100%;padding:10px;background:var(--green);border:none;border-radius:12px;color:white;font-family:inherit;font-size:13px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;transition:all 0.2s;" onmouseover="this.style.opacity='0.85'" onmouseout="this.style.opacity='1'">
           <span>🌅</span><span>วิเคราะห์ Recovery วันนี้</span>
         </button>
         <div id="morning-recovery-result" style="display:none;margin-top:12px;background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:12px;"></div>
@@ -1259,7 +1252,7 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
       <div class="card fold-full">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
           <div style="font-size:15px;font-weight:700;color:var(--text);">🔬 Behavior Insights</div>
-          <button class="tab-pill" style="font-size:11px;padding:4px 10px;" onclick="openBehaviorManager()">⚙️ จัดการ</button>
+          <button class="link-btn" onclick="openBehaviorManager()">⚙️ จัดการ</button>
         </div>
         <div style="font-size:11px;color:var(--text3);margin-bottom:12px;">บันทึกพฤติกรรมแต่ละวัน (ใช่/ไม่) แล้วดูว่าส่งผลต่อ Sleep Score อย่างไร — ต้องมีอย่างน้อย 5 วัน "ใช่" และ 5 วัน "ไม่" ภายใน 90 วัน</div>
         <div id="behavior-today" style="margin-bottom:14px;"></div>
@@ -1274,90 +1267,6 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
       <div class="section-title" style="margin:0">⚖️ บันทึกน้ำหนัก</div>
     </div>
     <div class="fold-grid">
-
-    <!-- Unified Health Check-in Card -->
-    <div class="card fold-full" id="health-checkin-card">
-      <div class="card-title">📝 Health Check-in วันนี้</div>
-      <div style="font-size:11px;color:var(--text3);line-height:1.6;margin-bottom:12px;">
-        กรอกน้ำหนักครั้งเดียวเป็น single source of truth — ถ้ามี Eufy/InBody ค่อยกรอก Body Composition เพิ่มในส่วน Optional
-      </div>
-
-      <div class="input-row">
-        <div class="input-group">
-          <label class="input-label">วันที่บันทึก</label>
-          <input class="input-field" type="date" id="checkin-date"/>
-        </div>
-        <div class="input-group">
-          <label class="input-label">Source</label>
-          <select class="input-field" id="bc-source">
-            <option value="eufy" selected>Eufy / Smart Scale</option>
-            <option value="inbody">InBody</option>
-            <option value="manual">Manual</option>
-          </select>
-        </div>
-      </div>
-
-      <div class="input-row">
-        <div class="input-group">
-          <label class="input-label">น้ำหนัก (กก.) <span style="color:var(--accent);font-weight:700;">required</span></label>
-          <div style="display:flex;gap:6px;align-items:center;">
-            <input class="input-field" type="number" id="wt-input" placeholder="เช่น 68.5" step="0.1" min="20" max="300" style="flex:1;"/>
-            <span style="color:var(--text3);font-size:13px;">กก.</span>
-          </div>
-        </div>
-        <div class="input-group">
-          <label class="input-label">รอบเอว (ซม.) <span style="color:var(--text3);font-weight:400;">ไม่บังคับ</span></label>
-          <div style="display:flex;gap:6px;align-items:center;">
-            <input class="input-field" type="number" id="wt-waist" placeholder="เช่น 82.0" step="0.1" min="40" max="180" style="flex:1;"/>
-            <span style="color:var(--text3);font-size:13px;">ซม.</span>
-          </div>
-        </div>
-      </div>
-
-      <details id="body-comp-details" style="margin:8px 0 12px;background:var(--surface2);border:1px solid var(--border);border-radius:14px;padding:10px 12px;">
-        <summary style="cursor:pointer;font-size:13px;font-weight:700;color:var(--text2);list-style:none;display:flex;align-items:center;justify-content:space-between;">
-          <span>🧬 Body Composition <span style="font-size:11px;color:var(--text3);font-weight:500;">Optional</span></span>
-          <span style="font-size:11px;color:var(--accent);">Eufy / InBody</span>
-        </summary>
-        <div style="font-size:11px;color:var(--text3);line-height:1.6;margin:8px 0 10px;">
-          ใช้ Eufy เป็น daily trend และใช้ InBody เป็น calibration source — ระบบจะใช้ค่าน้ำหนักจากช่องด้านบน ไม่ต้องกรอกซ้ำ
-        </div>
-        <div class="input-row">
-          <div class="input-group"><label class="input-label">Body Fat %</label><input class="input-field" type="number" id="bc-bf" step="0.1" placeholder="18.0"/></div>
-          <div class="input-group"><label class="input-label">Skeletal Muscle Mass (kg)</label><input class="input-field" type="number" id="bc-smm" step="0.1" placeholder="31.2"/></div>
-        </div>
-        <div class="input-row">
-          <div class="input-group"><label class="input-label">Skeletal Muscle % <span style="font-size:11px;color:var(--accent);">(sync &rarr; Fitness Target)</span></label><input class="input-field" type="number" id="bc-smm-pct" step="0.1" placeholder="36.5" min="10" max="60"/></div>
-          <div class="input-group" style="display:flex;align-items:center;padding-top:8px;"><span style="font-size:11px;color:var(--text3);line-height:1.6;">&#128161; กรอก SMM kg หรือ %<br>อย่างใดอย่างหนึ่ง sync อัตโนมัติ</span></div>
-        </div>
-        <div class="input-row">
-          <div class="input-group"><label class="input-label">Visceral Fat Level</label><input class="input-field" type="number" id="bc-vf" step="1" placeholder="4"/></div>
-          <div class="input-group"><label class="input-label">BMR (kcal)</label><input class="input-field" type="number" id="bc-bmr" step="1" placeholder="1565"/></div>
-        </div>
-      </details>
-
-      <div class="input-group">
-        <label class="input-label">หมายเหตุ (ไม่บังคับ)</label>
-        <input class="input-field" type="text" id="wt-note" placeholder="เช่น หลังตื่นนอน / วัดรอบเอวระดับสะดือ"/>
-      </div>
-
-      <button class="btn-primary" onclick="handleSaveWeight()">💾 บันทึก Check-in</button>
-      <div id="bc-source-summary" style="margin-top:10px;"></div>
-      <details id="bc-log-list-details" style="margin-top:8px;">
-        <summary style="cursor:pointer;font-size:12px;color:var(--text3);">📋 ดู/แก้ไขแหล่งข้อมูลย้อนหลัง</summary>
-        <div id="bc-log-list" style="margin-top:8px;"></div>
-      </details>
-    </div>
-
-    <!-- Compare Card -->
-    <div class="card" id="wt-compare-card">
-      <div class="card-title">🎯 เทียบเป้าหมาย</div>
-      <div class="wt-compare-grid" id="wt-compare-row">
-        <div class="wt-compare-item"><div class="wt-compare-val" style="color:var(--blue)">—</div><div class="wt-compare-label">ปัจจุบัน (กก.)</div></div>
-        <div class="wt-compare-item"><div class="wt-compare-val" style="color:var(--green)">—</div><div class="wt-compare-label">เป้าหมาย (กก.)</div></div>
-        <div class="wt-compare-item"><div class="wt-compare-val" style="color:var(--text2)">—</div><div class="wt-compare-label">ห่างเป้า</div></div>
-      </div>
-    </div>
 
     <!-- Chart Card -->
     <div class="card fold-full">
@@ -1380,16 +1289,99 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
       <div class="wt-chart-wrap" style="height:200px;"><canvas id="wtCalChart"></canvas></div>
     </div>
 
+    <!-- Compare Card -->
+    <div class="card" id="wt-compare-card">
+      <div class="card-title">🎯 เทียบเป้าหมาย</div>
+      <div class="wt-compare-grid" id="wt-compare-row">
+        <div class="wt-compare-item"><div class="wt-compare-val" style="color:var(--blue)">—</div><div class="wt-compare-label">ปัจจุบัน (กก.)</div></div>
+        <div class="wt-compare-item"><div class="wt-compare-val" style="color:var(--green)">—</div><div class="wt-compare-label">เป้าหมาย (กก.)</div></div>
+        <div class="wt-compare-item"><div class="wt-compare-val" style="color:var(--text2)">—</div><div class="wt-compare-label">ห่างเป้า</div></div>
+      </div>
+    </div>
+
+    <!-- Unified Health Check-in Card -->
+    <div class="card fold-full" id="health-checkin-card">
+      <div class="card-title">📝 บันทึกสุขภาพวันนี้</div>
+      <div style="font-size:11px;color:var(--text3);line-height:1.6;margin-bottom:12px;">
+        กรอกน้ำหนักครั้งเดียวเป็นค่าหลักของวัน — ถ้ามีข้อมูลองค์ประกอบร่างกาย ค่อยกรอกเพิ่มในส่วนไม่บังคับด้านล่าง
+      </div>
+
+      <div class="input-group" style="margin-bottom:10px;">
+        <label class="input-label">น้ำหนัก (กก.) <span style="color:var(--accent);font-weight:700;">จำเป็น</span></label>
+        <div style="display:flex;gap:8px;align-items:baseline;">
+          <input class="input-field" type="number" id="wt-input" placeholder="0.0" step="0.1" min="20" max="300" style="flex:1;min-width:0;font-size:32px;font-weight:800;padding:10px 14px;"/>
+          <span style="color:var(--text3);font-size:15px;font-weight:600;">กก.</span>
+        </div>
+      </div>
+
+      <details id="wt-more-details" style="margin:8px 0 12px;background:var(--surface2);border:1px solid var(--border);border-radius:14px;padding:10px 12px;">
+        <summary style="cursor:pointer;font-size:13px;font-weight:700;color:var(--text2);list-style:none;">📋 รายละเอียดเพิ่มเติม <span style="font-size:11px;color:var(--text3);font-weight:500;">ไม่บังคับ</span></summary>
+        <div class="input-row" style="margin-top:10px;">
+          <div class="input-group">
+            <label class="input-label">วันที่บันทึก</label>
+            <input class="input-field" type="date" id="checkin-date"/>
+          </div>
+          <div class="input-group">
+            <label class="input-label">แหล่งข้อมูล</label>
+            <select class="input-field" id="bc-source">
+              <option value="eufy" selected>เครื่องชั่งที่บ้าน (วัดประจำ)</option>
+              <option value="inbody">เครื่องวัดมืออาชีพ (คลินิก/ฟิตเนส)</option>
+              <option value="manual">กรอกเอง</option>
+            </select>
+          </div>
+        </div>
+        <div class="input-group">
+          <label class="input-label">รอบเอว (ซม.)</label>
+          <div style="display:flex;gap:6px;align-items:center;">
+            <input class="input-field" type="number" id="wt-waist" placeholder="เช่น 82.0" step="0.1" min="40" max="180" style="flex:1;"/>
+            <span style="color:var(--text3);font-size:13px;">ซม.</span>
+          </div>
+        </div>
+        <div class="input-group" style="margin-bottom:0;">
+          <label class="input-label">หมายเหตุ</label>
+          <input class="input-field" type="text" id="wt-note" placeholder="เช่น หลังตื่นนอน / วัดรอบเอวระดับสะดือ"/>
+        </div>
+      </details>
+
+      <details id="body-comp-details" style="margin:8px 0 12px;background:var(--surface2);border:1px solid var(--border);border-radius:14px;padding:10px 12px;">
+        <summary style="cursor:pointer;font-size:13px;font-weight:700;color:var(--text2);list-style:none;display:flex;align-items:center;justify-content:space-between;">
+          <span>🧬 องค์ประกอบร่างกาย <span style="font-size:11px;color:var(--text3);font-weight:500;">ไม่บังคับ</span></span>
+        </summary>
+        <div style="font-size:11px;color:var(--text3);line-height:1.6;margin:8px 0 10px;">
+          ใช้ค่าจากเครื่องที่บ้านเป็นเทรนด์รายวัน และเครื่องมืออาชีพเป็นค่าตั้งต้นอ้างอิงที่แม่นกว่า — ระบบจะใช้ค่าน้ำหนักจากช่องด้านบน ไม่ต้องกรอกซ้ำ
+        </div>
+        <div class="input-row">
+          <div class="input-group"><label class="input-label">เปอร์เซ็นต์ไขมัน (%)</label><input class="input-field" type="number" id="bc-bf" step="0.1" placeholder="18.0"/></div>
+          <div class="input-group"><label class="input-label">มวลกล้ามเนื้อ (กก.)</label><input class="input-field" type="number" id="bc-smm" step="0.1" placeholder="31.2"/></div>
+        </div>
+        <div class="input-row">
+          <div class="input-group"><label class="input-label">เปอร์เซ็นต์กล้ามเนื้อ (%) <span style="font-size:11px;color:var(--accent);">(ซิงค์ไปยัง Fitness Target)</span></label><input class="input-field" type="number" id="bc-smm-pct" step="0.1" placeholder="36.5" min="10" max="60"/></div>
+          <div class="input-group" style="display:flex;align-items:center;padding-top:8px;"><span style="font-size:11px;color:var(--text3);line-height:1.6;">&#128161; กรอกมวลกล้ามเนื้อเป็น กก. หรือ %<br>อย่างใดอย่างหนึ่ง ระบบซิงค์ให้อัตโนมัติ</span></div>
+        </div>
+        <div class="input-row">
+          <div class="input-group"><label class="input-label">ระดับไขมันในช่องท้อง</label><input class="input-field" type="number" id="bc-vf" step="1" placeholder="4"/></div>
+          <div class="input-group"><label class="input-label">อัตราเผาผลาญพื้นฐาน (kcal)</label><input class="input-field" type="number" id="bc-bmr" step="1" placeholder="1565"/></div>
+        </div>
+      </details>
+
+      <button class="btn-primary" onclick="handleSaveWeight()">💾 บันทึก Check-in</button>
+      <div id="bc-source-summary" style="margin-top:10px;"></div>
+      <details id="bc-log-list-details" style="margin-top:8px;">
+        <summary style="cursor:pointer;font-size:12px;color:var(--text3);">📋 ดู/แก้ไขแหล่งข้อมูลย้อนหลัง</summary>
+        <div id="bc-log-list" style="margin-top:8px;"></div>
+      </details>
+    </div>
+
     </div><!-- end fold-grid -->
 
 
     <!-- Progress Photo Card -->
     <div class="card fold-full" id="progress-photo-card">
-      <div class="card-title">📷 Visual Progress Photo</div>
-      <div style="font-size:11px;color:var(--text3);line-height:1.6;margin-bottom:10px;">Optional: ใช้รูปเป็น validation layer เพื่อแยก recomp / water retention / fat trend ไม่ใช้แทนเครื่องชั่ง</div>
+      <div class="card-title">📷 รูปติดตามความคืบหน้า</div>
+      <div style="font-size:11px;color:var(--text3);line-height:1.6;margin-bottom:10px;">ไม่บังคับ: ใช้รูปเทียบเพื่อแยกรูปร่างที่เปลี่ยนจริงจากน้ำในตัว ไม่ใช้แทนเครื่องชั่ง</div>
       <div class="input-row">
-        <div class="input-group"><label class="input-label">มุมถ่าย</label><select class="input-field" id="vp-angle"><option value="front">Front</option><option value="side">Side</option><option value="back">Back</option></select></div>
-        <div class="input-group"><label class="input-label">Note</label><input class="input-field" type="text" id="vp-note" placeholder="เช่น เช้า หลังตื่น"/></div>
+        <div class="input-group"><label class="input-label">มุมถ่าย</label><select class="input-field" id="vp-angle"><option value="front">ด้านหน้า</option><option value="side">ด้านข้าง</option><option value="back">ด้านหลัง</option></select></div>
+        <div class="input-group"><label class="input-label">โน้ต</label><input class="input-field" type="text" id="vp-note" placeholder="เช่น เช้า หลังตื่น"/></div>
       </div>
       <input type="file" id="vp-file" accept="image/*" style="display:none" onchange="handleProgressPhotoFile(event)"/>
       <button class="btn-secondary" onclick="document.getElementById('vp-file').click()">📸 เลือกรูป Progress</button>
@@ -1403,7 +1395,7 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
     <!-- Weight Trend Analyzer moved to Fitness → 🔬 Insights (alongside the other analysis/trend tools) -->
     <div class="card" style="text-align:center;">
       <div class="card-title" style="margin:0 0 8px;">🔬 วิเคราะห์ Trend น้ำหนัก</div>
-      <div style="font-size:12px;color:var(--text3);margin-bottom:12px;">Diagnosis + AI Deep-Dive ย้ายไปรวมกับ Insights อื่น ๆ แล้ว</div>
+      <div style="font-size:12px;color:var(--text3);margin-bottom:12px;">Diagnosis + AI Deep-Dive แบบละเอียด</div>
       <button class="btn-secondary" style="margin:0;" onclick="showPage('fitness');showFitnessTab('insights');">🔬 ไปที่ Insights</button>
     </div>
 
@@ -1420,7 +1412,7 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
       <div class="section-title" style="margin:0">⭐ เมนูโปรด</div>
       <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:3px 10px;font-size:11px;color:var(--text2);" id="fav-count">0 เมนู</div>
     </div>
-    <button class="tab-pill" onclick="showPage('analyze')" style="margin-bottom:12px;">← กลับไปวิเคราะห์</button>
+    <button class="link-btn" onclick="showPage('analyze')" style="margin-bottom:12px;display:block;">← กลับไปวิเคราะห์</button>
     <div id="favoritesList"></div>
   </div>
 
@@ -1430,8 +1422,7 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
     <div class="fold-grid">
     <div class="card fold-full">
       <div class="card-title">👤 บัญชีผู้ใช้</div>
-      <div id="account-info" style="margin-bottom:12px;"><div style="font-size:12px;color:var(--text3);">ยังไม่ได้เข้าสู่ระบบ</div></div>
-      <button class="btn-secondary" style="margin-top:0;" onclick="logoutUser()">🚪 ออกจากระบบ</button>
+      <div id="account-info"><div style="font-size:12px;color:var(--text3);">ยังไม่ได้เข้าสู่ระบบ</div></div>
     </div>
     <div class="card">
       <div class="card-title">ข้อมูลร่างกาย</div>
@@ -1441,7 +1432,7 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
       </div>
       <div class="input-row">
         <div class="input-group"><label class="input-label">ส่วนสูง (ซม.)</label><input class="input-field" type="number" id="s-height" placeholder="170"/></div>
-        <div class="input-group"><label class="input-label">Current Weight</label><div id="s-current-weight-display" style="background:var(--surface2);border:1px solid var(--border-md);border-radius:var(--radius-input);padding:11px 14px;font-size:14px;color:var(--text2);min-height:43px;display:flex;align-items:center;">ใช้จาก Health Check-in ล่าสุด</div></div>
+        <div class="input-group"><label class="input-label">น้ำหนักปัจจุบัน</label><div id="s-current-weight-display" style="background:var(--surface2);border:1px solid var(--border-md);border-radius:var(--radius-input);padding:11px 14px;font-size:14px;color:var(--text2);min-height:43px;display:flex;align-items:center;">ใช้จาก Health Check-in ล่าสุด</div></div>
       </div>
       <div style="font-size:11px;color:var(--text3);margin:-4px 0 10px;line-height:1.5;">⚖️ น้ำหนักปัจจุบันจะ sync จากหน้า น้ำหนัก → Health Check-in เท่านั้น เพื่อไม่ให้ TDEE / Goal Engine ใช้คนละค่า</div>
       <div class="input-group"><label class="input-label">ระดับกิจกรรม</label>
@@ -1472,14 +1463,14 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
         </select>
       </div>
       <div class="input-row">
-        <div class="input-group"><label class="input-label">Recovery Priority</label>
+        <div class="input-group"><label class="input-label">ความสำคัญของการพักฟื้น</label>
           <select class="input-field" id="s-recovery-priority" onchange="updateGoalModeHint();persistTrainingPrefs()">
-            <option value="normal" selected>Normal</option>
-            <option value="recovery_first">Recovery First</option>
-            <option value="aggressive">Aggressive / Push</option>
+            <option value="normal" selected>ปกติ</option>
+            <option value="recovery_first">เน้นพักฟื้นก่อน</option>
+            <option value="aggressive">เน้นผลักดันหนัก</option>
           </select>
         </div>
-        <div class="input-group"><label class="input-label">Weekly Training</label>
+        <div class="input-group"><label class="input-label">ความถี่ซ้อมต่อสัปดาห์</label>
           <select class="input-field" id="s-weekly-frequency" onchange="updateGoalModeHint();persistTrainingPrefs()">
             <option value="3">3 วัน/สัปดาห์</option>
             <option value="4" selected>4 วัน/สัปดาห์</option>
@@ -1493,13 +1484,14 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
     <div class="card">
       <div class="card-title">เป้าหมายสารอาหาร (ปรับได้)</div>
       <div class="input-row">
-        <div class="input-group"><label class="input-label">🔥 แคลอรี่</label><input class="input-field" type="number" id="s-cal" placeholder="1800"/></div>
-        <div class="input-group"><label class="input-label">💪 โปรตีน (g)</label><input class="input-field" type="number" id="s-pro" placeholder="120"/></div>
+        <div class="input-group"><label class="input-label">🔥 แคลอรี่</label><input class="input-field" type="number" id="s-cal" placeholder="1800" oninput="updateMacroKcalHint()"/></div>
+        <div class="input-group"><label class="input-label">💪 โปรตีน (g)</label><input class="input-field" type="number" id="s-pro" placeholder="120" oninput="updateMacroKcalHint()"/></div>
       </div>
       <div class="input-row">
-        <div class="input-group"><label class="input-label">🍚 คาร์บ (g)</label><input class="input-field" type="number" id="s-crb" placeholder="200"/></div>
-        <div class="input-group"><label class="input-label">🥑 ไขมัน (g)</label><input class="input-field" type="number" id="s-fat" placeholder="60"/></div>
+        <div class="input-group"><label class="input-label">🍚 คาร์บ (g)</label><input class="input-field" type="number" id="s-crb" placeholder="200" oninput="updateMacroKcalHint()"/></div>
+        <div class="input-group"><label class="input-label">🥑 ไขมัน (g)</label><input class="input-field" type="number" id="s-fat" placeholder="60" oninput="updateMacroKcalHint()"/></div>
       </div>
+      <div id="s-macro-kcal-hint" style="font-size:11px;color:var(--text3);margin:-4px 0 10px;"></div>
       <button class="btn-primary" onclick="saveGoals()">💾 บันทึกเป้าหมาย</button>
     </div>
     <div class="card">
@@ -1552,7 +1544,7 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
           <input class="input-field" type="number" id="ft-target-visceral" placeholder="5" step="1" min="1" max="30"/>
         </div>
       </div>
-      <div style="font-size:11px;color:var(--text3);margin-bottom:10px;">📌 ค่า Visceral Fat ได้จาก Smart Scale หรือ InBody (ปกติ: 1-9 | เสี่ยง: 10-14 | สูง: 15+)</div>
+      <div style="font-size:11px;color:var(--text3);margin-bottom:10px;">📌 ค่า Visceral Fat ได้จากเครื่องชั่งวัดองค์ประกอบร่างกาย (ปกติ: 1-9 | เสี่ยง: 10-14 | สูง: 15+)</div>
 
       <div class="input-row">
         <div class="input-group">
@@ -1620,7 +1612,7 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
       <button class="btn-secondary" style="margin-top:8px;" onclick="syncWeightNow()">⚖️ ซิงค์น้ำหนักทั้งหมด</button>
       <button class="btn-secondary" style="margin-top:8px;width:100%;" onclick="importSleepFromSheet()">🌙 นำเข้าข้อมูล Sleep จาก Sheet</button>
 
-      <div style="margin-top:14px;padding:10px 12px;background:rgba(20,184,166,0.06);border:1px solid rgba(20,184,166,0.2);border-radius:10px;">
+      <div style="margin-top:14px;padding:10px 12px;background:rgba(143,168,124,0.06);border:1px solid rgba(143,168,124,0.2);border-radius:10px;">
         <div style="font-size:11px;font-weight:600;color:var(--accent);margin-bottom:6px;">📋 Google Apps Script — ต้องอัปเดต</div>
         <div style="font-size:11px;color:var(--text3);line-height:1.7;">
           Script ต้องรองรับ <code style="background:var(--surface);padding:1px 5px;border-radius:4px;">sheetName</code> parameter<br>
@@ -1665,6 +1657,7 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
     </div>
       </div>
     </details>
+    <button onclick="logoutUser()" class="fold-full" style="background:none;border:none;color:var(--red);font-family:inherit;font-size:13px;font-weight:600;cursor:pointer;padding:14px 0;text-align:center;width:100%;">🚪 ออกจากระบบ</button>
     </div><!-- end fold-grid -->
   </div>
 </div>
@@ -1680,7 +1673,7 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
     <input id="favSaveName" style="width:100%;padding:10px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:10px;color:var(--text);font-family:inherit;font-size:16px;box-sizing:border-box;margin-bottom:16px;" placeholder="ชื่อเมนู">
     <div style="display:flex;gap:8px;">
       <button onclick="closeFavSaveModal()" style="flex:1;padding:11px;background:var(--surface2);border:1px solid var(--border);border-radius:12px;color:var(--text2);font-family:inherit;font-size:14px;cursor:pointer;">ยกเลิก</button>
-      <button onclick="saveFavorite()" style="flex:2;padding:11px;background:linear-gradient(135deg,#f59e0b,#d97706);border:none;border-radius:12px;color:white;font-family:inherit;font-size:14px;font-weight:700;cursor:pointer;">⭐ บันทึก</button>
+      <button onclick="saveFavorite()" style="flex:2;padding:11px;background:var(--fire);border:none;border-radius:12px;color:white;font-family:inherit;font-size:14px;font-weight:700;cursor:pointer;">⭐ บันทึก</button>
     </div>
   </div>
 </div>
@@ -1729,7 +1722,7 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
     </div>
     <div style="display:flex;gap:8px;">
       <button onclick="closeFavUseModal()" style="flex:1;padding:11px;background:var(--surface2);border:1px solid var(--border);border-radius:12px;color:var(--text2);font-family:inherit;font-size:14px;cursor:pointer;">ยกเลิก</button>
-      <button onclick="confirmUseFavorite()" style="flex:2;padding:11px;background:linear-gradient(135deg,var(--accent),#0f766e);border:none;border-radius:12px;color:white;font-family:inherit;font-size:14px;font-weight:700;cursor:pointer;">💾 บันทึกมื้อนี้</button>
+      <button onclick="confirmUseFavorite()" style="flex:2;padding:11px;background:var(--accent);border:none;border-radius:12px;color:white;font-family:inherit;font-size:14px;font-weight:700;cursor:pointer;">💾 บันทึกมื้อนี้</button>
     </div>
   </div>
 </div>
@@ -1749,7 +1742,7 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
       <div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px;">🕐 มื้อล่าสุด</div>
       <div id="quicklog-recent-list" style="margin-bottom:6px;"></div>
     </div>
-    <button class="meal-sheet-act" style="background:rgba(20,184,166,0.12);border-color:rgba(20,184,166,0.4);color:var(--accent);" onclick="quickLogGoToAnalyze()">📸 ถ่ายรูป / พิมพ์ชื่อเมนู →</button>
+    <button class="meal-sheet-act" style="background:rgba(143,168,124,0.12);border-color:rgba(143,168,124,0.4);color:var(--accent);" onclick="quickLogGoToAnalyze()">📸 ถ่ายรูป / พิมพ์ชื่อเมนู →</button>
     <button class="meal-sheet-act cancel" onclick="closeQuickLogSheet()">ยกเลิก</button>
   </div>
 </div>
@@ -2317,7 +2310,7 @@ function applyThemeUI(t){
     var btn=document.getElementById('theme-toggle');
     if(btn) btn.textContent = (t==='light') ? '☀️' : '🌙';
     var meta=document.getElementById('meta-theme-color');
-    if(meta) meta.setAttribute('content', t==='light' ? '#f4f6fa' : '#14b8a6');
+    if(meta) meta.setAttribute('content', t==='light' ? '#f6f4ee' : '#181815');
   }catch(e){}
 }
 function initTheme(){
@@ -3193,7 +3186,7 @@ function renderFavorites() {
       '<div style="font-size:40px;margin-bottom:12px;">⭐</div>'+
       '<div style="font-size:14px;">ยังไม่มีเมนูโปรด</div>'+
       '<div style="font-size:12px;margin-top:6px;">กด ⭐ หลังจาก AI วิเคราะห์โภชนาการ</div>'+
-      '<button onclick="showPage(\'analyze\')" style="margin-top:14px;padding:8px 20px;background:rgba(20,184,166,0.12);border:1px solid rgba(20,184,166,0.4);border-radius:20px;color:var(--accent);font-family:inherit;font-size:13px;font-weight:600;cursor:pointer;">📸 ไปวิเคราะห์อาหาร</button></div>';
+      '<button onclick="showPage(\'analyze\')" style="margin-top:14px;padding:8px 20px;background:rgba(143,168,124,0.12);border:1px solid rgba(143,168,124,0.4);border-radius:20px;color:var(--accent);font-family:inherit;font-size:13px;font-weight:600;cursor:pointer;">📸 ไปวิเคราะห์อาหาร</button></div>';
     return;
   }
   el.innerHTML = S.favorites.map(function(f){
@@ -3213,7 +3206,7 @@ function renderFavorites() {
         '<div><div style="font-size:15px;font-weight:700;color:var(--green);">'+f.carbs+'g</div><div style="font-size:11px;color:var(--text3);">คาร์บ</div></div>'+
         '<div><div style="font-size:15px;font-weight:700;color:var(--purple);">'+f.fat+'g</div><div style="font-size:11px;color:var(--text3);">ไขมัน</div></div>'+
       '</div>'+
-      '<button onclick="openUseFavoriteModal('+f.id+')" style="width:100%;padding:10px;background:linear-gradient(135deg,var(--accent),#0f766e);border:none;border-radius:10px;color:white;font-family:inherit;font-size:13px;font-weight:700;cursor:pointer;">🍽️ บันทึกเป็นมื้อนี้</button>'+
+      '<button onclick="openUseFavoriteModal('+f.id+')" style="width:100%;padding:10px;background:var(--accent);border:none;border-radius:10px;color:white;font-family:inherit;font-size:13px;font-weight:700;cursor:pointer;">🍽️ บันทึกเป็นมื้อนี้</button>'+
     '</div>';
   }).join('');
 }
@@ -3812,7 +3805,7 @@ function renderDailySummary(r) {
       if (!sg) return;
       html += '<div style="margin-bottom:12px;">';
       html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">' +
-        '<div style="background:rgba(20,184,166,0.12);border:1px solid rgba(20,184,166,0.3);border-radius:20px;padding:2px 10px;font-size:11px;font-weight:700;color:var(--accent);">' + (sg.issue||'') + '</div>' +
+        '<div style="background:rgba(143,168,124,0.12);border:1px solid rgba(143,168,124,0.3);border-radius:20px;padding:2px 10px;font-size:11px;font-weight:700;color:var(--accent);">' + (sg.issue||'') + '</div>' +
         '<div style="font-size:12px;color:var(--text3);">' + (sg.gap||'') + '</div>' +
       '</div>';
       // From Favorites
@@ -4339,14 +4332,11 @@ function updateDash() {
   document.getElementById('dash-count').textContent = meals.length+' มื้อ';
   document.getElementById('dash-cal').textContent = Math.round(t.cal);
 
-  // rem label + color (อิง gross intake)
+  // rem label + color (อิง gross intake) — รวม net (ข้อมูลเสริมหลังหักกิจกรรม) เป็นบรรทัดเดียว
   var remEl = document.getElementById('dash-rem');
-  remEl.textContent = isUnderGoal ? 'เหลือกินได้ '+Math.round(grossRem)+' kcal' : 'กินเกิน '+Math.round(Math.abs(grossRem))+' kcal';
+  remEl.textContent = (isUnderGoal ? 'เหลือกินได้ '+Math.round(grossRem)+' kcal' : 'กินเกิน '+Math.round(Math.abs(grossRem))+' kcal')
+    + ' · net '+Math.round(netEaten)+' kcal';
   remEl.style.color = isUnderGoal ? 'var(--green)' : 'var(--red)';
-
-  // net note (ข้อมูลเสริม: deficit จริงหลังหักกิจกรรม)
-  var netNoteEl = document.getElementById('dash-net-note');
-  if (netNoteEl) netNoteEl.textContent = 'net '+Math.round(netEaten)+' kcal (หักกิจกรรม)';
 
   var dispPro = parseFloat(t.pro.toFixed(2));
   var dispCrb = parseFloat(t.crb.toFixed(2));
@@ -4374,7 +4364,7 @@ function updateDash() {
   setW('gbf-cal',t.cal,g.cal); setW('gbf-p',t.pro,g.pro); setW('gbf-c',t.crb,g.crb); setW('gbf-f',t.fat,g.fat);
 
   var dm = document.getElementById('dash-meals');
-  if(meals.length===0){ dm.innerHTML='<div class="empty-state"><div class="empty-icon">🍽️</div><div class="empty-text">ยังไม่มีข้อมูลมื้ออาหาร</div><div class="empty-sub">ถ่ายรูปหรือพิมพ์ชื่อเพื่อเริ่มต้น</div><button onclick="showPage(\'analyze\')" style="margin-top:12px;padding:8px 20px;background:rgba(20,184,166,0.12);border:1px solid rgba(20,184,166,0.4);border-radius:20px;color:var(--accent);font-family:inherit;font-size:13px;font-weight:600;cursor:pointer;">📸 วิเคราะห์อาหารแรก</button></div>'; }
+  if(meals.length===0){ dm.innerHTML='<div class="empty-state"><div class="empty-icon">🍽️</div><div class="empty-text">ยังไม่มีข้อมูลมื้ออาหาร</div><div class="empty-sub">ถ่ายรูปหรือพิมพ์ชื่อเพื่อเริ่มต้น</div><button onclick="showPage(\'analyze\')" style="margin-top:12px;padding:8px 20px;background:rgba(143,168,124,0.12);border:1px solid rgba(143,168,124,0.4);border-radius:20px;color:var(--accent);font-family:inherit;font-size:13px;font-weight:600;cursor:pointer;">📸 วิเคราะห์อาหารแรก</button></div>'; }
   else { dm.innerHTML = meals.slice(-3).reverse().map(function(m){return mealHTML(m,false);}).join(''); }
 
   renderDashWeight(viewDate);
@@ -4386,7 +4376,7 @@ function updateDash() {
   // history never silently shows today's recovery score.
   var recEl = document.getElementById('dash-recovery-result');
   var recTitleEl = document.getElementById('dash-recovery-title');
-  if (recTitleEl) recTitleEl.textContent = isToday ? 'Recovery วันนี้' : 'Recovery วันที่ ' + _dashDateShort(viewDate);
+  if (recTitleEl) recTitleEl.textContent = isToday ? '🌅 Recovery วันนี้' : '🌅 Recovery วันที่ ' + _dashDateShort(viewDate);
   if (recEl) {
     if (isToday) {
       if (S.sleepData && S.sleepData.date === localDateStr() && S.sleepData.recoveryScore) {
@@ -4421,7 +4411,7 @@ function renderDashWeight(date) {
   var el = document.getElementById('dash-weight-result');
   var titleEl = document.getElementById('dash-weight-title');
   if(!el) return;
-  if (titleEl) titleEl.textContent = isToday ? 'น้ำหนักล่าสุด' : 'น้ำหนักวันที่ ' + _dashDateShort(date);
+  if (titleEl) titleEl.textContent = isToday ? '⚖️ น้ำหนักล่าสุด' : '⚖️ น้ำหนักวันที่ ' + _dashDateShort(date);
   try {
     var log = (typeof WT !== 'undefined' && WT.log && WT.log.length) ? WT.log : JSON.parse(localStorage.getItem('gd_weight')||'[]');
     if (!isToday) {
@@ -4602,7 +4592,7 @@ function renderLog() {
     if (searchInput) searchInput.placeholder = 'ค้นหาเมนูจากประวัติ...';
     if (S.meals.length === 0) {
       document.getElementById('log-count').textContent = '0 มื้อ';
-      el.innerHTML='<div class="empty-state"><div class="empty-icon">📅</div><div class="empty-text">ยังไม่มีประวัติ</div><div class="empty-sub">เริ่มบันทึกมื้ออาหารแรกได้เลย</div><button onclick="showPage(\'analyze\')" style="margin-top:12px;padding:8px 20px;background:rgba(20,184,166,0.12);border:1px solid rgba(20,184,166,0.4);border-radius:20px;color:var(--accent);font-family:inherit;font-size:13px;font-weight:600;cursor:pointer;">📸 วิเคราะห์อาหารแรก</button></div>';
+      el.innerHTML='<div class="empty-state"><div class="empty-icon">📅</div><div class="empty-text">ยังไม่มีประวัติ</div><div class="empty-sub">เริ่มบันทึกมื้ออาหารแรกได้เลย</div><button onclick="showPage(\'analyze\')" style="margin-top:12px;padding:8px 20px;background:rgba(143,168,124,0.12);border:1px solid rgba(143,168,124,0.4);border-radius:20px;color:var(--accent);font-family:inherit;font-size:13px;font-weight:600;cursor:pointer;">📸 วิเคราะห์อาหารแรก</button></div>';
       return;
     }
     var grouped = {}, totalShown = 0;
@@ -4630,7 +4620,7 @@ function renderLog() {
   if (searchInput) searchInput.placeholder = 'ค้นหาเมนูในวันนี้...';
   var meals = todayMeals();
   document.getElementById('log-count').textContent = meals.length+' มื้อ';
-  if(meals.length===0){ el.innerHTML='<div class="empty-state"><div class="empty-icon">📋</div><div class="empty-text">ยังไม่มีบันทึก</div><div class="empty-sub">ไปที่แท็บวิเคราะห์เพื่อเพิ่มมื้ออาหาร</div><button onclick="showPage(\'analyze\')" style="margin-top:12px;padding:8px 20px;background:rgba(20,184,166,0.12);border:1px solid rgba(20,184,166,0.4);border-radius:20px;color:var(--accent);font-family:inherit;font-size:13px;font-weight:600;cursor:pointer;">📸 วิเคราะห์อาหารแรก</button></div>'; return; }
+  if(meals.length===0){ el.innerHTML='<div class="empty-state"><div class="empty-icon">📋</div><div class="empty-text">ยังไม่มีบันทึก</div><div class="empty-sub">ไปที่แท็บวิเคราะห์เพื่อเพิ่มมื้ออาหาร</div><button onclick="showPage(\'analyze\')" style="margin-top:12px;padding:8px 20px;background:rgba(143,168,124,0.12);border:1px solid rgba(143,168,124,0.4);border-radius:20px;color:var(--accent);font-family:inherit;font-size:13px;font-weight:600;cursor:pointer;">📸 วิเคราะห์อาหารแรก</button></div>'; return; }
   var list = [].concat(meals).reverse();
   if(q){ list = list.filter(function(m){ return (m.foodName||'').toLowerCase().indexOf(q) !== -1; }); }
   if(list.length===0){ el.innerHTML='<div class="meal-search-empty">🔍 ไม่พบเมนูที่ตรงกับ “'+escapeHTML(q)+'”</div>'; return; }
@@ -5028,6 +5018,24 @@ function loadGoalInputs() {
   document.getElementById('s-pro').value=g.pro;
   document.getElementById('s-crb').value=g.crb;
   document.getElementById('s-fat').value=g.fat;
+  updateMacroKcalHint();
+}
+// Live feedback: โปรตีน/คาร์บ 4 kcal ต่อกรัม, ไขมัน 9 kcal ต่อกรัม — รวมแล้วเทียบกับช่องแคลอรี่
+function updateMacroKcalHint() {
+  var hintEl = document.getElementById('s-macro-kcal-hint');
+  if (!hintEl) return;
+  var cal = +document.getElementById('s-cal').value || 0;
+  var pro = +document.getElementById('s-pro').value || 0;
+  var crb = +document.getElementById('s-crb').value || 0;
+  var fat = +document.getElementById('s-fat').value || 0;
+  var macroCal = Math.round(pro*4 + crb*4 + fat*9);
+  var diff = macroCal - cal;
+  if (!pro && !crb && !fat) { hintEl.textContent = ''; return; }
+  hintEl.innerHTML = 'รวมจากมาโคร ≈ <b>'+macroCal+' kcal</b>' +
+    (cal ? (Math.abs(diff) <= 15
+      ? ' <span style="color:var(--green);">· ตรงกับเป้าแคลอรี่</span>'
+      : ' <span style="color:var(--fire);">· '+(diff>0?'เกิน':'ต่ำกว่า')+'เป้าแคลอรี่ '+Math.abs(diff)+' kcal</span>')
+      : '');
 }
 
 function saveGoals() {
@@ -6675,7 +6683,7 @@ function renderDashWater(date) {
   var actionsEl = document.getElementById('dash-water-actions');
   var roNoteEl = document.getElementById('dash-water-readonly-note');
   if (!valEl) return;
-  if (titleEl) titleEl.textContent = isToday ? 'น้ำดื่มวันนี้' : 'น้ำดื่มวันที่ ' + _dashDateShort(date);
+  if (titleEl) titleEl.textContent = isToday ? '💧 น้ำดื่มวันนี้' : '💧 น้ำดื่มวันที่ ' + _dashDateShort(date);
   if (actionsEl) actionsEl.style.display = isToday ? 'flex' : 'none';
   if (roNoteEl) roNoteEl.style.display = isToday ? 'none' : 'block';
   var ml = getWaterForDate(date), goal = getWaterGoalMl();
@@ -6810,15 +6818,22 @@ function renderWorkoutHistory() {
 // Fitness sub-tabs
 var ftCharts = {};
 function showFitnessTab(tab) {
+  // "target" and "plan" share one combined sub-tab pill (🎯 เป้าหมาย+แผน) — both content
+  // blocks show together, so either name activates the same merged group.
+  if (tab === 'plan') tab = 'target';
+  var visible = (tab === 'target') ? ['target','plan'] : [tab];
   ['today','chart','strength','target','plan','sleep','insights'].forEach(function(t){
-    document.getElementById('ftab-content-'+t).style.display = t===tab?'block':'none';
-    document.getElementById('ftab-'+t).classList.toggle('active', t===tab);
+    var contentEl = document.getElementById('ftab-content-'+t);
+    if (contentEl) contentEl.style.display = visible.indexOf(t)>=0 ? 'block' : 'none';
+  });
+  ['ftab-today','ftab-chart','ftab-strength','ftab-targetplan','ftab-sleep'].forEach(function(id){
+    var btnEl = document.getElementById(id);
+    if (btnEl) btnEl.classList.toggle('active', id === (tab==='target' ? 'ftab-targetplan' : 'ftab-'+tab));
   });
   if (tab === 'today') { if (typeof renderTodayPlanCard === 'function') renderTodayPlanCard(); }
   if (tab === 'chart') renderFitnessCharts();
   if (tab === 'strength') updateStrengthSelectOptions();
-  if (tab === 'target') { loadFitnessTarget(); renderTargetDashboard(); renderTargetTrendChart(); }
-  if (tab === 'plan') { loadSavedPlan(); renderProgressionOverview(); }
+  if (tab === 'target') { loadFitnessTarget(); renderTargetDashboard(); renderTargetTrendChart(); loadSavedPlan(); renderProgressionOverview(); }
   if (tab === 'sleep') { loadSleepUI(); renderSleepTrendChart(); }
   if (tab === 'insights') {
     // WT.log may not be populated yet if the user never opened the Weight page
@@ -7651,9 +7666,9 @@ function renderTargetDashboard() {
 
     var barColor = isOver ? 'var(--green)' : pct >= 75 ? '#eab308' : 'var(--accent)';
 
-    html += '<div class="target-metric-card" style="background:rgba(20,184,166,0.04);border-color:rgba(20,184,166,0.25);">';
+    html += '<div class="target-metric-card" style="background:rgba(143,168,124,0.04);border-color:rgba(143,168,124,0.25);">';
     html += '<div class="target-metric-header"><span class="target-metric-title">⏱️ Timeline & Trend</span>';
-    html += '<span class="target-metric-badge" style="background:rgba(20,184,166,0.12);color:var(--accent);">'+target.duration+' สัปดาห์</span></div>';
+    html += '<span class="target-metric-badge" style="background:rgba(143,168,124,0.12);color:var(--accent);">'+target.duration+' สัปดาห์</span></div>';
 
     // ── A: Progress bar ──
     html += '<div style="height:10px;background:var(--surface2);border-radius:5px;overflow:hidden;margin-bottom:6px;">';
@@ -7820,7 +7835,7 @@ function renderTargetDashboard() {
           html += '<div style="font-size:11px;color:#eab308;margin-top:4px;">⚠️ %BF ยังไม่ลดตาม trend ปัจจุบัน — เช็ค deficit จริงในแท็บ ⚖️ วิเคราะห์</div>';
         }
       } else {
-        html += '<div style="font-size:11px;color:var(--text3);">📊 บันทึก Body Composition (InBody/Eufy) อย่างน้อย 2 ครั้ง ห่างกัน ≥1 สัปดาห์ เพื่อดู %BF trend จริง</div>';
+        html += '<div style="font-size:11px;color:var(--text3);">📊 บันทึก Body Composition อย่างน้อย 2 ครั้ง ห่างกัน ≥1 สัปดาห์ เพื่อดู %BF trend จริง</div>';
       }
       // feasibility summary from save-time snapshot
       if (target.feasibility && target.feasibility.direction === 'loss') {
@@ -7851,7 +7866,7 @@ function renderTargetDashboard() {
     var maxBF = Math.max(currBF||0, tgtBF||0, 35);
     html += '<div class="target-metric-card">'+
       '<div class="target-metric-header"><span class="target-metric-title">🔥 % Body Fat — Current vs Target</span>'+
-      '<span class="target-metric-badge" style="background:rgba(20,184,166,0.12);color:var(--accent)">'+(gender==='male'?'ชาย':'หญิง')+'</span></div>'+
+      '<span class="target-metric-badge" style="background:rgba(143,168,124,0.12);color:var(--accent)">'+(gender==='male'?'ชาย':'หญิง')+'</span></div>'+
       cvBar('',currBF,tgtBF,maxBF+5,bfCat(currBF,gender).color,bfCat(tgtBF,gender).color,'%')+
       '<div style="font-size:11px;color:var(--text3);margin-top:6px;">'+(gender==='male'?'Elite <6% | Fitness 6-14% | ค่าเฉลี่ย 14-18% | ยอมรับได้ 18-25% | อ้วน >25%':'Elite <14% | Fitness 14-21% | ค่าเฉลี่ย 21-25% | ยอมรับได้ 25-32% | อ้วน >32%')+'</div></div>';
   }
@@ -7904,7 +7919,7 @@ function renderTargetDashboard() {
 
   // ── 6. Summary call-to-action ──
   var levelMap2 = {beginner:'มือใหม่',intermediate:'ปานกลาง',advanced:'ขั้นสูง'};
-  html += '<div class="card" style="background:rgba(20,184,166,0.06);border-color:rgba(20,184,166,0.2);">'+
+  html += '<div class="card" style="background:rgba(143,168,124,0.06);border-color:rgba(143,168,124,0.2);">'+
     '<div style="font-size:12px;color:var(--text2);line-height:1.9;">'+
     '⏳ ระยะเวลา: <b style="color:var(--accent)">'+target.duration+' สัปดาห์</b><br>'+
     '💪 ระดับ: <b style="color:var(--accent)">'+(levelMap2[target.level]||target.level)+'</b><br>'+
@@ -8873,9 +8888,9 @@ function importSleepFromSheet() {
 // SOURCE WEIGHTING + VISUAL PROGRESS ENGINE v17
 // ─────────────────────────────────────────────
 var BODY_SOURCE_CONF = {
-  inbody: { label:'InBody', role:'calibration', weight:0.93, bf:0.90, smm:0.92, visceral:0.88, bmr:0.86 },
-  eufy:   { label:'Eufy / Smart Scale', role:'daily-trend', weight:0.86, bf:0.52, smm:0.45, visceral:0.35, bmr:0.40 },
-  manual: { label:'Manual', role:'manual', weight:0.70, bf:0.50, smm:0.50, visceral:0.45, bmr:0.50 }
+  inbody: { label:'เครื่องมืออาชีพ', role:'calibration', weight:0.93, bf:0.90, smm:0.92, visceral:0.88, bmr:0.86 },
+  eufy:   { label:'เครื่องที่บ้าน', role:'daily-trend', weight:0.86, bf:0.52, smm:0.45, visceral:0.35, bmr:0.40 },
+  manual: { label:'กรอกเอง', role:'manual', weight:0.70, bf:0.50, smm:0.50, visceral:0.45, bmr:0.50 }
 };
 function getBodyCompLogsRaw(){ return safeJSON('gd_body_comp_logs', []); }
 function setBodyCompLogs(logs){ localStorage.setItem('gd_body_comp_logs', JSON.stringify(logs || [])); }
@@ -9084,7 +9099,7 @@ function renderBodyCompSummary(){
   var el=document.getElementById('bc-source-summary'); if(!el) return;
   var logs=getBodyCompLogs();
   var cd=document.getElementById('checkin-date'); if(cd && !cd.value) cd.value = localDateStr();
-  if(!logs.length){ el.innerHTML='<div style="font-size:12px;color:var(--text3);padding:10px;background:var(--surface2);border-radius:12px;">ยังไม่มี body composition log — ถ้ามี InBody ให้กรอกเป็น calibration source</div>'; renderBodyCompLogList(); return; }
+  if(!logs.length){ el.innerHTML='<div style="font-size:12px;color:var(--text3);padding:10px;background:var(--surface2);border-radius:12px;">ยังไม่มี body composition log — ถ้ามีค่าจากเครื่องวัดมืออาชีพ ให้เลือกเป็นแหล่งข้อมูลนี้ตอนกรอก</div>'; renderBodyCompLogList(); return; }
   var c=getBodyCompCalibration();
   var latest=logs[logs.length-1];
   var prefLabel = (c.preferred && c.source && BODY_SOURCE_CONF[c.source]) ? BODY_SOURCE_CONF[c.source].label : (c.source || 'Manual');
@@ -9158,7 +9173,7 @@ function estimateEMATrend(entries, spanDays){
 }
 function getSourceAwareStatusText(){
   var c=getBodyCompCalibration();
-  if(!c.preferred) return 'ยังไม่มี InBody/Eufy composition calibration';
+  if(!c.preferred) return 'ยังไม่มีข้อมูล body composition สำหรับ calibration';
   var label = BODY_SOURCE_CONF[c.source] ? BODY_SOURCE_CONF[c.source].label : c.source;
   return label+' calibration · BF '+(c.bf||'—')+'% · SMM '+(c.smm||'—')+'kg · VF '+(c.visceral||'—');
 }
@@ -9909,13 +9924,13 @@ function buildAnalysisHTML(recent) {
 
     // Sync button — only when not suppressed
     if(recommendedIntake!==null){
-      html+='<button onclick="syncRecommendedCalToGoal('+recommendedIntake+')" style="width:100%;padding:10px;background:linear-gradient(135deg,#22c55e,#16a34a);border:none;border-radius:12px;color:white;font-family:inherit;font-size:13px;font-weight:700;cursor:pointer;margin-bottom:10px;transition:all 0.2s;" onmouseover="this.style.opacity=\'0.85\'" onmouseout="this.style.opacity=\'1\'">⚙️ ตั้งค่าเป้า '+recommendedIntake+' kcal + macro จาก Goal Engine</button>';
+      html+='<button onclick="syncRecommendedCalToGoal('+recommendedIntake+')" style="width:100%;padding:10px;background:var(--green);border:none;border-radius:12px;color:white;font-family:inherit;font-size:13px;font-weight:700;cursor:pointer;margin-bottom:10px;transition:all 0.2s;" onmouseover="this.style.opacity=\'0.85\'" onmouseout="this.style.opacity=\'1\'">⚙️ ตั้งค่าเป้า '+recommendedIntake+' kcal + macro จาก Goal Engine</button>';
     }
   }
 
   // AI button / disabled state
   if(aiEligible){
-    html+='<button onclick="runAIWeightDeepDive()" id="wt-ai-btn" style="width:100%;padding:11px;background:linear-gradient(135deg,#a855f7,#6366f1);border:none;border-radius:12px;color:white;font-family:inherit;font-size:13px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;transition:all 0.2s;" onmouseover="this.style.opacity=\'0.85\'" onmouseout="this.style.opacity=\'1\'">🤖 AI Deep-Dive Analysis</button>';
+    html+='<button onclick="runAIWeightDeepDive()" id="wt-ai-btn" style="width:100%;padding:11px;background:var(--purple);border:none;border-radius:12px;color:white;font-family:inherit;font-size:13px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;transition:all 0.2s;" onmouseover="this.style.opacity=\'0.85\'" onmouseout="this.style.opacity=\'1\'">🤖 AI Deep-Dive Analysis</button>';
   } else {
     html+='<div style="padding:11px;background:var(--surface2);border-radius:12px;text-align:center;font-size:12px;color:var(--text3);">🤖 AI Deep-Dive — ต้องการ ≥7 วัน (น้ำหนัก) และ ≥5 วัน (อาหาร)</div>';
   }
@@ -11019,8 +11034,8 @@ function renderBehaviorInsights(){
     var v=cur?cur.value:null;
     th+='<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px;">'+
       '<span style="font-size:13px;color:var(--text);flex:1;">'+x.name+'</span>'+
-      '<button class="tab-pill'+(v===1?' active':'')+'" style="font-size:12px;padding:4px 14px;" onclick="toggleBehaviorToday(\''+x.id+'\',1)">ใช่</button>'+
-      '<button class="tab-pill'+(v===0?' active':'')+'" style="font-size:12px;padding:4px 14px;" onclick="toggleBehaviorToday(\''+x.id+'\',0)">ไม่</button>'+
+      '<button class="label-btn'+(v===1?' active':'')+'" style="padding:4px 14px;" onclick="toggleBehaviorToday(\''+x.id+'\',1)">ใช่</button>'+
+      '<button class="label-btn'+(v===0?' active':'')+'" style="padding:4px 14px;" onclick="toggleBehaviorToday(\''+x.id+'\',0)">ไม่</button>'+
       '</div>';
   });
   todayEl.innerHTML=th;
@@ -11144,7 +11159,7 @@ if ('serviceWorker' in navigator) {
 </script>
 
 <!-- ==================== AI CHAT (ask your data) ==================== -->
-<button class="chat-fab" id="chatFab" onclick="openChat()" title="ถาม AI เกี่ยวกับข้อมูลของคุณ">💬</button>
+<button class="primary-fab" id="quickAddFab" onclick="openQuickLogSheet()" title="บันทึกมื้ออาหาร" aria-label="บันทึกมื้ออาหาร">+</button>
 <div class="chat-overlay" id="chatOverlay" onclick="if(event.target===this)closeChat()">
   <div class="chat-panel">
     <div class="chat-head">
