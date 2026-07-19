@@ -5945,8 +5945,8 @@ function renderExList() {
     var c = GROUP_COLOR[ex.group] || 'var(--accent)';
     html += '<div class="ex-row'+(inSession?' selected':'')+'" onclick="openExSheet(\''+ex.id+'\')">' +
       '<div class="ex-row-icon" style="background:'+c+'22;color:'+c+';">'+ex.emoji+'</div>' +
-      '<div class="ex-row-info"><div class="ex-row-name">'+ex.name+(inSession?' ✅':'')+'</div>' +
-      '<div class="ex-row-meta">'+ex.muscle+' · '+ex.equipment+'</div></div>' +
+      '<div class="ex-row-info"><div class="ex-row-name">'+escapeHTML(ex.name)+(inSession?' ✅':'')+'</div>' +
+      '<div class="ex-row-meta">'+escapeHTML(ex.muscle)+' · '+escapeHTML(ex.equipment)+'</div></div>' +
       (pr && pr.e1RM > 0 ? '<div class="ex-row-pr">PR '+pr.e1RM+'kg</div>' : '') +
       (ex.custom ? '<button type="button" onclick="event.stopPropagation();deleteCustomExercise(\''+ex.id+'\')" style="background:none;border:none;color:var(--text3);font-size:14px;padding:4px 6px;">✕</button>' : '') +
       '</div>';
@@ -5968,7 +5968,7 @@ function renderSessionChips() {
   wrap.style.display = 'flex';
   wrap.innerHTML = ST.sessionExercises.map(function(s) {
     var ex = getExById(s.exerciseId);
-    return '<span class="ex-session-chip">'+(ex ? ex.emoji+' '+ex.name : s.exerciseId)+'</span>';
+    return '<span class="ex-session-chip">'+(ex ? ex.emoji+' '+escapeHTML(ex.name) : escapeHTML(s.exerciseId))+'</span>';
   }).join('');
 }
 function openExSheet(exerciseId) {
@@ -6344,7 +6344,7 @@ function renderPRCard() {
     var c = ex ? (GROUP_COLOR[ex.group]||'var(--accent)') : 'var(--accent)';
     html += '<div style="display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-bottom:1px solid var(--border);">' +
       '<div style="display:flex;align-items:center;gap:8px;"><div style="font-size:18px;">'+(ex?ex.emoji:'💪')+'</div>' +
-      '<div><div style="font-size:13px;font-weight:700;">'+(ex?ex.name:id)+'</div>' +
+      '<div><div style="font-size:13px;font-weight:700;">'+escapeHTML(ex?ex.name:id)+'</div>' +
       '<div style="font-size:11px;color:var(--text3);">'+(best.weight>0?best.weight+'kg':'BW')+' × '+best.reps+' reps · '+best.date+'</div></div></div>' +
       '<div style="background:'+c+'22;border:1px solid '+c+';border-radius:8px;padding:3px 10px;font-size:12px;font-weight:800;color:'+c+';">'+(best.e1RM>0?best.e1RM+'kg':'×'+best.reps)+'</div></div>';
   });
@@ -6824,7 +6824,7 @@ function updateFitnessUI() {
     el.innerHTML = [].concat(ws).reverse().map(function(w) {
       return '<div class="workout-item">'+
         '<div class="workout-icon">'+w.icon+'</div>'+
-        '<div class="workout-info"><div class="workout-name">'+w.name+'</div>'+
+        '<div class="workout-info"><div class="workout-name">'+escapeHTML(w.name)+'</div>'+
         '<div class="workout-meta">'+w.duration_min+' นาที • '+w.time+workoutHrBadge(w)+'</div></div>'+
         '<div class="workout-cal">'+w.calories_burned+'<br><span style="font-size:11px;color:var(--text3)">kcal</span></div>'+
         '<button class="workout-del" onclick="delWorkout('+w.id+')">🗑️</button></div>';
@@ -6874,7 +6874,7 @@ function renderWorkoutHistory() {
     var rows = [].concat(items).reverse().map(function(w){
       return '<div class="workout-item">'+
         '<div class="workout-icon">'+w.icon+'</div>'+
-        '<div class="workout-info"><div class="workout-name">'+w.name+'</div>'+
+        '<div class="workout-info"><div class="workout-name">'+escapeHTML(w.name)+'</div>'+
         '<div class="workout-meta">'+w.duration_min+' นาที • '+w.time+workoutHrBadge(w)+'</div></div>'+
         '<div class="workout-cal">'+w.calories_burned+'<br><span style="font-size:11px;color:var(--text3)">kcal</span></div>'+
         '<button class="workout-del" onclick="delWorkout('+w.id+')">🗑️</button></div>';
@@ -8342,25 +8342,25 @@ function renderTodayPlanCard() {
                (day.theme && day.theme.toLowerCase().includes('พัก'));
 
   if (isRest) {
-    body.innerHTML = '<div style="font-size:14px;font-weight:600;margin-bottom:4px;">'+(day.theme||'Rest')+'</div>'+
+    body.innerHTML = '<div style="font-size:14px;font-weight:600;margin-bottom:4px;">'+escapeHTML(day.theme||'Rest')+'</div>'+
       '<div style="font-size:13px;color:var(--text3);">วันพักฟื้น — ไม่ต้องบันทึก workout</div>';
     card.style.display = 'block';
     return;
   }
 
-  var html = '<div style="font-size:13px;font-weight:600;color:var(--text2);margin-bottom:8px;">'+(day.theme||'')+'</div>';
+  var html = '<div style="font-size:13px;font-weight:600;color:var(--text2);margin-bottom:8px;">'+escapeHTML(day.theme||'')+'</div>';
   html += '<div style="display:flex;flex-direction:column;gap:6px;">';
   day.exercises.forEach(function(ex, i){
     var isCardio = ex.type === 'cardio' || !!ex.duration_min;
     var icon = isCardio ? '🏃' : '🏋️';
     var detail = isCardio
-      ? (ex.duration_min ? ex.duration_min+' นาที' : '') + (ex.intensity ? ' · '+ex.intensity : '')
-      : ((ex.sets||'?')+'×'+(ex.reps||'?')) + (ex.intensity ? ' · '+ex.intensity : '');
+      ? (ex.duration_min ? escapeHTML(String(ex.duration_min))+' นาที' : '') + (ex.intensity ? ' · '+escapeHTML(ex.intensity) : '')
+      : (escapeHTML(String(ex.sets||'?'))+'×'+escapeHTML(String(ex.reps||'?'))) + (ex.intensity ? ' · '+escapeHTML(ex.intensity) : '');
     html += '<button type="button" onclick="fillFromPlanExercise('+i+')" '+
       'style="display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;text-align:left;'+
       'background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:9px 11px;cursor:pointer;'+
       'color:var(--text);font-family:inherit;">'+
-      '<span style="min-width:0;"><span style="font-size:13px;font-weight:600;">'+icon+' '+ex.name+'</span>'+
+      '<span style="min-width:0;"><span style="font-size:13px;font-weight:600;">'+icon+' '+escapeHTML(ex.name||'')+'</span>'+
       '<span style="display:block;font-size:11px;color:var(--text3);margin-top:1px;">'+detail+'</span></span>'+
       '<span style="font-size:12px;color:var(--accent);font-weight:700;white-space:nowrap;">~'+(ex.cal||0)+' kcal ›</span>'+
       '</button>';
