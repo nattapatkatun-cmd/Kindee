@@ -1530,6 +1530,8 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
         </div>
         <div class="input-group"><label class="input-label">ความถี่ซ้อมต่อสัปดาห์</label>
           <select class="input-field" id="s-weekly-frequency" onchange="updateGoalModeHint();persistTrainingPrefs()">
+            <option value="1">1 วัน/สัปดาห์</option>
+            <option value="2">2 วัน/สัปดาห์</option>
             <option value="3">3 วัน/สัปดาห์</option>
             <option value="4" selected>4 วัน/สัปดาห์</option>
             <option value="5">5 วัน/สัปดาห์</option>
@@ -2768,6 +2770,17 @@ function syncItem(id) {
   if(pe) item.portion = pe.value;
 }
 
+// Shared estimation methodology for both photo and text analysis — vision
+// models systematically over-estimate calories when asked open-endedly, so
+// force an itemize-weigh-sum workflow anchored to the median of the range.
+var NUTRITION_ESTIMATE_GUIDE =
+  '\n\nวิธีประเมินแคลอรี่ (สำคัญมาก — ทำตามลำดับ):\n' +
+  '1. แยกส่วนประกอบทีละอย่าง แล้วประเมินน้ำหนักสุกเป็นกรัม — ถ้ามีรูปให้ใช้สเกลในรูป (ขนาดจาน/ช้อน/มือ) ถ้าไม่มีให้ใช้ปริมาณมาตรฐาน 1 เสิร์ฟ — เทียบเคียง: ข้าวสวย 1 ทัพพี ≈ 60g (≈80 kcal), ข้าวในจานข้าวราดแกงทั่วไป ≈ 150-250g, เนื้อสัตว์ 1 ชิ้นขนาดฝ่ามือ ≈ 100-120g\n' +
+  '2. คำนวณแคลอรี่/macro ของแต่ละส่วนจากค่าต่อ 100g ตามตารางโภชนาการไทยหรือ USDA แล้วรวมทุกส่วน\n' +
+  '3. ใช้ค่ากลาง (median) ของช่วงที่เป็นไปได้ ไม่ใช่ค่าสูงสุด — อย่าบวกเผื่อน้ำมัน/น้ำตาล "ที่อาจซ่อนอยู่" ถ้าไม่มีหลักฐาน (ความมันเงา การทอด ซอสข้น) และอย่านับน้ำมันซ้ำถ้าค่าต่อ 100g ของเมนูปรุงสุกนั้นรวมน้ำมันแล้ว\n' +
+  '4. ตรวจความสมเหตุสมผลก่อนตอบ: ผลรวมต้องอยู่ในช่วงปกติของเมนูนั้น (เช่น ข้าวผัด 1 จาน ~500-700 kcal, ก๋วยเตี๋ยวน้ำ 1 ชาม ~300-450 kcal, ส้มตำ 1 จาน ~70-150 kcal) — ถ้าเกินช่วง ให้ทบทวนน้ำหนักกรัมที่ประเมินใหม่\n' +
+  '5. ใส่รายการแตกส่วนประกอบไว้ใน description เสมอ รูปแบบ "ชื่อ ~กรัม (~kcal)" คั่นด้วย + เพื่อให้ผู้ใช้ตรวจสอบที่มาของตัวเลขได้';
+
 // Analyze photo
 function analyzePhoto(extra) {
   extra = extra || '';
@@ -2778,7 +2791,7 @@ function analyzePhoto(extra) {
   document.getElementById('loadingDiv').style.display = 'block';
   document.getElementById('resultCard').style.display = 'none';
   document.getElementById('clarifyBox').style.display = 'none';
-  var sys = 'คุณคือผู้เชี่ยวชาญด้านโภชนาการที่เชี่ยวชาญอาหารไทย ญี่ปุ่น เกาหลี และ Fusion\nตอบด้วย JSON เท่านั้น รูปแบบ: {"needClarify":false,"clarifyQuestion":"","foodName":"","description":"","calories":0,"protein":0,"carbs":0,"fat":0,"sodiumFlag":"low|medium|high","carbLoadFlag":"low|normal|high","mealContext":"normal|buffet|fried|soup|processed|sweet|alcohol|other","retentionRisk":0,"analysisConfidence":0,"disclaimer":""}\nให้ประเมิน sodiumFlag/carbLoadFlag/retentionRisk จากชนิดอาหาร วิธีปรุง น้ำซุป/ซอส ปริมาณคาร์บ และอาหารแปรรูป; ถ้าไม่แน่ใจให้ใช้ medium/normal และ confidence ต่ำลง\nถ้ารูปไม่ชัดให้ needClarify=true และถามใน clarifyQuestion';
+  var sys = 'คุณคือผู้เชี่ยวชาญด้านโภชนาการที่เชี่ยวชาญอาหารไทย ญี่ปุ่น เกาหลี และ Fusion\nตอบด้วย JSON เท่านั้น รูปแบบ: {"needClarify":false,"clarifyQuestion":"","foodName":"","description":"","calories":0,"protein":0,"carbs":0,"fat":0,"sodiumFlag":"low|medium|high","carbLoadFlag":"low|normal|high","mealContext":"normal|buffet|fried|soup|processed|sweet|alcohol|other","retentionRisk":0,"analysisConfidence":0,"disclaimer":""}\nให้ประเมิน sodiumFlag/carbLoadFlag/retentionRisk จากชนิดอาหาร วิธีปรุง น้ำซุป/ซอส ปริมาณคาร์บ และอาหารแปรรูป; ถ้าไม่แน่ใจให้ใช้ medium/normal และ confidence ต่ำลง\nถ้ารูปไม่ชัดให้ needClarify=true และถามใน clarifyQuestion' + NUTRITION_ESTIMATE_GUIDE;
   var userText = extra ? 'วิเคราะห์อาหารในรูป ข้อมูลเพิ่มเติม: '+extra : 'วิเคราะห์อาหารในรูปนี้';
   // Detect image type
   var mimeType = curImgType || 'image/jpeg';
@@ -2833,9 +2846,9 @@ function analyzeText(extra) {
     '{"needClarify":false,"clarifyQuestion":"","items":[{"foodName":"","calories":0,"protein":0,"carbs":0,"fat":0,"sodiumFlag":"low|medium|high","carbLoadFlag":"low|normal|high","mealContext":"normal|buffet|fried|soup|processed|sweet|alcohol|other","retentionRisk":0}],"foodName":"รวมทุกเมนู","description":"","calories":0,"protein":0,"carbs":0,"fat":0,"sodiumFlag":"low|medium|high","carbLoadFlag":"low|normal|high","mealContext":"normal|buffet|fried|soup|processed|sweet|alcohol|other","retentionRisk":0,"analysisConfidence":0,"disclaimer":""}' :
     '{"needClarify":false,"clarifyQuestion":"","foodName":"","description":"","calories":0,"protein":0,"carbs":0,"fat":0,"sodiumFlag":"low|medium|high","carbLoadFlag":"low|normal|high","mealContext":"normal|buffet|fried|soup|processed|sweet|alcohol|other","retentionRisk":0,"analysisConfidence":0,"disclaimer":""}';
   var sysBase = 'คุณคือผู้เชี่ยวชาญด้านโภชนาการที่เชี่ยวชาญอาหารไทย ญี่ปุ่น เกาหลี และ Fusion\nตอบด้วย JSON เท่านั้น รูปแบบ: '+fmt;
-  var sys = isMulti
+  var sys = (isMulti
     ? sysBase + '\nสำคัญมาก: calories/protein/carbs/fat ระดับบนสุดต้องเป็นผลรวม (SUM) ของทุก items เสมอ และ sodiumFlag/carbLoadFlag/retentionRisk ระดับบนสุดต้องสะท้อนความเสี่ยงสูงสุด/รวมของทั้งมื้อ'
-    : sysBase;
+    : sysBase) + NUTRITION_ESTIMATE_GUIDE + '\nถ้าผู้ใช้ระบุปริมาณ/ขนาดมา ให้ยึดตามที่ระบุเป็นหลัก';
   var menuText = valid.map(function(m,i){ return (i+1)+'. '+m.name.trim()+(m.portion.trim()?' ('+m.portion.trim()+')':''); }).join('\n');
   var userText = sys+'\n\nวิเคราะห์โภชนาการของ:\n'+menuText+(extra?'\nข้อมูลเพิ่มเติม: '+extra:'');
   geminiCall(key, {contents:[{parts:[{text:userText}]}],generationConfig:{temperature:0.1}}, 30000, function(msg){ showToast(msg,'info'); })
@@ -3553,6 +3566,12 @@ function generateDailySummary() {
     if (target.currMuscle)targetStr += '\n• Skeletal Muscle ปัจจุบัน: ' + target.currMuscle + '%';
     if (target.currVisceral) targetStr += '\n• Visceral Fat ปัจจุบัน: level ' + target.currVisceral;
     if (target.duration)  targetStr += '\n• Timeline: ' + target.duration + ' สัปดาห์';
+    var progPos = getTargetProgramPosition(target);
+    if (progPos) {
+      targetStr += progPos.isOver
+        ? '\n• ตำแหน่งในโปรแกรม: ครบ ' + progPos.total + ' สัปดาห์แล้ว' + (progPos.weeksOver > 0 ? ' (เลยกำหนดมา ' + progPos.weeksOver + ' สัปดาห์)' : '')
+        : '\n• ตำแหน่งในโปรแกรม: ตอนนี้อยู่สัปดาห์ที่ ' + progPos.week + ' จาก ' + progPos.total + ' — เหลืออีก ' + progPos.weeksRemaining + ' สัปดาห์' + (progPos.daysRemaining > 0 ? ' ' + progPos.daysRemaining + ' วัน' : '');
+    }
   }
 
   var profileStr = profile
@@ -3672,7 +3691,7 @@ function generateDailySummary() {
     '  "nutrition": { "headline": "one-line assessment", "detail": "2-3 sentences with specific macro insight, explain the WHY behind each gap physiologically" },\n' +
     '  "strain": { "level": "Light"|"Moderate"|"High"|"Rest", "headline": "one-line", "detail": "2-3 sentences on training load vs capacity" },\n' +
     '  "recovery": { "score": "Optimal"|"Moderate"|"Poor", "headline": "cross-reference: was todays strain appropriate given the morning recovery score?", "detail": "2-3 sentences in Thai comparing todays workout load against the morning recovery score. If no morning recovery was run, estimate from sleep data only." },\n' +
-    '  "progress": { "headline": "one-line", "detail": "2-3 sentences on trajectory toward fitness target, include estimated weeks/days if calculable" },\n' +
+    '  "progress": { "headline": "one-line", "detail": "2-3 sentences on trajectory toward fitness target, include estimated weeks/days if calculable. Anchor EVERY timeline statement to the current program position given in Fitness Target (ตำแหน่งในโปรแกรม — สัปดาห์ที่ X, เหลืออีก Y สัปดาห์): talk about the REMAINING weeks, never phrase it as if the full program duration still lies ahead" },\n' +
     '  "playbook": [\n' +
     '    { "category": "อาหาร", "action": "specific meal recommendation. If intake was over goal today, specify which meal to reduce tomorrow and what to swap it with" },\n' +
     '    { "category": "ออกกำลังกาย", "action": "specific workout type and duration or rest advice" },\n' +
@@ -4879,6 +4898,25 @@ function getOfficialCalorieContext() {
     goalMode: mode,
     goalModeLabel: modeCfg.label,
     source: adaptiveTDEE ? 'adaptive-weight-trend' : 'formula-profile'
+  };
+}
+// Where the user currently is inside their fitness-target program timeline —
+// AI prompts must anchor timeline talk to this, not the full program duration.
+// Returns null when the target has no startDate/duration to anchor to.
+function getTargetProgramPosition(target) {
+  if (!target || !target.startDate || !target.duration) return null;
+  var total = parseInt(target.duration, 10);
+  if (!total) return null;
+  var elapsedDays = Math.max(0, Math.floor((new Date() - new Date(target.startDate)) / 86400000));
+  var totalDays = total * 7;
+  var remainingDays = Math.max(0, totalDays - elapsedDays);
+  return {
+    week: Math.min(total, Math.floor(elapsedDays / 7) + 1),
+    total: total,
+    weeksRemaining: Math.floor(remainingDays / 7),
+    daysRemaining: remainingDays % 7,
+    isOver: elapsedDays >= totalDays,
+    weeksOver: elapsedDays >= totalDays ? Math.floor((elapsedDays - totalDays) / 7) : 0
   };
 }
 function getCentralGoalProfile() {
@@ -10094,7 +10132,7 @@ function runAIWeightDeepDive() {
 
   var prompt='You are a weight loss coach. Use ONLY the numbers below. Do NOT recalculate.\n\n'
     +'User: '+(profile.age||'?')+'y '+(profile.gender||'?')+' '+(profile.weight||'?')+'kg '+(profile.height||'?')+'cm\n'
-    +'Goal Mode: '+(d.goalModeLabel||'?')+' | Goal Engine calories: '+(d.centralGoal&&d.centralGoal.cal?d.centralGoal.cal:'?')+' kcal | Target body weight reference: '+(ft.weight||'?')+'kg in '+(ft.duration||'?')+' weeks\n\n'
+    +'Goal Mode: '+(d.goalModeLabel||'?')+' | Goal Engine calories: '+(d.centralGoal&&d.centralGoal.cal?d.centralGoal.cal:'?')+' kcal | Target body weight reference: '+(ft.weight||'?')+'kg in '+(ft.duration||'?')+' weeks'+(function(){var pp=getTargetProgramPosition(ft);return pp?(pp.isOver?' (program period already complete)':' (currently week '+pp.week+'/'+pp.total+', '+pp.weeksRemaining+' weeks remaining — base timeline advice on the REMAINING weeks)'):'';})()+'\n\n'
     +'EXACT DATA:\n'
     +'- Status: '+statusDesc+' (Confidence: '+(d.confidencePct||'?')+'%)\n'
     +'- Scale trend (regression): '+(d.trendPerWeek!==undefined?(d.trendPerWeek>=0?'+':'')+d.trendPerWeek.toFixed(2)+' kg/week ('+( d.trendPerWeek>0.25?'Gaining':d.trendPerWeek>=-0.25?'Plateau':'Losing')+')'  :'?')+'\n'
