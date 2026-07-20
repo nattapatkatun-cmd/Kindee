@@ -1530,6 +1530,8 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
         </div>
         <div class="input-group"><label class="input-label">ความถี่ซ้อมต่อสัปดาห์</label>
           <select class="input-field" id="s-weekly-frequency" onchange="updateGoalModeHint();persistTrainingPrefs()">
+            <option value="1">1 วัน/สัปดาห์</option>
+            <option value="2">2 วัน/สัปดาห์</option>
             <option value="3">3 วัน/สัปดาห์</option>
             <option value="4" selected>4 วัน/สัปดาห์</option>
             <option value="5">5 วัน/สัปดาห์</option>
@@ -3553,6 +3555,12 @@ function generateDailySummary() {
     if (target.currMuscle)targetStr += '\n• Skeletal Muscle ปัจจุบัน: ' + target.currMuscle + '%';
     if (target.currVisceral) targetStr += '\n• Visceral Fat ปัจจุบัน: level ' + target.currVisceral;
     if (target.duration)  targetStr += '\n• Timeline: ' + target.duration + ' สัปดาห์';
+    var progPos = getTargetProgramPosition(target);
+    if (progPos) {
+      targetStr += progPos.isOver
+        ? '\n• ตำแหน่งในโปรแกรม: ครบ ' + progPos.total + ' สัปดาห์แล้ว' + (progPos.weeksOver > 0 ? ' (เลยกำหนดมา ' + progPos.weeksOver + ' สัปดาห์)' : '')
+        : '\n• ตำแหน่งในโปรแกรม: ตอนนี้อยู่สัปดาห์ที่ ' + progPos.week + ' จาก ' + progPos.total + ' — เหลืออีก ' + progPos.weeksRemaining + ' สัปดาห์' + (progPos.daysRemaining > 0 ? ' ' + progPos.daysRemaining + ' วัน' : '');
+    }
   }
 
   var profileStr = profile
@@ -3672,7 +3680,7 @@ function generateDailySummary() {
     '  "nutrition": { "headline": "one-line assessment", "detail": "2-3 sentences with specific macro insight, explain the WHY behind each gap physiologically" },\n' +
     '  "strain": { "level": "Light"|"Moderate"|"High"|"Rest", "headline": "one-line", "detail": "2-3 sentences on training load vs capacity" },\n' +
     '  "recovery": { "score": "Optimal"|"Moderate"|"Poor", "headline": "cross-reference: was todays strain appropriate given the morning recovery score?", "detail": "2-3 sentences in Thai comparing todays workout load against the morning recovery score. If no morning recovery was run, estimate from sleep data only." },\n' +
-    '  "progress": { "headline": "one-line", "detail": "2-3 sentences on trajectory toward fitness target, include estimated weeks/days if calculable" },\n' +
+    '  "progress": { "headline": "one-line", "detail": "2-3 sentences on trajectory toward fitness target, include estimated weeks/days if calculable. Anchor EVERY timeline statement to the current program position given in Fitness Target (ตำแหน่งในโปรแกรม — สัปดาห์ที่ X, เหลืออีก Y สัปดาห์): talk about the REMAINING weeks, never phrase it as if the full program duration still lies ahead" },\n' +
     '  "playbook": [\n' +
     '    { "category": "อาหาร", "action": "specific meal recommendation. If intake was over goal today, specify which meal to reduce tomorrow and what to swap it with" },\n' +
     '    { "category": "ออกกำลังกาย", "action": "specific workout type and duration or rest advice" },\n' +
@@ -4879,6 +4887,25 @@ function getOfficialCalorieContext() {
     goalMode: mode,
     goalModeLabel: modeCfg.label,
     source: adaptiveTDEE ? 'adaptive-weight-trend' : 'formula-profile'
+  };
+}
+// Where the user currently is inside their fitness-target program timeline —
+// AI prompts must anchor timeline talk to this, not the full program duration.
+// Returns null when the target has no startDate/duration to anchor to.
+function getTargetProgramPosition(target) {
+  if (!target || !target.startDate || !target.duration) return null;
+  var total = parseInt(target.duration, 10);
+  if (!total) return null;
+  var elapsedDays = Math.max(0, Math.floor((new Date() - new Date(target.startDate)) / 86400000));
+  var totalDays = total * 7;
+  var remainingDays = Math.max(0, totalDays - elapsedDays);
+  return {
+    week: Math.min(total, Math.floor(elapsedDays / 7) + 1),
+    total: total,
+    weeksRemaining: Math.floor(remainingDays / 7),
+    daysRemaining: remainingDays % 7,
+    isOver: elapsedDays >= totalDays,
+    weeksOver: elapsedDays >= totalDays ? Math.floor((elapsedDays - totalDays) / 7) : 0
   };
 }
 function getCentralGoalProfile() {
@@ -10094,7 +10121,7 @@ function runAIWeightDeepDive() {
 
   var prompt='You are a weight loss coach. Use ONLY the numbers below. Do NOT recalculate.\n\n'
     +'User: '+(profile.age||'?')+'y '+(profile.gender||'?')+' '+(profile.weight||'?')+'kg '+(profile.height||'?')+'cm\n'
-    +'Goal Mode: '+(d.goalModeLabel||'?')+' | Goal Engine calories: '+(d.centralGoal&&d.centralGoal.cal?d.centralGoal.cal:'?')+' kcal | Target body weight reference: '+(ft.weight||'?')+'kg in '+(ft.duration||'?')+' weeks\n\n'
+    +'Goal Mode: '+(d.goalModeLabel||'?')+' | Goal Engine calories: '+(d.centralGoal&&d.centralGoal.cal?d.centralGoal.cal:'?')+' kcal | Target body weight reference: '+(ft.weight||'?')+'kg in '+(ft.duration||'?')+' weeks'+(function(){var pp=getTargetProgramPosition(ft);return pp?(pp.isOver?' (program period already complete)':' (currently week '+pp.week+'/'+pp.total+', '+pp.weeksRemaining+' weeks remaining — base timeline advice on the REMAINING weeks)'):'';})()+'\n\n'
     +'EXACT DATA:\n'
     +'- Status: '+statusDesc+' (Confidence: '+(d.confidencePct||'?')+'%)\n'
     +'- Scale trend (regression): '+(d.trendPerWeek!==undefined?(d.trendPerWeek>=0?'+':'')+d.trendPerWeek.toFixed(2)+' kg/week ('+( d.trendPerWeek>0.25?'Gaining':d.trendPerWeek>=-0.25?'Plateau':'Losing')+')'  :'?')+'\n'
