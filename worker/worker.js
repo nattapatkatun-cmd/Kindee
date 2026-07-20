@@ -11,16 +11,19 @@
 //   GEMINI_KEYS          (secret)  Gemini API keys คั่นด้วย comma เช่น "AIza...,AIza..."
 //   FIREBASE_WEB_API_KEY (text)    Web API key ของ Firebase project (ค่า apiKey ใน firebaseConfig)
 //   DAILY_LIMIT          (text)    โควตา AI ต่อ user ต่อวัน เช่น "20" (ไม่ตั้ง = 20)
+//   GEMINI_MODEL         (text)    โมเดล Gemini ที่ใช้ (ไม่ตั้ง = gemini-2.5-flash)
 //   ALLOWED_ORIGIN       (text)    origin ของเว็บ เช่น "https://nattapatkatun-cmd.github.io" (ไม่ตั้ง = *)
 // KV Namespace binding:
 //   QUOTA  → ผูกกับ namespace ที่สร้างไว้ (เก็บตัวนับโควตารายวัน)
 
-const GEMINI_MODEL = 'gemini-2.5-flash';
+// Override ได้ด้วย env var GEMINI_MODEL ใน Cloudflare Dashboard (Variables)
+// เพื่อสลับไปรุ่นใหม่กว่า (เช่น flash รุ่นล่าสุด) โดยไม่ต้อง deploy โค้ดใหม่
+const DEFAULT_GEMINI_MODEL = 'gemini-2.5-flash';
 // Public value (also embedded in index.html's firebaseConfig) — not a secret.
 const FIREBASE_PROJECT_ID = 'kindee-f0cc1';
 // bump ทุกครั้งที่แก้ไฟล์นี้ — เปิด https://kindee.ojo0308.workers.dev/health
 // ในเบราว์เซอร์แล้วเทียบเลขนี้ เพื่อเช็คว่าโค้ดบน Cloudflare ตรงกับ repo หรือยัง
-const WORKER_VERSION = '2026-07-18.1';
+const WORKER_VERSION = '2026-07-20.1';
 
 export default {
   async fetch(request, env) {
@@ -42,6 +45,7 @@ export default {
           gemini: !!env.GEMINI_KEYS,
           firebase: !!env.FIREBASE_WEB_API_KEY,
           quotaKV: !!env.QUOTA,
+          model: env.GEMINI_MODEL || DEFAULT_GEMINI_MODEL,
           allowedOrigin: env.ALLOWED_ORIGIN || '*',
         },
         200,
@@ -117,6 +121,7 @@ async function handleGemini(request, env, cors) {
   const keys = (env.GEMINI_KEYS || '').split(',').map((k) => k.trim()).filter(Boolean);
   if (!keys.length) return json({ error: 'config', message: 'Worker ยังไม่ได้ตั้งค่า GEMINI_KEYS' }, 500, cors);
 
+  const model = env.GEMINI_MODEL || DEFAULT_GEMINI_MODEL;
   const body = await request.text();
   const startIdx = used % keys.length; // กระจายโหลดข้าม keys
   let lastErr = null;
@@ -127,7 +132,7 @@ async function handleGemini(request, env, cors) {
       let resp, data;
       try {
         resp = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${key}`,
+          `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`,
           { method: 'POST', headers: { 'Content-Type': 'application/json' }, body }
         );
         data = await resp.json();
