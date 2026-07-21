@@ -10918,20 +10918,44 @@ function onHRVBaselineFieldInput() {
 // Capped at 2 nights' worth, matching the WHOOP-style ceiling — otherwise a
 // long bad stretch could show an implausibly large, ever-growing number.
 var SLEEP_DEBT_WINDOW_DAYS = 14;
-var SLEEP_DEBT_NEED_HOURS = 8;
-var SLEEP_DEBT_CAP_HOURS = SLEEP_DEBT_NEED_HOURS * 2;
+var SLEEP_NEED_DEFAULT_HOURS = 8;  // fallback "need" until there's enough history to personalize
+var SLEEP_NEED_FLOOR_HOURS = 7;    // learned need never goes below this, so chronic
+                                    // under-sleep can't get normalized as the baseline
+var SLEEP_NEED_LOOKBACK_DAYS = 60;
+var SLEEP_NEED_MIN_NIGHTS = 10;    // fewer logged nights than this -> use the default
 var SLEEP_DEBT_REST_THRESHOLD_H = 6; // accumulated debt this large overrides a same-day "Push"
+
+// Personalized nightly need = median actual-sleep hours over a longer look-back,
+// floored at SLEEP_NEED_FLOOR_HOURS. A flat 8h target compared against ACTUAL
+// sleep (not time-in-bed) is close to unreachable for most people — normal sleep
+// efficiency means honest actual sleep runs under time-in-bed, so debt could only
+// ever accrue toward the cap and never repay. Using each person's own typical
+// actual sleep as the target makes "repaying debt" achievable again.
+function computeSleepNeedHours(forDate) {
+  var log = []; try { log = JSON.parse(localStorage.getItem('gd_sleep_log') || '[]'); } catch(e) {}
+  var cutoff = new Date(forDate); cutoff.setDate(cutoff.getDate() - SLEEP_NEED_LOOKBACK_DAYS);
+  var cutoffStr = localDateStr(cutoff);
+  var hours = log.filter(function(s){ return s.date <= forDate && s.date > cutoffStr && s.hours > 0; })
+                  .map(function(s){ return s.hours; }).sort(function(a,b){ return a-b; });
+  if (hours.length < SLEEP_NEED_MIN_NIGHTS) return SLEEP_NEED_DEFAULT_HOURS;
+  var mid = Math.floor(hours.length / 2);
+  var median = hours.length % 2 ? hours[mid] : (hours[mid-1] + hours[mid]) / 2;
+  return Math.max(SLEEP_NEED_FLOOR_HOURS, Math.round(median * 10) / 10);
+}
+
 function computeSleepDebt(forDate) {
   if (!forDate) return null;
   var log = []; try { log = JSON.parse(localStorage.getItem('gd_sleep_log') || '[]'); } catch(e) {}
+  var needHours = computeSleepNeedHours(forDate);
   var cutoff = new Date(forDate); cutoff.setDate(cutoff.getDate() - SLEEP_DEBT_WINDOW_DAYS);
   var cutoffStr = localDateStr(cutoff);
   var nights = log.filter(function(s){ return s.date <= forDate && s.date > cutoffStr && s.hours > 0; })
                    .sort(function(a,b){ return a.date.localeCompare(b.date); });
   if (!nights.length) return null;
+  var cap = needHours * 2;
   var debt = 0;
-  nights.forEach(function(n){ debt = Math.max(0, Math.min(SLEEP_DEBT_CAP_HOURS, debt + (SLEEP_DEBT_NEED_HOURS - n.hours))); });
-  return { hours: Math.round(debt*10)/10, nights: nights.length, needHours: SLEEP_DEBT_NEED_HOURS };
+  nights.forEach(function(n){ debt = Math.max(0, Math.min(cap, debt + (needHours - n.hours))); });
+  return { hours: Math.round(debt*10)/10, nights: nights.length, needHours: needHours };
 }
 
 // ── Deterministic sleep-action rows ──────────────────────────────
