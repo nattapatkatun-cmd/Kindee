@@ -7855,6 +7855,7 @@ function renderTargetDashboard() {
         if (stagnant && recompWorking) html += '<span style="font-weight:700;color:var(--green);">✅ Recomp กำลังทำงาน</span>';
         else if (stagnant)  html += '<span style="font-weight:700;color:#eab308;">⚠️ น้ำหนักไม่เปลี่ยน</span>';
         else if (onTrack) html += '<span style="font-weight:700;color:var(--green);">✅ ไปในทิศทางที่ถูก</span>';
+        else if (recompWorking) html += '<span style="font-weight:700;color:var(--green);">✅ Recomp กำลังทำงาน (ไขมัน/รอบเอวลงจริง แม้ตาชั่ง'+trendDir+')</span>';
         else           html += '<span style="font-weight:700;color:var(--accent);">❌ ทิศทางผิด — ต้อง'+needDir+'</span>';
         html += '</div>';
       }
