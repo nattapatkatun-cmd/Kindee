@@ -4025,6 +4025,9 @@ function restoreRecoveryAdj() {
 // workout has actually been logged today (logging one flips it back to a training day).
 // Training day, or no plan saved at all → keep the current baseline goal untouched.
 var REST_DAY_CARB_CUT_PCT = 0.25;
+// Safety cap used when a BMR floor is not available (incomplete profile): a rest-day
+// cut may never remove more than this fraction of the day's own calorie target.
+var REST_DAY_MAX_CUT_FRAC = 0.15;
 function isTodayRestDayByPlan() {
   var plan = (typeof getSavedPlanObj === 'function') ? getSavedPlanObj() : null;
   if (!plan || !Array.isArray(plan.days)) return false;
@@ -4033,15 +4036,55 @@ function isTodayRestDayByPlan() {
   if (!day) return false;
   return !day.exercises || day.exercises.length === 0 || (day.theme && day.theme.toLowerCase().indexOf('พัก') !== -1);
 }
+// Average gross workout burn over the training days in the recent window (rest days and
+// untrained days are excluded). Returns null when there is no training history to learn
+// from, so callers can fall back gracefully. Used to size the rest-day cut to how much
+// the user's training actually burns rather than a flat percentage.
+function getAvgTrainingDayBurn(windowDays) {
+  windowDays = windowDays || 28;
+  var total = 0, cnt = 0;
+  var today = new Date(localDateStr() + 'T12:00:00');
+  for (var i = 1; i <= windowDays; i++) {
+    var d = new Date(today); d.setDate(d.getDate() - i);
+    var ds = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+    var ws = (typeof workoutsForDate === 'function') ? workoutsForDate(ds) : [];
+    var burn = ws.reduce(function(a,w){ return a + (parseFloat(w.calories_burned) || 0); }, 0);
+    if (burn > 0) { total += burn; cnt++; }
+  }
+  return cnt ? total / cnt : null;
+}
 function getDayTypeAdjGoal() {
   if (!isTodayRestDayByPlan()) return null;
   var workoutsToday = (typeof todayWorkouts === 'function') ? todayWorkouts() : [];
   if (workoutsToday.length) return null; // trained anyway today — treat as a training day
   var base = S.goals || {};
+  var baseCal = parseFloat(base.cal) || 0;
   var baseCrb = parseFloat(base.crb) || 0;
-  var crb = Math.round(baseCrb * (1 - REST_DAY_CARB_CUT_PCT));
-  var carbCutKcal = (baseCrb - crb) * 4;
-  var cal = Math.round((parseFloat(base.cal) || 0) - carbCutKcal);
+
+  // Start from the original flat carb-based cut (25% of carbs, in kcal).
+  var carbCutKcal = Math.round(baseCrb * REST_DAY_CARB_CUT_PCT) * 4;
+
+  // (B) Size the cut to what training actually burns. A rest day only needs to remove the
+  // fuel a training day would have used, so someone who barely trains (low avg burn) gets a
+  // small cut automatically instead of the full 25%. No effect when there is no history.
+  var avgBurn = getAvgTrainingDayBurn();
+  if (avgBurn !== null) carbCutKcal = Math.min(carbCutKcal, Math.round(avgBurn));
+
+  // (A) Floor so the rest-day target never drops too low. Prefer a BMR floor; if the profile
+  // is incomplete (no BMR), fall back to a percentage cap of the day's own calories so the
+  // guard still works without BMR.
+  var maxCutByFrac = Math.round(baseCal * REST_DAY_MAX_CUT_FRAC);
+  var bmr = (typeof calcBMRFromProfile === 'function') ? calcBMRFromProfile(S.profile) : null;
+  var maxCutByFloor = (bmr !== null) ? Math.max(0, Math.round(baseCal - bmr)) : maxCutByFrac;
+  carbCutKcal = Math.max(0, Math.min(carbCutKcal, maxCutByFloor, maxCutByFrac));
+
+  // Nothing safe left to trim (e.g. baseline already at/below BMR) → treat as a normal day
+  // instead of showing a misleading "reduced by 0 kcal" rest-day note.
+  if (carbCutKcal <= 0) return null;
+
+  // Convert the (possibly reduced) kcal cut back into a carb-gram reduction so macros stay aligned.
+  var crb = Math.max(0, Math.round(baseCrb - carbCutKcal / 4));
+  var cal = Math.round(baseCal - carbCutKcal);
   return { cal: cal, pro: base.pro, crb: crb, fat: base.fat, _dayType: 'rest', _carbCutKcal: carbCutKcal };
 }
 // Single source of truth for "today's" live target — dashboard ring, over-goal
