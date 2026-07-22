@@ -364,6 +364,7 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
 .meal-sheet-act{width:100%;box-sizing:border-box;padding:14px;margin-bottom:9px;border-radius:14px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-family:inherit;font-size:15px;font-weight:600;cursor:pointer;touch-action:manipulation;-webkit-tap-highlight-color:transparent;transition:transform .12s;}
 .meal-sheet-act:active{transform:scale(0.98);}
 .meal-sheet-act.reuse{background:rgba(143,168,124,0.12);border-color:rgba(143,168,124,0.4);color:var(--accent);}
+.meal-sheet-act.edit{background:rgba(96,165,250,0.12);border-color:rgba(96,165,250,0.4);color:#60a5fa;}
 .meal-sheet-act.fav{background:rgba(251,191,36,0.12);border-color:rgba(251,191,36,0.4);color:#fbbf24;}
 .meal-sheet-act.del{background:rgba(239,68,68,0.1);border-color:rgba(239,68,68,0.35);color:#ef4444;}
 .meal-sheet-act.cancel{background:var(--surface3);color:var(--text3);margin-top:4px;margin-bottom:0;}
@@ -1745,6 +1746,7 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
     <div class="meal-sheet-title" id="mealSheetName">—</div>
     <div class="meal-sheet-macro" id="mealSheetMacro">—</div>
     <button class="meal-sheet-act reuse" onclick="mealSheetReuse()">🔁 ใช้ซ้ำ (บันทึกเป็นมื้อใหม่)</button>
+    <button class="meal-sheet-act edit" onclick="mealSheetEdit()">✏️ แก้ไขมื้อนี้ (แก้ของเดิม)</button>
     <button class="meal-sheet-act fav" onclick="mealSheetFav()">เพิ่มเข้าเมนูโปรด</button>
     <button class="meal-sheet-act del" onclick="mealSheetDelete()">🗑️ ลบมื้อนี้</button>
     <button class="meal-sheet-act cancel" onclick="closeMealSheet()">ยกเลิก</button>
@@ -1752,7 +1754,7 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
 </div>
 <div id="favUseModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:999;align-items:center;justify-content:center;padding:20px;">
   <div style="background:var(--surface);border:1px solid var(--border);border-radius:20px;padding:22px;width:100%;max-width:360px;">
-    <div style="font-size:16px;font-weight:700;margin-bottom:4px;">บันทึกเป็นมื้ออาหาร</div>
+    <div style="font-size:16px;font-weight:700;margin-bottom:4px;" id="favUseTitle">บันทึกเป็นมื้ออาหาร</div>
     <div style="font-size:13px;color:var(--accent);font-weight:600;margin-bottom:14px;" id="favUseName"></div>
     <div style="background:var(--surface2);border-radius:12px;padding:12px;margin-bottom:8px;display:grid;grid-template-columns:repeat(2,1fr);gap:8px;text-align:center;">
       <div><div style="font-size:11px;color:var(--text3);margin-bottom:4px;">kcal</div><input id="favUseCal" type="number" min="0" step="1" oninput="onFavMacroInput('cal')" style="width:100%;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:6px 2px;text-align:center;font-size:16px;font-weight:700;color:var(--accent);font-family:inherit;"/></div>
@@ -1782,7 +1784,7 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
     </div>
     <div style="display:flex;gap:8px;">
       <button onclick="closeFavUseModal()" style="flex:1;padding:11px;background:var(--surface2);border:1px solid var(--border);border-radius:12px;color:var(--text2);font-family:inherit;font-size:14px;cursor:pointer;">ยกเลิก</button>
-      <button onclick="confirmUseFavorite()" style="flex:2;padding:11px;background:var(--accent);border:none;border-radius:12px;color:white;font-family:inherit;font-size:14px;font-weight:700;cursor:pointer;">บันทึกมื้อนี้</button>
+      <button id="favUseConfirmBtn" onclick="confirmUseFavorite()" style="flex:2;padding:11px;background:var(--accent);border:none;border-radius:12px;color:white;font-family:inherit;font-size:14px;font-weight:700;cursor:pointer;">บันทึกมื้อนี้</button>
     </div>
   </div>
 </div>
@@ -3082,6 +3084,18 @@ var _favUseData = null;
 var _favUseLabel = '';
 var _favUseBase = null;
 var _favUseQty = 1;
+var _favUseMode = 'reuse'; // 'reuse' = สร้างมื้อใหม่ | 'edit' = แก้มื้อเดิม (id เดิม)
+var _favUseEditId = null;
+
+// รีเซ็ตหัวข้อ/ปุ่มของ favUseModal กลับเป็นโหมด "ใช้ซ้ำ/บันทึกใหม่"
+function setFavUseModeReuse() {
+  _favUseMode = 'reuse';
+  _favUseEditId = null;
+  var t = document.getElementById('favUseTitle');
+  var b = document.getElementById('favUseConfirmBtn');
+  if(t) t.textContent = 'บันทึกเป็นมื้ออาหาร';
+  if(b) b.textContent = 'บันทึกมื้อนี้';
+}
 
 // เก็บ macro ต้นฉบับ (qty=1) แล้วเซ็ตค่าเริ่มต้นในฟอร์ม ใช้ร่วมกันทั้งจากเมนูโปรดและใช้ซ้ำจากประวัติ
 function setFavUseBase(cal, pro, crb, fat) {
@@ -3169,6 +3183,7 @@ function saveFavorite() {
 function openUseFavoriteModal(id) {
   var fav = S.favorites.find(function(f){ return f.id === id; });
   if(!fav) return;
+  setFavUseModeReuse();
   _favUseData = fav;
   _favUseLabel = '';
   document.getElementById('favUseName').textContent = fav.foodName;
@@ -3188,6 +3203,7 @@ function closeFavUseModal() {
   _favUseData = null;
   _favUseBase = null;
   _favUseQty = 1;
+  setFavUseModeReuse();
 }
 function selFavLabel(btn, label) {
   document.querySelectorAll('#favUseLabelRow .label-btn').forEach(function(b){ b.classList.remove('active'); });
@@ -3210,6 +3226,28 @@ function confirmUseFavorite() {
   var crb = parseFloat(document.getElementById('favUseCrb').value) || 0;
   var fat = parseFloat(document.getElementById('favUseFat').value) || 0;
   if (cal <= 0) { showToast('กรุณาใส่แคลอรี่', 'error'); return; }
+
+  // โหมดแก้ไข — อัปเดตมื้อเดิม (id เดิม) แทนการสร้างมื้อใหม่
+  if (_favUseMode === 'edit' && _favUseEditId != null) {
+    var orig = S.meals.find(function(x){ return x.id === _favUseEditId; });
+    if (!orig) { closeFavUseModal(); return; }
+    orig.date = readLogDate('favuse-date');
+    orig.label = _favUseLabel || orig.label || 'ไม่ระบุมื้อ';
+    orig.qty = _favUseQty || 1;
+    orig.calories = cal;
+    orig.protein = pro;
+    orig.carbs = crb;
+    orig.fat = fat;
+    localStorage.setItem('gd_meals', JSON.stringify(S.meals));
+    if(window.FB_OK) window.FB.saveMeal(orig); else queueFBWrite('meal','save',orig);
+    if(S.webhook) autoSync(orig);
+    closeFavUseModal();
+    render();
+    showToast('แก้ไขมื้ออาหารแล้ว ✅','success');
+    setTimeout(checkAlert, 500);
+    return;
+  }
+
   var now = new Date();
   var meal = {
     id: Date.now(),
@@ -4594,11 +4632,13 @@ function closeMealSheet() {
 }
 function closeMealSheetIfBg(e) { if (e.target === document.getElementById('meal-sheet-overlay')) closeMealSheet(); }
 function mealSheetReuse() { var id=_mealSheetId; closeMealSheet(); if(id!=null) reuseMeal(id); }
+function mealSheetEdit() { var id=_mealSheetId; closeMealSheet(); if(id!=null) editMeal(id); }
 function mealSheetFav() { var id=_mealSheetId; closeMealSheet(); if(id!=null) favFromMeal(id); }
 function mealSheetDelete() { var id=_mealSheetId; closeMealSheet(); if(id!=null) delMeal(id); }
 function reuseMeal(id) {
   var m = S.meals.find(function(x){ return x.id === id; });
   if(!m) return;
+  setFavUseModeReuse();
   _favUseData = m;
   _favUseLabel = '';
   document.getElementById('favUseName').textContent = m.foodName;
@@ -4610,6 +4650,31 @@ function reuseMeal(id) {
     if(b.textContent.includes(auto.replace('มื้อ',''))){ b.classList.add('active'); _favUseLabel=auto; }
   });
   initLogDate('favuse-date');
+  document.getElementById('favUseModal').style.display = 'flex';
+}
+// แก้ไขมื้อเดิม — ใช้ favUseModal ตัวเดียวกับ "ใช้ซ้ำ" แต่โหมด edit → อัปเดตมื้อเดิม (id เดิม) แทนการสร้างใหม่
+function editMeal(id) {
+  var m = S.meals.find(function(x){ return x.id === id; });
+  if(!m) return;
+  setFavUseModeReuse();          // reset chrome ก่อน
+  _favUseMode = 'edit';
+  _favUseEditId = id;
+  _favUseData = m;
+  _favUseLabel = m.label || '';
+  document.getElementById('favUseName').textContent = m.foodName;
+  setFavUseBase(m.calories, m.protein, m.carbs, m.fat);
+  // เลือกปุ่มมื้อให้ตรงกับของเดิม
+  document.querySelectorAll('#favUseLabelRow .label-btn').forEach(function(b){
+    b.classList.remove('active');
+    var lbl = m.label || '';
+    if(lbl && lbl !== 'ไม่ระบุมื้อ' && b.textContent.trim() === lbl.replace('มื้อ','')){ b.classList.add('active'); }
+  });
+  // ใช้วันที่เดิมของมื้อนั้น
+  initLogDate('favuse-date');
+  if(m.date) document.getElementById('favuse-date').value = m.date;
+  // เปลี่ยนหัวข้อ/ปุ่มให้ชัดว่าเป็นการแก้ไข
+  document.getElementById('favUseTitle').textContent = 'แก้ไขมื้อนี้';
+  document.getElementById('favUseConfirmBtn').textContent = 'บันทึกการแก้ไข';
   document.getElementById('favUseModal').style.display = 'flex';
 }
 // บันทึกมื้อที่มีอยู่เป็นเมนูโปรด — ใช้ flow saveFavorite เดิมผ่าน modal favSave
