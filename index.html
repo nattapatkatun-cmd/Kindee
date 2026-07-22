@@ -9512,7 +9512,8 @@ function analyzeProgressPhotoAI(){
   });
 }
 
-// B3: forecast = f(TDEE - avgNetCal) NOT f(intake - target) — single source of truth
+// B3: deficit = TDEE − gross intake (TDEE already includes NEAT+workout, so do NOT
+//     subtract activity again); forecast = goal-engine target — single source of truth
 // B4: Partial-data fallback — burn=0 if no workout, estimate TDEE from weight slope
 // B5: "Limited Data" mode when 3≤days<7
 
@@ -9745,10 +9746,11 @@ function buildAnalysisHTML(recent) {
     }
   }
 
-  // Actual Deficit = total TDEE - net calories (net of credited activity) — bigger on
-  // days/periods with more logged exercise, since that activity is real added expenditure
-  // on top of the same flat total-TDEE baseline.
-  var actualDeficit=trueTDEE!==null?Math.round(trueTDEE-avgNetCal):null;
+  // Actual Deficit = total TDEE − GROSS intake. Adaptive TDEE is a reverse-TDEE figure
+  // reconciled from the weight trend, so it ALREADY contains NEAT + workout burn (see the
+  // TRUE TDEE note above). Subtracting activity again on the intake side (avgNetCal) would
+  // double-count it and inflate the deficit, so compare total TDEE against gross intake.
+  var actualDeficit=trueTDEE!==null?Math.round(trueTDEE-avgIntake):null;
   if(actualDeficit!==null){
     actualDeficit=Math.max(-1000, Math.min(1000, actualDeficit));
   }
@@ -10002,8 +10004,8 @@ function buildAnalysisHTML(recent) {
   html+='• Avg burn (workout): <strong>'+(calDays.length>0?Math.round(avgBurn)+' kcal':'0 kcal (assumed)')+'</strong><br>';
   if(avgBurn>0) html+='• Burn credited in Net Cal calc: <strong>'+Math.round(avgEffectiveBurn)+' kcal</strong><br>';
   html+='• Avg NEAT from steps: <strong>'+Math.round(avgNEAT)+' kcal</strong><br>';
-  html+='• Net Cal: <strong>'+Math.round(avgNetCal)+' kcal</strong><br>';
-  html+='• Estimated Deficit: <strong>'+(actualDeficit!==null?Math.round(actualDeficit)+(inconsistent?' ⚠️ (ขัดกับ trend)':'')+' kcal/วัน':'—')+'</strong><br>';
+  html+='• Net Cal: <strong>'+Math.round(avgNetCal)+' kcal</strong> <span style="color:var(--text3);">(อ้างอิงกราฟรายวัน — ไม่ใช่ฐาน deficit)</span><br>';
+  html+='• Estimated Deficit: <strong>'+(actualDeficit!==null?Math.round(actualDeficit)+(inconsistent?' ⚠️ (ขัดกับ trend)':'')+' kcal/วัน':'—')+'</strong> <span style="color:var(--text3);">(TDEE − intake ดิบ · NEAT/workout รวมใน TDEE แล้ว)</span><br>';
   html+='• Retention context: <strong style="color:'+retentionRange.label.color+';">'+retentionRange.avgScore+'% · '+retentionRange.label.th+'</strong> ('+retentionRange.highDays+' high-risk days)<br>';
   if(waistPerWeek!==null) html+='• Waist trend: <strong>'+(waistPerWeek>=0?'+':'')+waistPerWeek.toFixed(2)+' ซม./wk</strong><br>';
   if(ema21PerWeek!==null) html+='• EMA 21d trend: <strong>'+(ema21PerWeek>=0?'+':'')+ema21PerWeek.toFixed(2)+' กก./wk</strong><br>';
@@ -10140,7 +10142,7 @@ function runAIWeightDeepDive() {
     +'- Adaptive TDEE: '+(d.trueTDEE||'?')+(d.tdeeIsEstimate?' (estimated)':'')+' kcal\n'
     +'- Avg intake: '+(d.avgIntake||'?')+' kcal | Avg burn: '+(d.avgBurn||'?')+' kcal\n'
     +'- Avg net cal: '+(d.avgNetCal||'?')+' kcal\n'
-    +'- Actual deficit (TDEE-netcal): '+(d.actualDeficit!==null&&d.actualDeficit!==undefined?d.actualDeficit:'?')+' kcal/day\n'
+    +'- Actual deficit (TDEE − gross intake): '+(d.actualDeficit!==null&&d.actualDeficit!==undefined?d.actualDeficit:'?')+' kcal/day\n'
     +'- Required deficit: '+(d.requiredDeficit||'?')+' kcal/day\n'
     +'- Recommended intake: '+(d.suppressRecommend?'SUPPRESSED — do not recommend calorie change':d.recommendedIntake||'?')+' kcal/day\n'
     +'- Forecast (goal-engine): '+(d.forecast7d||'?')+' kg/week\n'
