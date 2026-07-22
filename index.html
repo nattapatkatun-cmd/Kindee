@@ -9647,7 +9647,8 @@ function buildAnalysisHTML(recent) {
   });
   var calDays = Object.keys(netByDate).sort();
   var retentionRange = getRangeRetentionContext(cutoffStr, todayStr);
-  var highRetention = retentionRange.avgScore >= 55 || retentionRange.highDays >= 2;
+  var sustainedRetention = retentionRange.avgScore >= 55; // genuinely elevated on average
+  var highRetention = sustainedRetention || retentionRange.highDays >= 2; // spiky high-risk days also count as water noise
 
   // [B3 DATA QUALITY] logRate: cap at 100% to catch duplicate logs
   var rawLogRate = calDays.length / Math.max(daySpan, 1);
@@ -9820,6 +9821,15 @@ function buildAnalysisHTML(recent) {
     forecast7d=projected.toFixed(2);
   }
 
+  // Current-pace projection from the ACTUAL deficit (TDEE − intake). forecast7d above is the
+  // target IF the planned deficit is met; this is what the current deficit actually yields,
+  // surfaced so "expected" is never mistaken for the plan when the real deficit is below
+  // target. Suppressed where the deficit signal is unreliable (water noise / conflict / error).
+  var currentPace7d=null;
+  if(actualDeficit!==null && !likelyWaterNoise && !inconsistent && !dataError){
+    currentPace7d=Math.max(-1.0, Math.min(1.0, -(actualDeficit*7/7700))).toFixed(2);
+  }
+
   // Trend context card label
   var trendContextNote='';
   if(forecast7d!==null){
@@ -9871,8 +9881,8 @@ function buildAnalysisHTML(recent) {
     statusNote='Log rate '+Math.round(rawLogRate*100)+'% — อาจมี duplicate logs';
     suppressRecommend=true;
   } else if(likelyWaterNoise){
-    statusLabel=recompByWaist?'Recomp Signal 📏':(highRetention?'Retention Spike 💧':'Water Fluctuation 💧'); statusColor=recompByWaist?'#22c55e':'#38bdf8';
-    statusNote=recompByWaist?'น้ำหนักขึ้นแต่รอบเอวลด — ไม่ควรรีบลด calorie':(highRetention?'มี high sodium/high carb หลายวัน — น้ำหนักอาจเด้งจากน้ำ/glycogen':'น้ำหนักแกว่งจากน้ำ/glycogen มากกว่า fat trend');
+    statusLabel=recompByWaist?'Recomp Signal 📏':(sustainedRetention?'Retention Spike 💧':'Water Fluctuation 💧'); statusColor=recompByWaist?'#22c55e':'#38bdf8';
+    statusNote=recompByWaist?'น้ำหนักขึ้นแต่รอบเอวลด — ไม่ควรรีบลด calorie':(sustainedRetention?'มี high sodium/high carb หลายวัน — น้ำหนักอาจเด้งจากน้ำ/glycogen':'น้ำหนักแกว่งจากน้ำ/glycogen มากกว่า fat trend');
     suppressRecommend=true;
   } else if(inconsistent){
     statusLabel='Data Conflict ⚠️'; statusColor='#f59e0b';
@@ -9952,7 +9962,7 @@ function buildAnalysisHTML(recent) {
     wVariance:wVariance, calVariance:Math.round(calVariance),
     n:n, daySpan:daySpan, firstW:firstW, lastW:lastW,
     targetW:targetW, durationWks:durationWks, isOnTrack:isOnTrack,
-    forecast7d:forecast7d, forecastLabel:forecastLabel, aiEligible:aiEligible,
+    forecast7d:forecast7d, forecastLabel:forecastLabel, currentPace7d:currentPace7d, aiEligible:aiEligible,
     goalMode:goalMode, goalModeLabel:goalCfg.label, centralGoal:centralGoalForAnalysis,
     confidencePct:confidencePct, // [6] fix: was missing
     statusLabel:statusLabel, inconsistent:inconsistent, retentionRange:retentionRange, waistPerWeek:waistPerWeek, trend21PerWeek:trend21PerWeek, ema21PerWeek:ema21PerWeek, sourceCalibration:getSourceAwareStatusText(), visualSignal:visualAnalysis ? (visualAnalysis.summary||visualAnalysis.visualTrend||'available') : 'N/A', dataError:dataError,
@@ -10064,8 +10074,12 @@ function buildAnalysisHTML(recent) {
     html+='<div style="background:rgba(59,130,246,0.08);border:1px solid rgba(59,130,246,0.25);border-radius:12px;padding:10px 12px;margin-bottom:10px;">';
     html+='<div style="display:flex;justify-content:space-between;align-items:center;">';
     html+='<div><div style="font-size:12px;color:var(--text2);">FORECAST (7d)</div>';
-    html+='<div style="font-size:11px;color:var(--text3);">goal-engine estimate · '+(goalCfg&&goalCfg.label?goalCfg.label:'Goal')+(inconsistent?' — trend unreliable':'')+'</div></div>';
+    html+='<div style="font-size:11px;color:var(--text3);">เป้า goal-engine (ถ้าทำ deficit ได้ตามแผน) · '+(goalCfg&&goalCfg.label?goalCfg.label:'Goal')+(inconsistent?' — trend unreliable':'')+'</div></div>';
     html+='<span style="font-size:16px;font-weight:800;color:'+(fv<0?'var(--green)':'var(--red)')+';">'+fSign+forecast7d+' กก.</span></div>';
+    if(currentPace7d!==null && Math.abs(parseFloat(currentPace7d)-fv)>=0.1){
+      var cp=parseFloat(currentPace7d);
+      html+='<div style="margin-top:6px;font-size:11px;color:var(--text3);">pace ปัจจุบัน (จาก deficit จริง '+Math.round(actualDeficit)+' kcal/วัน): <strong style="color:'+(cp<0?'var(--green)':'var(--red)')+';">'+(cp<0?'':'+')+currentPace7d+' กก./wk</strong></div>';
+    }
     // Trend context card
     html+='<div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border);font-size:11px;color:var(--text3);">';
     html+='TREND CONTEXT: Scale '+(trendPerWeek>=0?'+':'')+trendPerWeek.toFixed(2)+' กก./wk ('+trendClass+')'+(trendContextNote?' — '+trendContextNote:'');
@@ -10201,17 +10215,17 @@ function runAIWeightDeepDive() {
     +'- Lean mass guard: '+(lmGuardAI?('WARNING — lean mass down '+lmGuardAI.dropPct+'% ('+lmGuardAI.leanPrev+'→'+lmGuardAI.leanLast+'kg)'+(lmGuardAI.strengthConfirms?' AND strength e1RM regressing — likely real muscle loss; advise protein/deficit/volume fix':' — possibly device noise')):'OK')+'\n\n'
     +'Weight data:\n'+wtSummary+'\n\n'
     +'IMPORTANT RULES:\n'
-    +'1. Forecast ('+d.forecast7d+') = Goal Engine expectation from selected Goal Mode. Scale trend ('+( d.trendPerWeek!==undefined?(d.trendPerWeek>=0?'+':'')+d.trendPerWeek.toFixed(2):'' )+') = separate context, may differ due to water/glycogen.\n'
+    +'1. Forecast ('+d.forecast7d+' kg/wk) = Goal Engine TARGET — expected only IF the planned deficit is met, not a guarantee.'+(d.currentPace7d!==null&&d.currentPace7d!==undefined?' Current actual pace from the real deficit ≈ '+d.currentPace7d+' kg/wk.':'')+' Scale trend ('+( d.trendPerWeek!==undefined?(d.trendPerWeek>=0?'+':'')+d.trendPerWeek.toFixed(2):'' )+') = separate context, may differ due to water/glycogen.\n'
     +'2. If status is Inconsistent Data or Data Error: do NOT recommend changing calorie target. Tell user to fix tracking first.\n'
     +'3. Use exact confidence: '+(d.confidencePct||'?')+'%\n\n'
     +'Respond in Thai. Structure:\n\n'
     +'**สถานะ:** '+statusDesc+' (Confidence '+(d.confidencePct||'?')+'%)\n\n'
-    +'**TREND CONTEXT:**\n- Scale: '+(d.trendPerWeek!==undefined?(d.trendPerWeek>=0?'+':'')+d.trendPerWeek.toFixed(2):'')+' kg/week\n- Fat loss expected: '+(d.forecast7d||'?')+' kg/week\n\n'
+    +'**TREND CONTEXT:**\n- Scale: '+(d.trendPerWeek!==undefined?(d.trendPerWeek>=0?'+':'')+d.trendPerWeek.toFixed(2):'')+' kg/week\n- Fat loss target (ถ้าทำ deficit ได้ตามแผน): '+(d.forecast7d||'?')+' kg/week'+(d.currentPace7d!==null&&d.currentPace7d!==undefined?'\n- Fat loss pace ปัจจุบัน (จาก deficit จริง): '+d.currentPace7d+' kg/week':'')+'\n\n'
     +(d.suppressRecommend
       ? '**ISSUE:**\n1. [สาเหตุหลัก]\n2. [สาเหตุรอง]\n\n**NEXT STEP:**\n- '+(d.dataError?'ตรวจสอบ duplicate logs':'Track ให้ครบ 5-7 วัน แล้ว recalculate')+'\n- อย่าเปลี่ยน calorie target ก่อนจนกว่า data จะถูกต้อง\n\n'
       : '**CAUSE (ถ้ามีปัญหา):**\n1. ...\n\n**ACTION:**\n- Calories: '+(d.recommendedIntake?'ตั้งเป้า '+d.recommendedIntake+' kcal/วัน':'รักษา intake ปัจจุบัน')+'\n- พฤติกรรม: ...\n\n'
     )
-    +'**EXPECTED:** Forecast '+(d.forecast7d||'?')+' กก./สัปดาห์ (goal-engine)';
+    +'**EXPECTED:** เป้า goal-engine '+(d.forecast7d||'?')+' กก./สัปดาห์ (ถ้าทำ deficit ได้ตามแผน)'+(d.currentPace7d!==null&&d.currentPace7d!==undefined?' · pace ปัจจุบัน '+d.currentPace7d+' กก./สัปดาห์':'');
 
   geminiCall(key,{
     contents:[{parts:[{text:prompt}]}],
