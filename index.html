@@ -4337,8 +4337,12 @@ function renderWeeklyReview() {
     // Required rate: prefer the feasibility engine's fat-loss rate (from the real
     // %BF gap), fall back to the old weight-gap ÷ duration estimate.
     var reqRate=null;
-    if(target.feasibility&&target.feasibility.direction==='loss'&&target.feasibility.weeklyFatLoss){
-      reqRate=-target.feasibility.weeklyFatLoss;
+    // Recompute live rather than reading the frozen save-time target.feasibility
+    // snapshot, so this on-track check matches how far behind/ahead the plan
+    // actually is today (current %BF, duration net of elapsed weeks).
+    var feasWR=(typeof calcTargetFeasibility==='function')?calcTargetFeasibility(target):null;
+    if(feasWR&&feasWR.direction==='loss'&&feasWR.weeklyFatLoss){
+      reqRate=-feasWR.weeklyFatLoss;
     } else if(currW&&target.weight&&target.weight<currW&&target.duration){
       reqRate=(currW-target.weight)/target.duration*-1;
     }
@@ -4944,13 +4948,24 @@ function buildGoalFromMode(mode, profile, tdee) {
   var floor = gender === 'female' ? 1200 : 1500;
   // Deficit: derive from the Fitness Target's actual fat-mass gap ÷ duration when
   // available (clamped to a safe 200–600 band), otherwise fall back to the mode preset.
-  var deficit = cfg.deficit, deficitSource = 'mode';
+  var deficit = cfg.deficit, deficitSource = 'mode', deficitFeasibility = null;
   var ftForGoal = safeJSON('gd_ft_target', null);
   if ((mode === 'fat_loss' || mode === 'recomp') && ftForGoal && typeof calcTargetFeasibility === 'function') {
     var feasG = calcTargetFeasibility(ftForGoal, profile);
     if (feasG && feasG.direction === 'loss' && feasG.requiredDeficit > 0) {
-      deficit = Math.max(200, Math.min(600, feasG.requiredDeficit));
+      var targetDeficit = Math.max(200, Math.min(600, feasG.requiredDeficit));
+      // The target-timeline math can escalate past what the plan's own feasibility
+      // check considers safe (e.g. %BF drifted the wrong way, or time ran down) —
+      // feasG.status already flags that as 'aggressive' (>25% of TDEE) or
+      // 'unrealistic' (would need >1%BW/wk or push intake below the floor). Don't
+      // silently hand the Goal Engine the full escalated number in that case; cap
+      // it back at the same 25%-of-TDEE line the feasibility check itself uses.
+      var safeCap = Math.round(baseTDEE * 0.25);
+      deficit = (feasG.status === 'aggressive' || feasG.status === 'unrealistic')
+        ? Math.min(targetDeficit, safeCap)
+        : targetDeficit;
       deficitSource = 'target';
+      deficitFeasibility = feasG.status;
     }
   }
   var cal = Math.max(Math.round(baseTDEE - deficit), floor);
@@ -4980,7 +4995,7 @@ function buildGoalFromMode(mode, profile, tdee) {
   // calories the macros actually add up to instead of an impossible combination.
   cal = Math.max(cal, pro*4 + crb*4 + fat*9);
   return { cal:Math.round(cal), pro:Math.round(pro), crb:Math.round(crb), fat:Math.round(fat), mode:mode, modeLabel:cfg.label, tdee:baseTDEE,
-           deficit:deficit, deficitSource:deficitSource, proteinBasis:proteinBasis, bfUsed:bfForPro||null };
+           deficit:deficit, deficitSource:deficitSource, deficitFeasibility:deficitFeasibility, proteinBasis:proteinBasis, bfUsed:bfForPro||null };
 }
 function getOfficialCalorieContext() {
   var profile = S.profile || safeJSON('gd_profile', {}) || {};
@@ -5117,10 +5132,12 @@ function updateGoalModeHint(goal) {
   var tdee = goal && goal.tdee ? goal.tdee : ctx.officialTDEE;
   var hintDeficit = (goal && goal.deficit != null) ? goal.deficit : (ctx.modeGoal && ctx.modeGoal.deficit != null ? ctx.modeGoal.deficit : cfg.deficit);
   var deficitFromTarget = (goal && goal.deficitSource === 'target') || (!goal && ctx.modeGoal && ctx.modeGoal.deficitSource === 'target');
+  var deficitFeas = (goal && goal.deficitFeasibility) || (!goal && ctx.modeGoal && ctx.modeGoal.deficitFeasibility) || null;
   var proFromLBM = (goal && goal.proteinBasis === 'lbm') || (!goal && ctx.modeGoal && ctx.modeGoal.proteinBasis === 'lbm');
   el.innerHTML = '<b style="color:var(--accent)">' + cfg.label + '</b> — ' + cfg.desc +
     '<br>Nutrition: TDEE ' + (tdee || '—') + ' ' + (hintDeficit > 0 ? '- ' + hintDeficit : hintDeficit < 0 ? '+ ' + Math.abs(hintDeficit) : '± 0') +
     ' kcal' + (deficitFromTarget ? ' <b style="color:var(--green)">(คำนวณจาก Fitness Target)</b>' : '') +
+    (deficitFeas === 'aggressive' || deficitFeas === 'unrealistic' ? ' <b style="color:#eab308">(ปรับลดจาก target-timeline เพราะเกินเกณฑ์ปลอดภัย — ดู %BF Progress)</b>' : '') +
     ' | Protein ' + (proFromLBM ? (cfg.proteinPerKg + 0.4) + 'g/kg Lean Mass' : cfg.proteinPerKg + 'g/kg') + ' | Fat ' + cfg.fatPerKg + 'g/kg | Carb = calories ที่เหลือ' +
     '<br>Workout: <b style="color:var(--blue)">' + trainCfg.label + '</b> | ' + (freqEl ? freqEl.value : (p.weeklyFrequency||4)) + ' วัน/สัปดาห์ | Recovery: ' + recCfg.label;
 }
@@ -8054,12 +8071,15 @@ function renderTargetDashboard() {
       } else {
         html += '<div style="font-size:11px;color:var(--text3);">บันทึก Body Composition อย่างน้อย 2 ครั้ง ห่างกัน ≥1 สัปดาห์ เพื่อดู %BF trend จริง</div>';
       }
-      // feasibility summary from save-time snapshot
-      if (target.feasibility && target.feasibility.direction === 'loss') {
-        var fz = target.feasibility;
+      // Live feasibility, not the frozen save-time snapshot — recomputed from
+      // today's %BF and the duration remaining, so this always matches what
+      // the Goal Engine deficit (Weight Trend Analyzer) is using right now.
+      var fzLive = (typeof calcTargetFeasibility === 'function') ? calcTargetFeasibility(target) : null;
+      if (fzLive && fzLive.direction === 'loss') {
+        var fz = fzLive;
         var fzColor = fz.status==='unrealistic' ? 'var(--red)' : fz.status==='aggressive' ? '#eab308' : 'var(--green)';
         var fzLabel = fz.status==='unrealistic' ? '❌ เร็วเกินไป' : fz.status==='aggressive' ? '⚠️ ตึง' : '✅ สมเหตุสมผล';
-        html += '<div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border);font-size:11px;color:var(--text3);">แผนต้องลดไขมัน '+fz.weeklyFatLoss+' กก./สัปดาห์ (deficit ~'+fz.requiredDeficit+' kcal/วัน) — <b style="color:'+fzColor+';">'+fzLabel+'</b>'+(fz.status!=='ok'&&fz.recommendedWeeks?' · แนะนำ '+fz.recommendedWeeks+' สัปดาห์':'')+'</div>';
+        html += '<div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border);font-size:11px;color:var(--text3);">ตอนนี้แผนต้องลดไขมัน '+fz.weeklyFatLoss+' กก./สัปดาห์ (deficit ~'+fz.requiredDeficit+' kcal/วัน) — <b style="color:'+fzColor+';">'+fzLabel+'</b>'+(fz.status!=='ok'&&fz.recommendedWeeks?' · แนะนำ '+fz.recommendedWeeks+' สัปดาห์':'')+'</div>';
       }
       html += '</div>';
     }
@@ -8278,8 +8298,11 @@ function generatePlan() {
     if (target.bmi)     targetStr += '\n- BMI เป้าหมาย: '+target.bmi;
     if (target.duration)targetStr += '\n- ระยะเวลา: '+target.duration+' สัปดาห์';
     if (target.level)   targetStr += '\n- ระดับ: '+(levelMap[target.level]||target.level);
-    if (target.feasibility && target.feasibility.direction === 'loss') {
-      targetStr += '\n- อัตราลดไขมันที่ต้องการ: '+target.feasibility.weeklyFatLoss+' กก./สัปดาห์ (deficit ~'+target.feasibility.requiredDeficit+' kcal/วัน, ประเมิน: '+target.feasibility.status+')';
+    // Live feasibility (not the frozen save-time snapshot) so the AI's plan context
+    // matches today's actual %BF gap and remaining duration, not whatever it was at save time.
+    var feasAI = (typeof calcTargetFeasibility === 'function') ? calcTargetFeasibility(target) : null;
+    if (feasAI && feasAI.direction === 'loss') {
+      targetStr += '\n- อัตราลดไขมันที่ต้องการ (ปัจจุบัน): '+feasAI.weeklyFatLoss+' กก./สัปดาห์ (deficit ~'+feasAI.requiredDeficit+' kcal/วัน, ประเมิน: '+feasAI.status+')';
     }
   }
 
@@ -10129,7 +10152,13 @@ function buildAnalysisHTML(recent) {
   if(ema21PerWeek!==null) html+='• EMA 21d trend: <strong>'+(ema21PerWeek>=0?'+':'')+ema21PerWeek.toFixed(2)+' กก./wk</strong><br>';
   if(sourceCal && sourceCal.preferred) html+='• Source calibration: <strong>'+getSourceAwareStatusText()+'</strong><br>';
   if(visualAnalysis) html+='• Visual signal: <strong>'+(visualAnalysis.summary||visualAnalysis.visualTrend||'available')+'</strong><br>';
-  if(requiredDeficit!==null)html+='• Deficit ที่ต้องการ: <strong>'+requiredDeficit+' kcal/วัน</strong>';
+  if(requiredDeficit!==null){
+    var deficitFeasNote='';
+    if(centralGoalForAnalysis && (centralGoalForAnalysis.deficitFeasibility==='aggressive' || centralGoalForAnalysis.deficitFeasibility==='unrealistic')){
+      deficitFeasNote=' <span style="color:#eab308;">(ปรับลดจาก target-timeline เพราะเกินเกณฑ์ปลอดภัย 25% ของ TDEE)</span>';
+    }
+    html+='• Deficit ที่ต้องการ: <strong>'+requiredDeficit+' kcal/วัน</strong>'+deficitFeasNote;
+  }
   html+='</div>';
 
   // [5] FORECAST — physio only, trend = context card
