@@ -9651,7 +9651,7 @@ function analyzeProgressPhotoAI(){
 function runWeightAnalysis() {
   var resultEl = document.getElementById('wt-analysis-result');
   var today = localDateStr();
-  var CACHE_VER = 'v19_gross_deficit_fix'; // deficit now TDEE - gross intake (was double-counting NEAT/burn via avgNetCal) — bump forces recompute of any same-day cache from before the fix
+  var CACHE_VER = 'v20_deficit_cap'; // requiredDeficit can now be capped by feasibility status (aggressive/unrealistic) — bump forces recompute of any same-day cache from before the fix
 
   // Restore from cache only if same day AND same version
   var cached = JSON.parse(localStorage.getItem('gd_wt_analysis') || 'null');
