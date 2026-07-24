@@ -11605,11 +11605,10 @@ function maybeShowOnboarding() {
   try { if (localStorage.getItem('gd_onboarded') === '1') return; } catch(e){}
   window.FB.loadSetting('onboarded', null).then(function(done){
     if (done) { try { localStorage.setItem('gd_onboarded','1'); } catch(e){} return; }
-    var p = S.profile || {};
-    var w = getLatestCheckinWeight() || p.weight;
-    var complete = p.age && p.height && p.gender && p.goalType && w;
-    if (complete) { markOnboarded(); return; } // existing user with full profile — skip silently
-    showOnboardingGate(p);
+    // Show once to everyone who hasn't passed the gate yet — including existing
+    // users who already have a full profile. Their data is pre-filled so they
+    // just confirm; the 'onboarded' flag then makes sure it never shows again.
+    showOnboardingGate(S.profile || {});
   }).catch(function(){ /* offline / load fail: don't block the app */ });
 }
 
