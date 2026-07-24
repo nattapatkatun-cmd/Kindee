@@ -9835,7 +9835,7 @@ function analyzeProgressPhotoAI(){
 function runWeightAnalysis() {
   var resultEl = document.getElementById('wt-analysis-result');
   var today = localDateStr();
-  var CACHE_VER = 'v20_deficit_cap'; // requiredDeficit can now be capped by feasibility status (aggressive/unrealistic) — bump forces recompute of any same-day cache from before the fix
+  var CACHE_VER = 'v21_usergoal_recomp'; // recommendedIntake now follows the user-set goal + recomp-hold framing when weight target met — bump forces recompute of any same-day cache from before the fix
 
   // Restore from cache only if same day AND same version
   var cached = JSON.parse(localStorage.getItem('gd_wt_analysis') || 'null');
@@ -10076,10 +10076,34 @@ function buildAnalysisHTML(recent) {
   var goalMode = normalizeGoalMode(profileForGoal.goalType);
   var goalCfg = getGoalModeConfig(goalMode);
   var centralGoalForAnalysis = buildGoalFromMode(goalMode, profileForGoal, trueTDEE || calcFormulaTDEE(profileForGoal) || (S.goals && S.goals.cal) || 2000);
-  // Prefer the target-derived deficit from the goal object (falls back to the mode preset)
+  // The Goal Engine's freshly-derived recommendation — still offered via the sync
+  // button as an optional suggestion, but NOT the number the analysis judges you by.
+  var engineRecommendedIntake = centralGoalForAnalysis ? Math.round(centralGoalForAnalysis.cal) : null;
+  // Issue 2: the analysis compares against / recommends the calorie goal the USER
+  // committed to in Settings, not a re-derived suggestion. Deficit is then expressed
+  // relative to that committed goal so the whole plan stays self-consistent.
+  var userGoalCal = (S.goals && S.goals.cal) ? Math.round(S.goals.cal) : null;
   var requiredDeficit = Math.round((centralGoalForAnalysis && centralGoalForAnalysis.deficit != null ? centralGoalForAnalysis.deficit : goalCfg.deficit) || 0); // positive=cut, 0=maintain, negative=lean gain
+  var recommendedIntake = userGoalCal != null ? userGoalCal : engineRecommendedIntake;
+  if (userGoalCal != null && trueTDEE != null) {
+    requiredDeficit = Math.round(trueTDEE - userGoalCal); // deficit implied by the user's own goal
+  }
+
+  // Issue 3: weight target already met but %BF still above goal → recomposition.
+  // Pushing a bigger deficit here risks dropping below the weight target and losing
+  // muscle, so hold near maintenance and let protein + training bring %BF down.
+  var ftForRecomp = window._fitnessTarget || {};
+  var tgtWforGoal = ftForRecomp.weight ? parseFloat(ftForRecomp.weight) : null;
+  var curBFforGoal = ftForRecomp.currBF != null ? parseFloat(ftForRecomp.currBF) : null;
+  var tgtBFforGoal = ftForRecomp.bf != null ? parseFloat(ftForRecomp.bf) : null;
+  var recompHold = (goalMode === 'fat_loss' || goalMode === 'recomp')
+    && tgtWforGoal != null && lastW != null && lastW <= tgtWforGoal + 0.3
+    && tgtBFforGoal != null && curBFforGoal != null && curBFforGoal > tgtBFforGoal + 0.3;
+  if (recompHold) {
+    requiredDeficit = 0; // hold ~maintenance
+    if (trueTDEE != null) recommendedIntake = Math.round(trueTDEE);
+  }
   var requiredWeeklyLoss = -(requiredDeficit * 7 / 7700); // negative = loss, positive = gain
-  var recommendedIntake = centralGoalForAnalysis ? Math.round(centralGoalForAnalysis.cal) : null;
   var targetW = (window._fitnessTarget && window._fitnessTarget.weight) ? parseFloat(window._fitnessTarget.weight) : null;
   var durationWks = (window._fitnessTarget && window._fitnessTarget.duration) ? parseFloat(window._fitnessTarget.duration) : null;
 
@@ -10174,14 +10198,21 @@ function buildAnalysisHTML(recent) {
       var threshold = requiredWeeklyLoss * 0.6; // e.g. target -0.41/wk, on track if <= -0.25/wk
       isOnTrack = trendPerWeek <= threshold && trendPerWeek >= -1.0;
     }
-    if(isOnTrack){ statusLabel='On Track ✅'; statusColor='#22c55e'; }
+    if(recompHold){
+      // Weight target met → holding weight IS on-track for recomposition; losing
+      // further just drops below the weight target.
+      if(trendPerWeek < -0.35){ statusLabel='Recomp · น้ำหนักหลุดต่ำ ⚠️'; statusColor='#f59e0b'; }
+      else { statusLabel='Recomp 🔄'; statusColor='#22c55e'; isOnTrack=true; }
+    }
+    else if(isOnTrack){ statusLabel='On Track ✅'; statusColor='#22c55e'; }
     else if(goalMode==='lean_gain' && trendPerWeek < 0.05){ statusLabel='Not Gaining ⚠️'; statusColor='#f59e0b'; }
     else if(goalMode==='maintain' && Math.abs(trendPerWeek)>0.25){ statusLabel='Drifting ⚠️'; statusColor='#f59e0b'; }
+    else if(trendPerWeek < -1.0){ statusLabel='Losing Fast ⚠️'; statusColor='#f59e0b'; } // faster than the safe cap — not "slow"
     else if(trendPerWeek<-0.25){ statusLabel='Slow Progress ⚠️'; statusColor='#f59e0b'; }
     else if(trendPerWeek<=0.25){ statusLabel='Plateau ➡️'; statusColor='#f59e0b'; }
     else { statusLabel='Gaining ⬆️'; statusColor='#ef4444'; }
   }
-  var isOnTrack = !suppressRecommend && statusLabel.indexOf('On Track')>=0;
+  var isOnTrack = !suppressRecommend && (statusLabel.indexOf('On Track')>=0 || statusLabel==='Recomp 🔄');
 
   // [6] CONFIDENCE
   var confBase=50+Math.min(n,14)*2+Math.round(logRate*15)-Math.round(wVariance*6);
@@ -10236,6 +10267,7 @@ function buildAnalysisHTML(recent) {
     targetW:targetW, durationWks:durationWks, isOnTrack:isOnTrack,
     forecast7d:forecast7d, forecastLabel:forecastLabel, currentPace7d:currentPace7d, aiEligible:aiEligible,
     goalMode:goalMode, goalModeLabel:goalCfg.label, centralGoal:centralGoalForAnalysis,
+    recompHold:recompHold, userGoalCal:userGoalCal, engineRecommendedIntake:engineRecommendedIntake,
     confidencePct:confidencePct, // [6] fix: was missing
     statusLabel:statusLabel, inconsistent:inconsistent, retentionRange:retentionRange, waistPerWeek:waistPerWeek, trend21PerWeek:trend21PerWeek, ema21PerWeek:ema21PerWeek, sourceCalibration:getSourceAwareStatusText(), visualSignal:visualAnalysis ? (visualAnalysis.summary||visualAnalysis.visualTrend||'available') : 'N/A', dataError:dataError,
     suppressRecommend:suppressRecommend, recent:recent
@@ -10336,12 +10368,14 @@ function buildAnalysisHTML(recent) {
   if(ema21PerWeek!==null) html+='• EMA 21d trend: <strong>'+(ema21PerWeek>=0?'+':'')+ema21PerWeek.toFixed(2)+' กก./wk</strong><br>';
   if(sourceCal && sourceCal.preferred) html+='• Source calibration: <strong>'+getSourceAwareStatusText()+'</strong><br>';
   if(visualAnalysis) html+='• Visual signal: <strong>'+(visualAnalysis.summary||visualAnalysis.visualTrend||'available')+'</strong><br>';
-  if(requiredDeficit!==null){
+  if(recompHold){
+    html+='• โหมด: <strong style="color:var(--accent);">Recomp 🔄 — น้ำหนักถึงเป้าแล้ว</strong> <span style="color:var(--text3);">(รักษา ~'+recommendedIntake+' kcal maintenance · เน้นโปรตีน+เวท ลด %BF ไม่ต้องเพิ่ม deficit)</span>';
+  } else if(requiredDeficit!==null){
     var deficitFeasNote='';
     if(centralGoalForAnalysis && (centralGoalForAnalysis.deficitFeasibility==='aggressive' || centralGoalForAnalysis.deficitFeasibility==='unrealistic')){
       deficitFeasNote=' <span style="color:#eab308;">(ปรับลดจาก target-timeline เพราะเกินเกณฑ์ปลอดภัย 25% ของ TDEE)</span>';
     }
-    html+='• Deficit ที่ต้องการ: <strong>'+requiredDeficit+' kcal/วัน</strong>'+deficitFeasNote;
+    html+='• Deficit ที่ต้องการ (จากเป้าที่ตั้ง): <strong>'+requiredDeficit+' kcal/วัน</strong>'+deficitFeasNote;
   }
   html+='</div>';
 
@@ -10401,9 +10435,10 @@ function buildAnalysisHTML(recent) {
     }
     html+='</div>';
 
-    // Sync button — only when not suppressed
-    if(recommendedIntake!==null){
-      html+='<button onclick="syncRecommendedCalToGoal('+recommendedIntake+')" style="width:100%;padding:10px;background:var(--green);border:none;border-radius:12px;color:white;font-family:inherit;font-size:13px;font-weight:700;cursor:pointer;margin-bottom:10px;transition:all 0.2s;" onmouseover="this.style.opacity=\'0.85\'" onmouseout="this.style.opacity=\'1\'">⚙️ ตั้งค่าเป้า '+recommendedIntake+' kcal + macro จาก Goal Engine</button>';
+    // Sync button — offers the Goal Engine's suggestion, shown only when it
+    // actually differs from the goal the user already set (otherwise it's a no-op).
+    if(engineRecommendedIntake!==null && engineRecommendedIntake!==userGoalCal){
+      html+='<button onclick="syncRecommendedCalToGoal('+engineRecommendedIntake+')" style="width:100%;padding:10px;background:var(--green);border:none;border-radius:12px;color:white;font-family:inherit;font-size:13px;font-weight:700;cursor:pointer;margin-bottom:10px;transition:all 0.2s;" onmouseover="this.style.opacity=\'0.85\'" onmouseout="this.style.opacity=\'1\'">⚙️ ปรับเป้าเป็น '+engineRecommendedIntake+' kcal + macro ตาม Goal Engine</button>';
     }
   }
 
@@ -10470,7 +10505,8 @@ function runAIWeightDeepDive() {
 
   var prompt='You are a weight loss coach. Use ONLY the numbers below. Do NOT recalculate.\n\n'
     +'User: '+(profile.age||'?')+'y '+(profile.gender||'?')+' '+(profile.weight||'?')+'kg '+(profile.height||'?')+'cm\n'
-    +'Goal Mode: '+(d.goalModeLabel||'?')+' | Goal Engine calories: '+(d.centralGoal&&d.centralGoal.cal?d.centralGoal.cal:'?')+' kcal | Target body weight reference: '+(ft.weight||'?')+'kg in '+(ft.duration||'?')+' weeks'+(function(){var pp=getTargetProgramPosition(ft);return pp?(pp.isOver?' (program period already complete)':' (currently week '+pp.week+'/'+pp.total+', '+pp.weeksRemaining+' weeks remaining — base timeline advice on the REMAINING weeks)'):'';})()+'\n\n'
+    +'Goal Mode: '+(d.goalModeLabel||'?')+' | Calorie goal the user set: '+(d.userGoalCal||d.recommendedIntake||'?')+' kcal'+(d.engineRecommendedIntake&&d.engineRecommendedIntake!==d.userGoalCal?' (engine would suggest '+d.engineRecommendedIntake+', but analyze against the user-set goal)':'')+' | Target body weight reference: '+(ft.weight||'?')+'kg in '+(ft.duration||'?')+' weeks'+(function(){var pp=getTargetProgramPosition(ft);return pp?(pp.isOver?' (program period already complete)':' (currently week '+pp.week+'/'+pp.total+', '+pp.weeksRemaining+' weeks remaining — base timeline advice on the REMAINING weeks)'):'';})()+'\n\n'
+    +(d.recompHold?'RECOMP STATE: The body-weight target is already met but %BF is still above goal. This is body recomposition, NOT a weight-loss phase. DO NOT tell the user to increase their deficit or eat less — that would drop them below the weight target and risk muscle loss. Instead: hold intake near maintenance (~'+(d.recommendedIntake||'?')+' kcal), keep protein high, and drive %BF down through resistance training + progressive overload. Frame holding weight as SUCCESS, not slow progress.\n\n':'')
     +'EXACT DATA:\n'
     +'- Status: '+statusDesc+' (Confidence: '+(d.confidencePct||'?')+'%)\n'
     +'- Scale trend (regression): '+(d.trendPerWeek!==undefined?(d.trendPerWeek>=0?'+':'')+d.trendPerWeek.toFixed(2)+' kg/week ('+( d.trendPerWeek>0.25?'Gaining':d.trendPerWeek>=-0.25?'Plateau':'Losing')+')'  :'?')+'\n'
@@ -10501,7 +10537,9 @@ function runAIWeightDeepDive() {
     +'**TREND CONTEXT:**\n- Scale: '+(d.trendPerWeek!==undefined?(d.trendPerWeek>=0?'+':'')+d.trendPerWeek.toFixed(2):'')+' kg/week\n- Fat loss target (ถ้าทำ deficit ได้ตามแผน): '+(d.forecast7d||'?')+' kg/week'+(d.currentPace7d!==null&&d.currentPace7d!==undefined?'\n- Fat loss pace ปัจจุบัน (จาก deficit จริง): '+d.currentPace7d+' kg/week':'')+'\n\n'
     +(d.suppressRecommend
       ? '**ISSUE:**\n1. [สาเหตุหลัก]\n2. [สาเหตุรอง]\n\n**NEXT STEP:**\n- '+(d.dataError?'ตรวจสอบ duplicate logs':'Track ให้ครบ 5-7 วัน แล้ว recalculate')+'\n- อย่าเปลี่ยน calorie target ก่อนจนกว่า data จะถูกต้อง\n\n'
-      : '**CAUSE (ถ้ามีปัญหา):**\n1. ...\n\n**ACTION:**\n- Calories: '+(d.recommendedIntake?'ตั้งเป้า '+d.recommendedIntake+' kcal/วัน':'รักษา intake ปัจจุบัน')+'\n- พฤติกรรม: ...\n\n'
+      : (d.recompHold
+          ? '**สรุป:** น้ำหนักถึงเป้าแล้ว — โฟกัสที่ %BF (recomposition)\n\n**ACTION:**\n- Calories: รักษาที่ ~'+(d.recommendedIntake||'?')+' kcal/วัน (maintenance) — อย่าลดเพิ่ม\n- เน้นโปรตีนสูง + เวทเทรนนิ่ง progressive overload เพื่อลด %BF โดยรักษากล้าม\n- พฤติกรรม: ...\n\n'
+          : '**CAUSE (ถ้ามีปัญหา):**\n1. ...\n\n**ACTION:**\n- Calories: '+(d.recommendedIntake?'ตั้งเป้า '+d.recommendedIntake+' kcal/วัน':'รักษา intake ปัจจุบัน')+'\n- พฤติกรรม: ...\n\n')
     )
     +'**EXPECTED:** เป้า goal-engine '+(d.forecast7d||'?')+' กก./สัปดาห์ (ถ้าทำ deficit ได้ตามแผน)'+(d.currentPace7d!==null&&d.currentPace7d!==undefined?' · pace ปัจจุบัน '+d.currentPace7d+' กก./สัปดาห์':'');
 
@@ -11605,11 +11643,10 @@ function maybeShowOnboarding() {
   try { if (localStorage.getItem('gd_onboarded') === '1') return; } catch(e){}
   window.FB.loadSetting('onboarded', null).then(function(done){
     if (done) { try { localStorage.setItem('gd_onboarded','1'); } catch(e){} return; }
-    var p = S.profile || {};
-    var w = getLatestCheckinWeight() || p.weight;
-    var complete = p.age && p.height && p.gender && p.goalType && w;
-    if (complete) { markOnboarded(); return; } // existing user with full profile — skip silently
-    showOnboardingGate(p);
+    // Show once to everyone who hasn't passed the gate yet — including existing
+    // users who already have a full profile. Their data is pre-filled so they
+    // just confirm; the 'onboarded' flag then makes sure it never shows again.
+    showOnboardingGate(S.profile || {});
   }).catch(function(){ /* offline / load fail: don't block the app */ });
 }
 
