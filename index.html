@@ -11640,19 +11640,23 @@ function maybeShowOnboarding() {
   if (!window.FB_OK || !window.FB) return;
   var g = document.getElementById('onboardGate');
   if (g && g.style.display === 'block') return; // already showing
-  try { if (localStorage.getItem('gd_onboarded') === '1') return; } catch(e){}
-  window.FB.loadSetting('onboarded', null).then(function(done){
-    if (done) { try { localStorage.setItem('gd_onboarded','1'); } catch(e){} return; }
+  // Flag key is 'onboardedV2' (not 'onboarded'): an earlier build auto-marked
+  // existing users as 'onboarded' before the pre-fill gate existed, so that flag
+  // is unreliable. Using a fresh key re-shows the gate exactly once to everyone
+  // affected, then this key guarantees it never shows again.
+  try { if (localStorage.getItem('gd_onboarded_v2') === '1') return; } catch(e){}
+  window.FB.loadSetting('onboardedV2', null).then(function(done){
+    if (done) { try { localStorage.setItem('gd_onboarded_v2','1'); } catch(e){} return; }
     // Show once to everyone who hasn't passed the gate yet — including existing
     // users who already have a full profile. Their data is pre-filled so they
-    // just confirm; the 'onboarded' flag then makes sure it never shows again.
+    // just confirm; the flag then makes sure it never shows again.
     showOnboardingGate(S.profile || {});
   }).catch(function(){ /* offline / load fail: don't block the app */ });
 }
 
 function markOnboarded() {
-  try { localStorage.setItem('gd_onboarded','1'); } catch(e){}
-  if (window.FB_OK && window.FB) window.FB.saveSetting('onboarded', true).catch(function(){});
+  try { localStorage.setItem('gd_onboarded_v2','1'); } catch(e){}
+  if (window.FB_OK && window.FB) window.FB.saveSetting('onboardedV2', true).catch(function(){});
 }
 
 function showOnboardingGate(prefill) {
