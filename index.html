@@ -543,6 +543,74 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
 .hybrid-cal-card .mchip{background:transparent;border:none;border-left:1px solid var(--border);border-radius:0;padding:2px 8px;}
 .hybrid-cal-card .mchip:first-child{border-left:none;padding-left:0;}
 
+/* ── First-run onboarding gate ── */
+.ob-wrap{max-width:520px;margin:0 auto;padding:calc(env(safe-area-inset-top,0px) + 30px) 18px calc(env(safe-area-inset-bottom,0px) + 34px);}
+.ob-hero{text-align:center;margin-bottom:22px;}
+.ob-logo{width:60px;height:60px;border-radius:18px;background:var(--accent);display:flex;align-items:center;justify-content:center;font-size:30px;margin:0 auto 14px;}
+.ob-title{font-size:22px;font-weight:800;letter-spacing:-.3px;margin-bottom:7px;text-wrap:balance;}
+.ob-sub{font-size:13px;color:var(--text2);line-height:1.7;text-wrap:balance;}
+.ob-prog{display:flex;align-items:center;gap:12px;margin-bottom:16px;}
+.ob-prog-track{flex:1;height:7px;background:var(--surface3);border-radius:20px;overflow:hidden;}
+.ob-prog-fill{height:100%;background:var(--accent);border-radius:20px;width:0;transition:width .4s cubic-bezier(.4,0,.2,1);}
+.ob-prog-txt{font-size:12px;font-weight:800;color:var(--accent);font-variant-numeric:tabular-nums;min-width:42px;text-align:right;}
+.ob-req{color:var(--accent);}
+.ob-hint{font-size:11.5px;color:var(--text3);line-height:1.6;background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:9px 11px;margin-top:10px;display:flex;gap:6px;}
+.ob-hint b{color:var(--accent);font-weight:700;}
+.ob-chips{display:flex;gap:8px;flex-wrap:wrap;}
+.ob-chips .ob-chip{flex:1 1 calc(50% - 4px);min-width:calc(50% - 4px);}
+.ob-chips-1 .ob-chip{flex:1 1 100%;min-width:100%;text-align:left;}
+.ob-chip{text-align:center;background:var(--surface2);border:1px solid var(--border-md);border-radius:var(--radius-input);padding:11px 10px;font-family:inherit;font-size:13.5px;font-weight:600;color:var(--text2);cursor:pointer;transition:.15s;}
+.ob-chip-sub{display:block;font-size:10.5px;color:var(--text3);font-weight:500;margin-top:2px;}
+.ob-chip.on{background:var(--accent-dim);border-color:var(--accent);color:var(--accent);}
+.ob-chip.on .ob-chip-sub{color:var(--accent);opacity:.85;}
+.ob-foot{text-align:center;font-size:11px;color:var(--text3);line-height:1.6;margin-top:13px;}
+
+/* ── Dashboard Setup Hub (daily logging nudge) ── */
+.hub{background:linear-gradient(160deg,var(--accent-dim),transparent 72%),var(--surface);border:1px solid var(--accent-glow);border-radius:var(--radius-card);padding:16px;margin-bottom:14px;}
+.hub-head-row{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:14px;}
+.hub-title{font-size:15px;font-weight:800;margin-bottom:2px;}
+.hub-desc{font-size:12px;color:var(--text2);line-height:1.5;}
+.hub-profile-ok{font-size:10.5px;font-weight:700;color:var(--accent);background:var(--accent-dim);border:1px solid var(--accent-glow);border-radius:20px;padding:4px 10px;white-space:nowrap;flex-shrink:0;}
+.hub-primary{display:flex;align-items:center;gap:12px;background:var(--surface);border:1.5px solid var(--accent);border-radius:13px;padding:14px;cursor:pointer;transition:.15s;width:100%;text-align:left;font-family:inherit;}
+.hub-primary:active{transform:scale(.99);}
+.hub-primary-icon{width:38px;height:38px;border-radius:11px;background:var(--accent-dim);border:1px solid var(--accent);color:var(--accent);display:flex;align-items:center;justify-content:center;font-size:17px;flex-shrink:0;}
+.hub-primary-txt{flex:1;}
+.hub-primary-name{font-size:15px;font-weight:800;color:var(--text);}
+.hub-primary-meta{font-size:11px;color:var(--text3);margin-top:1px;}
+.hub-badge{font-size:9.5px;font-weight:700;color:var(--accent);background:var(--accent-dim);border-radius:6px;padding:1px 6px;margin-left:6px;vertical-align:middle;}
+.hub-primary-cta{background:var(--accent);color:#fff;font-size:12px;font-weight:700;border-radius:20px;padding:8px 13px;flex-shrink:0;}
+.hub-opt-row{display:flex;align-items:center;gap:9px;margin-top:13px;flex-wrap:wrap;}
+.hub-opt-label{font-size:10.5px;font-weight:700;color:var(--text3);flex-shrink:0;}
+.hub-opt-chip{background:var(--surface2);border:1px solid var(--border-md);border-radius:20px;padding:7px 12px;font-family:inherit;font-size:12px;font-weight:600;color:var(--text2);cursor:pointer;transition:.15s;}
+.hub-opt-chip:hover{border-color:var(--accent);color:var(--accent);}
+.hub-opt-chip.done{background:var(--accent-dim);border-color:var(--accent);color:var(--accent);}
+.hub-slim{display:flex;align-items:center;gap:11px;background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:12px 14px;margin-bottom:14px;}
+.hub-slim-check{width:26px;height:26px;border-radius:50%;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0;}
+.hub-slim-txt{flex:1;font-size:13px;font-weight:700;}
+.hub-slim-txt span{display:block;font-size:11px;color:var(--text3);font-weight:500;margin-top:1px;}
+.hub-slim-add{background:var(--accent-dim);border:1px solid var(--accent);color:var(--accent);font-family:inherit;font-size:12px;font-weight:700;border-radius:20px;padding:6px 12px;cursor:pointer;flex-shrink:0;}
+
+/* ── Central help tooltip ("?") — tap-toggle, works on touch + mouse ── */
+.htip{display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:50%;background:var(--surface3);border:1px solid var(--border-md);color:var(--text3);font-size:10px;font-weight:800;cursor:pointer;margin-left:5px;vertical-align:middle;position:relative;line-height:1;flex-shrink:0;-webkit-tap-highlight-color:transparent;}
+.htip.on{background:var(--accent);color:#fff;border-color:var(--accent);}
+.htip-pop{position:absolute;bottom:135%;left:50%;transform:translateX(-50%) translateY(4px);width:210px;max-width:70vw;background:var(--surface3);border:1px solid var(--border-md);border-radius:10px;padding:9px 11px;font-size:11.5px;font-weight:500;line-height:1.55;color:var(--text2);box-shadow:0 10px 28px -8px rgba(0,0,0,.5);opacity:0;visibility:hidden;transition:opacity .16s,transform .16s,visibility .16s;z-index:80;text-align:left;white-space:normal;}
+.htip.on .htip-pop{opacity:1;visibility:visible;transform:translateX(-50%) translateY(0);}
+.htip-pop b{color:var(--accent);font-weight:700;}
+.htip-pop::after{content:"";position:absolute;top:100%;left:50%;transform:translateX(-50%);border:5px solid transparent;border-top-color:var(--surface3);}
+.htip-pop.flip{bottom:auto;top:135%;}
+.htip-pop.flip::after{top:auto;bottom:100%;border-top-color:transparent;border-bottom-color:var(--surface3);}
+
+/* ── Meal per-item breakdown (combined-meal expand) ── */
+.meal-breakdown{margin-top:14px;border-top:1px solid var(--border);padding-top:12px;}
+.meal-breakdown-h{font-size:11px;letter-spacing:.4px;text-transform:uppercase;color:var(--text3);font-weight:700;margin-bottom:9px;}
+.mbd-item{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);}
+.mbd-item:last-child{border-bottom:none;}
+.mbd-name{font-size:13px;font-weight:600;color:var(--text);flex:1;min-width:0;}
+.mbd-macros{font-size:10.5px;color:var(--text3);margin-top:2px;}
+.mbd-cal{font-size:13px;font-weight:800;color:var(--text2);font-variant-numeric:tabular-nums;white-space:nowrap;flex-shrink:0;}
+.mbd-cal span{font-size:9px;color:var(--text3);font-weight:600;}
+.meal-expand-toggle{display:inline-flex;align-items:center;gap:5px;background:var(--surface2);border:1px solid var(--border-md);border-radius:20px;padding:4px 11px;font-family:inherit;font-size:11px;font-weight:700;color:var(--accent);cursor:pointer;margin-top:9px;}
+
 </style>
 </head>
 <body>
@@ -573,6 +641,67 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
   </div>
   <div id="authGateFooterNote" style="font-size:11px;color:var(--text3);max-width:280px;line-height:1.6;">ข้อมูลของคุณถูกเก็บแยกตามบัญชี เข้าถึงได้เฉพาะคุณเท่านั้น</div>
 </div>
+
+<!-- FIRST-RUN ONBOARDING GATE: shows once per user (flag 'onboarded'). Existing
+     users with a complete profile are marked onboarded silently and never see it.
+     Collects only basic, self-enterable fields (no body-comp scale needed). -->
+<div id="onboardGate" style="display:none;position:fixed;inset:0;z-index:1900;background:var(--bg);overflow-y:auto;">
+  <div class="ob-wrap">
+    <div class="ob-hero">
+      <div class="ob-logo">🥗</div>
+      <div class="ob-title">ยินดีต้อนรับสู่ กินดี 👋</div>
+      <div class="ob-sub">กรอกข้อมูลสั้น ๆ ครั้งเดียว เพื่อให้เราคำนวณเป้าแคลอรี่ &amp; วิเคราะห์ได้แม่นตั้งแต่มื้อแรก</div>
+    </div>
+
+    <div class="ob-prog">
+      <div class="ob-prog-track"><div class="ob-prog-fill" id="ob-prog-fill"></div></div>
+      <div class="ob-prog-txt" id="ob-prog-txt">0/6</div>
+    </div>
+
+    <div class="card">
+      <div class="input-row">
+        <div class="input-group"><label class="input-label">อายุ (ปี) <span class="ob-req">*</span></label>
+          <input class="input-field" type="number" id="ob-age" inputmode="numeric" placeholder="25" min="10" max="100" oninput="obUpdateProgress()"/></div>
+        <div class="input-group"><label class="input-label">เพศ <span class="ob-req">*</span></label>
+          <select class="input-field" id="ob-gender" onchange="obUpdateProgress()">
+            <option value="">—</option><option value="male">ชาย</option><option value="female">หญิง</option></select></div>
+      </div>
+      <div class="input-row">
+        <div class="input-group"><label class="input-label">ส่วนสูง (ซม.) <span class="ob-req">*</span></label>
+          <input class="input-field" type="number" id="ob-height" inputmode="decimal" placeholder="170" min="100" max="230" oninput="obUpdateProgress()"/></div>
+        <div class="input-group"><label class="input-label">น้ำหนักตอนนี้ (กก.) <span class="ob-req">*</span></label>
+          <input class="input-field" type="number" id="ob-weight" inputmode="decimal" placeholder="65" min="20" max="300" oninput="obUpdateProgress()"/></div>
+      </div>
+      <div class="ob-hint">💡&nbsp;<span>น้ำหนักนี้จะถูกบันทึกเป็น <b>Health Check-in แรก</b> ให้อัตโนมัติ — ไม่ต้องไปกรอกซ้ำที่หน้าน้ำหนัก</span></div>
+    </div>
+
+    <div class="card">
+      <label class="input-label" style="margin-bottom:9px;">ระดับกิจกรรมต่อวัน <span class="ob-req">*</span></label>
+      <div class="ob-chips ob-chips-1" id="ob-activity-chips">
+        <button type="button" class="ob-chip" data-val="1.2" onclick="obPickChip(this,'activity')">นั่งทำงานตลอด <span class="ob-chip-sub">แทบไม่ออกกำลังกาย</span></button>
+        <button type="button" class="ob-chip" data-val="1.375" onclick="obPickChip(this,'activity')">เบา <span class="ob-chip-sub">ออกกำลังกาย 1–3 วัน/สัปดาห์</span></button>
+        <button type="button" class="ob-chip on" data-val="1.55" onclick="obPickChip(this,'activity')">ปานกลาง <span class="ob-chip-sub">3–5 วัน/สัปดาห์</span></button>
+        <button type="button" class="ob-chip" data-val="1.725" onclick="obPickChip(this,'activity')">หนัก <span class="ob-chip-sub">6–7 วัน/สัปดาห์</span></button>
+        <button type="button" class="ob-chip" data-val="1.9" onclick="obPickChip(this,'activity')">นักกีฬา <span class="ob-chip-sub">ซ้อมหนักวันละ 2 รอบ</span></button>
+      </div>
+    </div>
+
+    <div class="card">
+      <label class="input-label" style="margin-bottom:9px;">เป้าหมายหลัก (Goal Mode) <span class="ob-req">*</span></label>
+      <div class="ob-chips" id="ob-goal-chips">
+        <button type="button" class="ob-chip on" data-val="fat_loss" onclick="obPickChip(this,'goal')">ลดไขมัน</button>
+        <button type="button" class="ob-chip" data-val="recomp" onclick="obPickChip(this,'goal')">ลดไขมัน+รักษากล้าม</button>
+        <button type="button" class="ob-chip" data-val="maintain" onclick="obPickChip(this,'goal')">รักษาน้ำหนัก</button>
+        <button type="button" class="ob-chip" data-val="lean_gain" onclick="obPickChip(this,'goal')">เพิ่มกล้าม Lean</button>
+      </div>
+      <div class="ob-hint" id="ob-goal-focus">🎯&nbsp;<span>พื้นฐานเท่านี้พอแล้ว — ค่าอย่าง <b>% ไขมัน</b> ที่ต้องใช้เครื่องชั่ง ค่อยเพิ่มทีหลังได้ <b>ไม่บังคับ</b></span></div>
+    </div>
+
+    <button class="btn-primary" id="ob-submit" onclick="submitOnboarding()" disabled>เริ่มใช้งาน กินดี →</button>
+    <div class="ob-foot">หน้านี้จะไม่ขึ้นอีก · แก้ไขข้อมูลได้ที่ ⚙️ ตั้งค่า ตลอดเวลา</div>
+  </div>
+</div>
+
 <div class="app">
   <div class="sticky-top">
   <div class="header">
@@ -621,6 +750,9 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
         <div id="anomaly-banner-body" style="font-size:12px;color:var(--text2);line-height:1.7;"></div>
       </div>
     </div>
+
+    <!-- SETUP HUB: daily logging nudge (meal-first). Populated by renderSetupHub() -->
+    <div id="setup-hub-slot" class="fold-full"></div>
 
     <div class="fold-grid">
     <!-- HYBRID: ring + แคลโต + macro chips -->
@@ -1411,15 +1543,15 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
         </div>
         <div class="input-row">
           <div class="input-group"><label class="input-label">เปอร์เซ็นต์ไขมัน (%)</label><input class="input-field" type="number" id="bc-bf" step="0.1" placeholder="18.0"/></div>
-          <div class="input-group"><label class="input-label">มวลกล้ามเนื้อ (กก.)</label><input class="input-field" type="number" id="bc-smm" step="0.1" placeholder="31.2"/></div>
+          <div class="input-group"><label class="input-label" data-help="smm">มวลกล้ามเนื้อ (กก.)</label><input class="input-field" type="number" id="bc-smm" step="0.1" placeholder="31.2"/></div>
         </div>
         <div class="input-row">
           <div class="input-group"><label class="input-label">เปอร์เซ็นต์กล้ามเนื้อ (%) <span style="font-size:11px;color:var(--accent);">(ซิงค์ไปยัง Fitness Target)</span></label><input class="input-field" type="number" id="bc-smm-pct" step="0.1" placeholder="36.5" min="10" max="60"/></div>
           <div class="input-group" style="display:flex;align-items:center;padding-top:8px;"><span style="font-size:11px;color:var(--text3);line-height:1.6;">&#128161; กรอกมวลกล้ามเนื้อเป็น กก. หรือ %<br>อย่างใดอย่างหนึ่ง ระบบซิงค์ให้อัตโนมัติ</span></div>
         </div>
         <div class="input-row">
-          <div class="input-group"><label class="input-label">ระดับไขมันในช่องท้อง</label><input class="input-field" type="number" id="bc-vf" step="1" placeholder="4"/></div>
-          <div class="input-group"><label class="input-label">อัตราเผาผลาญพื้นฐาน (kcal)</label><input class="input-field" type="number" id="bc-bmr" step="1" placeholder="1565"/></div>
+          <div class="input-group"><label class="input-label" data-help="visceral">ระดับไขมันในช่องท้อง</label><input class="input-field" type="number" id="bc-vf" step="1" placeholder="4"/></div>
+          <div class="input-group"><label class="input-label" data-help="bmr">อัตราเผาผลาญพื้นฐาน (kcal)</label><input class="input-field" type="number" id="bc-bmr" step="1" placeholder="1565"/></div>
         </div>
       </details>
 
@@ -1562,11 +1694,11 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
       <div style="font-size:12px;font-weight:600;color:var(--text2);margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid var(--border);">📍 ข้อมูลปัจจุบัน</div>
       <div class="input-row">
         <div class="input-group">
-          <label class="input-label">% Body Fat ปัจจุบัน</label>
+          <label class="input-label" data-help="bodyfat">% Body Fat ปัจจุบัน</label>
           <input class="input-field" type="number" id="ft-curr-bf" placeholder="25" step="0.5" min="3" max="60" oninput="updateLeanMassPreview()"/>
         </div>
         <div class="input-group">
-          <label class="input-label">Skeletal Muscle ปัจจุบัน (%)</label>
+          <label class="input-label" data-help="smmPct">Skeletal Muscle ปัจจุบัน (%)</label>
           <input class="input-field" type="number" id="ft-curr-muscle" placeholder="35" step="0.1" min="10" max="60" oninput="updateMusclePreview()"/>
         </div>
       </div>
@@ -1597,7 +1729,7 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
       <div id="ft-muscle-preview" style="font-size:11px;color:var(--text3);margin-bottom:10px;padding:6px 10px;background:var(--surface2);border-radius:8px;display:none;"></div>
       <div class="input-row" style="margin-top:4px;">
         <div class="input-group">
-          <label class="input-label">🫀 Visceral Fat ปัจจุบัน (level 1-30)</label>
+          <label class="input-label" data-help="visceral">🫀 Visceral Fat ปัจจุบัน (level 1-30)</label>
           <input class="input-field" type="number" id="ft-curr-visceral" placeholder="8" step="1" min="1" max="30"/>
         </div>
         <div class="input-group">
@@ -1745,6 +1877,7 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
     <div class="meal-sheet-handle"></div>
     <div class="meal-sheet-title" id="mealSheetName">—</div>
     <div class="meal-sheet-macro" id="mealSheetMacro">—</div>
+    <div id="mealSheetBreakdown"></div>
     <button class="meal-sheet-act reuse" onclick="mealSheetReuse()">🔁 ใช้ซ้ำ (บันทึกเป็นมื้อใหม่)</button>
     <button class="meal-sheet-act edit" onclick="mealSheetEdit()">✏️ แก้ไขมื้อนี้ (แก้ของเดิม)</button>
     <button class="meal-sheet-act fav" onclick="mealSheetFav()">เพิ่มเข้าเมนูโปรด</button>
@@ -2588,6 +2721,7 @@ function loadRemoteData() {
     loadGoalInputs(); syncProfileWeightFromLatestCheckin(); render();
     updateFitnessUI();
     drainFBQueue();
+    try { maybeShowOnboarding(); } catch(e){ console.error('onboarding check failed:', e); }
     showToast('โหลดข้อมูลจาก Firebase ✅','success');
   }).catch(function(e){
     console.error('Firebase load error:', e);
@@ -2975,6 +3109,22 @@ function showResult(r) {
   }
 }
 
+// Keep a lightweight per-item breakdown on the saved meal so a combined
+// (multi-menu) entry can be expanded later. Only meaningful when 2+ items;
+// single-item meals store [] (nothing to break down).
+function sanitizeMealItems(items) {
+  if (!Array.isArray(items) || items.length < 2) return [];
+  return items.filter(function(it){ return it && (it.foodName || it.calories); }).map(function(it){
+    return {
+      foodName: String(it.foodName || 'รายการ'),
+      calories: Math.round((+it.calories || 0) * 100) / 100,
+      protein:  Math.round((+it.protein  || 0) * 100) / 100,
+      carbs:    Math.round((+it.carbs    || 0) * 100) / 100,
+      fat:      Math.round((+it.fat      || 0) * 100) / 100
+    };
+  });
+}
+
 function saveMeal() {
   if(!curResult) return;
   var now = new Date();
@@ -2993,7 +3143,8 @@ function saveMeal() {
     carbLoadFlag: curResult.carbLoadFlag || 'normal',
     mealContext: curResult.mealContext || 'normal',
     retentionRisk: Math.round(curResult.retentionRisk || 0),
-    analysisConfidence: Math.round(curResult.analysisConfidence || 70)
+    analysisConfidence: Math.round(curResult.analysisConfidence || 70),
+    items: sanitizeMealItems(curResult.items)
   };
   S.meals.push(meal);
   localStorage.setItem('gd_meals', JSON.stringify(S.meals));
@@ -4470,6 +4621,7 @@ function updateDash() {
   var tbEl = document.getElementById('dash-today-btn'); if (tbEl) tbEl.style.display = isToday ? 'none' : 'block';
 
   var meals = S.meals.filter(function(m){return m.date===viewDate;});
+  try { renderSetupHub(viewDate, isToday); } catch(e){ console.error('renderSetupHub failed:', e); }
   var t = meals.reduce(function(a,m){return{cal:a.cal+m.calories,pro:a.pro+m.protein,crb:a.crb+m.carbs,fat:a.fat+m.fat};},{cal:0,pro:0,crb:0,fat:0});
   var g = getEffectiveGoalToday();
   var dtNoteEl = document.getElementById('dash-daytype-note');
@@ -4616,6 +4768,35 @@ function setW(id, val, max) {
 
 // ใช้ซ้ำมื้อที่บันทึกไว้ — เปิด modal เลือกมื้อ/วันที่ (reuse ตัวเดียวกับเมนูโปรด)
 var _mealSheetId = null;
+
+// Combined-meal per-item breakdown, collapsed by default, expandable.
+function renderMealBreakdown(m) {
+  var box = document.getElementById('mealSheetBreakdown');
+  if (!box) return;
+  var items = (m && Array.isArray(m.items)) ? m.items : [];
+  if (items.length < 2) { box.innerHTML = ''; return; }
+  var rows = items.map(function(it){
+    return '<div class="mbd-item">' +
+      '<div style="min-width:0;"><div class="mbd-name">'+escapeHTML(it.foodName||'รายการ')+'</div>' +
+      '<div class="mbd-macros">P '+(it.protein||0)+'g · C '+(it.carbs||0)+'g · F '+(it.fat||0)+'g</div></div>' +
+      '<div class="mbd-cal">'+(it.calories||0)+' <span>kcal</span></div>' +
+    '</div>';
+  }).join('');
+  box.innerHTML =
+    '<button type="button" class="meal-expand-toggle" id="mbd-toggle" onclick="toggleMealBreakdown()">▸ ดูรายเมนู ('+items.length+')</button>' +
+    '<div class="meal-breakdown" id="mbd-body" style="display:none;">' +
+      '<div class="meal-breakdown-h">รายเมนูในมื้อนี้</div>' + rows +
+    '</div>';
+}
+function toggleMealBreakdown() {
+  var body = document.getElementById('mbd-body');
+  var btn = document.getElementById('mbd-toggle');
+  if (!body || !btn) return;
+  var open = body.style.display !== 'none';
+  body.style.display = open ? 'none' : 'block';
+  btn.innerHTML = (open ? '▸' : '▾') + btn.innerHTML.slice(1);
+}
+
 // จิ้มมื้อ → เปิด action sheet จากล่าง (ใช้ซ้ำ/โปรด/ลบ)
 function openMealSheet(id) {
   var m = S.meals.find(function(x){ return x.id === id; });
@@ -4624,6 +4805,7 @@ function openMealSheet(id) {
   document.getElementById('mealSheetName').textContent = m.foodName;
   document.getElementById('mealSheetMacro').textContent =
     (m.calories||0)+' kcal  •  P '+(m.protein||0)+'g  C '+(m.carbs||0)+'g  F '+(m.fat||0)+'g';
+  renderMealBreakdown(m);
   var ov = document.getElementById('meal-sheet-overlay');
   ov.style.display = 'flex';
   requestAnimationFrame(function(){ ov.classList.add('open'); });
@@ -4699,8 +4881,10 @@ function mealHTML(m, showDel) {
     '<span class="context-chip '+chipClassFromRisk(m.retentionRisk||0)+'">'+(m.retentionRisk||0)+'%</span>' +
     '</div>' : '';
   var qtyTag = (m.qty && m.qty > 1) ? ' <span style="color:var(--accent);">×'+m.qty+'</span>' : '';
+  var itemCount = (m.items && m.items.length > 1) ? m.items.length : 0;
+  var comboTag = itemCount ? ' <span style="font-size:10px;font-weight:700;color:var(--accent);background:var(--accent-dim);border-radius:6px;padding:1px 6px;vertical-align:middle;">รวม '+itemCount+' เมนู</span>' : '';
   return '<div class="meal-item" onclick="openMealSheet('+m.id+')"><div class="meal-thumb-ph">🍽️</div>'+
-    '<div class="meal-info"><div class="meal-name">'+escapeHTML(m.foodName)+qtyTag+'</div><div class="meal-time">'+escapeHTML(m.label)+' • '+escapeHTML(m.time)+'</div>'+
+    '<div class="meal-info"><div class="meal-name">'+escapeHTML(m.foodName)+qtyTag+comboTag+'</div><div class="meal-time">'+escapeHTML(m.label)+' • '+escapeHTML(m.time)+'</div>'+
     '<div class="meal-macros"><span class="meal-tag" style="color:var(--blue)">P '+m.protein+'g</span><span class="meal-tag" style="color:var(--green)">C '+m.carbs+'g</span><span class="meal-tag" style="color:var(--purple)">F '+m.fat+'g</span></div>'+chips+'</div>'+
     '<div style="display:flex;flex-direction:column;align-items:flex-end;gap:5px;"><div class="meal-cal">'+m.calories+'<br><span style="font-size:11px;color:var(--text3)">kcal</span></div><div class="meal-chevron">›</div></div></div>';
 }
@@ -11401,10 +11585,274 @@ window.addEventListener('unhandledrejection', function(ev){
   } catch(_) {}
 });
 
+// ============================================================
+// FIRST-RUN ONBOARDING GATE  (once per user, flag 'onboarded')
+// ============================================================
+var _obActivity = '1.55';
+var _obGoal = 'fat_loss';
+var _obGoalFocus = {
+  fat_loss:'เลือกลดไขมัน — พื้นฐานพอแล้ว ถ้ามีเครื่องชั่งค่อยเพิ่ม <b>% ไขมัน</b> ทีหลัง <b>ไม่บังคับ</b>',
+  recomp:'Recomp — ใช้พื้นฐานเริ่มได้เลย ถ้ามีเครื่องชั่งค่อยเพิ่ม <b>% ไขมัน / กล้ามเนื้อ</b> ทีหลัง',
+  maintain:'รักษาน้ำหนัก — พื้นฐานพอ ติดตามความคงที่ของ <b>น้ำหนัก</b> เป็นหลัก',
+  lean_gain:'เพิ่มกล้าม Lean — เริ่มจากพื้นฐาน ค่ากล้ามเนื้อจากเครื่องชั่งเพิ่มทีหลังได้ <b>ไม่บังคับ</b>'
+};
+
+// Decide whether to show the gate. Called after Firestore data has loaded.
+function maybeShowOnboarding() {
+  if (!window.FB_OK || !window.FB) return;
+  var g = document.getElementById('onboardGate');
+  if (g && g.style.display === 'block') return; // already showing
+  try { if (localStorage.getItem('gd_onboarded') === '1') return; } catch(e){}
+  window.FB.loadSetting('onboarded', null).then(function(done){
+    if (done) { try { localStorage.setItem('gd_onboarded','1'); } catch(e){} return; }
+    var p = S.profile || {};
+    var w = getLatestCheckinWeight() || p.weight;
+    var complete = p.age && p.height && p.gender && p.goalType && w;
+    if (complete) { markOnboarded(); return; } // existing user with full profile — skip silently
+    showOnboardingGate(p);
+  }).catch(function(){ /* offline / load fail: don't block the app */ });
+}
+
+function markOnboarded() {
+  try { localStorage.setItem('gd_onboarded','1'); } catch(e){}
+  if (window.FB_OK && window.FB) window.FB.saveSetting('onboarded', true).catch(function(){});
+}
+
+function showOnboardingGate(prefill) {
+  var g = document.getElementById('onboardGate');
+  if (!g) return;
+  // Pre-fill anything the (existing) user already has, so a partial profile
+  // just needs the missing pieces.
+  if (prefill) {
+    if (prefill.age)    document.getElementById('ob-age').value = prefill.age;
+    if (prefill.gender) document.getElementById('ob-gender').value = prefill.gender;
+    if (prefill.height) document.getElementById('ob-height').value = prefill.height;
+    var w = getLatestCheckinWeight() || prefill.weight;
+    if (w) document.getElementById('ob-weight').value = w;
+    if (prefill.activity) obSelectChipByVal('ob-activity-chips', String(prefill.activity), 'activity');
+    if (prefill.goalType) obSelectChipByVal('ob-goal-chips', normalizeGoalMode(prefill.goalType), 'goal');
+  }
+  g.style.display = 'block';
+  g.scrollTop = 0;
+  obUpdateProgress();
+}
+
+function obPickChip(el, kind) {
+  var box = el.parentElement;
+  box.querySelectorAll('.ob-chip').forEach(function(c){ c.classList.remove('on'); });
+  el.classList.add('on');
+  if (kind === 'activity') { _obActivity = el.getAttribute('data-val'); }
+  else { _obGoal = el.getAttribute('data-val'); obUpdateGoalFocus(); }
+}
+function obSelectChipByVal(containerId, val, kind) {
+  var box = document.getElementById(containerId);
+  if (!box) return;
+  var target = box.querySelector('.ob-chip[data-val="'+val+'"]');
+  if (target) obPickChip(target, kind);
+}
+function obUpdateGoalFocus() {
+  var el = document.getElementById('ob-goal-focus');
+  if (el) el.innerHTML = '🎯&nbsp;<span>' + (_obGoalFocus[_obGoal] || _obGoalFocus.fat_loss) + '</span>';
+}
+function obUpdateProgress() {
+  var age = +document.getElementById('ob-age').value;
+  var gender = document.getElementById('ob-gender').value;
+  var height = +document.getElementById('ob-height').value;
+  var weight = +document.getElementById('ob-weight').value;
+  var n = 0;
+  if (age >= 10 && age <= 100) n++;
+  if (gender) n++;
+  if (height >= 100 && height <= 230) n++;
+  if (weight >= 20 && weight <= 300) n++;
+  var total = n + 2; // activity + goal always have a default selection
+  var pct = Math.round(total / 6 * 100);
+  document.getElementById('ob-prog-fill').style.width = pct + '%';
+  document.getElementById('ob-prog-txt').textContent = total + '/6';
+  document.getElementById('ob-submit').disabled = (n < 4);
+}
+
+function submitOnboarding() {
+  var age = +document.getElementById('ob-age').value;
+  var gender = document.getElementById('ob-gender').value;
+  var height = +document.getElementById('ob-height').value;
+  var weight = +document.getElementById('ob-weight').value;
+  if (!(age >= 10 && age <= 100)) { showToast('กรุณากรอกอายุ 10–100 ปี','error'); return; }
+  if (!gender) { showToast('กรุณาเลือกเพศ','error'); return; }
+  if (!(height >= 100 && height <= 230)) { showToast('กรุณากรอกส่วนสูง 100–230 ซม.','error'); return; }
+  if (!(weight >= 20 && weight <= 300)) { showToast('กรุณากรอกน้ำหนัก 20–300 กก.','error'); return; }
+
+  // 1) Save today's weight as the first Health Check-in (same shape as handleSaveWeight)
+  var today = localDateStr();
+  var now = new Date();
+  var existingIdx = WT.log.findIndex(function(e){ return e.date === today; });
+  var entry = {
+    id: existingIdx !== -1 ? WT.log[existingIdx].id : Date.now(),
+    date: today,
+    time: now.toLocaleTimeString('th-TH',{hour:'2-digit',minute:'2-digit'}),
+    weight: weight, waist: null, note: ''
+  };
+  if (existingIdx !== -1) WT.log.splice(existingIdx, 1, entry); else WT.log.push(entry);
+  WT.log.sort(function(a,b){ return (a.date+a.time).localeCompare(b.date+b.time); });
+  localStorage.setItem('gd_weight', JSON.stringify(WT.log));
+  if (window.FB_OK && window.FB.saveWeight) window.FB.saveWeight(entry); else queueFBWrite('weight','save',entry);
+
+  // 2) Build the profile (mirror calcGoal's schema, keep training defaults)
+  S.profile = {
+    age: age, weight: weight, height: height, gender: gender,
+    activity: +_obActivity, goalType: normalizeGoalMode(_obGoal),
+    trainingFocus: 'hybrid', recoveryPriority: 'normal', weeklyFrequency: '4'
+  };
+  localStorage.setItem('gd_profile', JSON.stringify(S.profile));
+  if (window.FB_OK) window.FB.saveSetting('profile', S.profile);
+  syncProfileWeightFromLatestCheckin();
+
+  // 3) Compute the initial goal from the chosen mode + formula TDEE
+  try {
+    var goal = buildGoalFromMode(S.profile.goalType, S.profile, calcFormulaTDEE(S.profile));
+    applyGoalValues(goal, true);
+  } catch(e){ console.error('onboarding goal calc failed:', e); }
+
+  // 4) Mark done + reflect in Settings UI, then close
+  markOnboarded();
+  if (typeof loadProfile === 'function') { try { loadProfile(); } catch(e){} }
+  var g = document.getElementById('onboardGate');
+  if (g) g.style.display = 'none';
+  showPage('dashboard');
+  updateDash();
+  if (typeof updateFitnessUI === 'function') { try { updateFitnessUI(); } catch(e){} }
+  showToast('ตั้งค่าเรียบร้อย เริ่มบันทึกมื้อแรกได้เลย ✅','success');
+}
+
+// ============================================================
+// DASHBOARD SETUP HUB  (daily logging nudge; meal = primary)
+// ============================================================
+function renderSetupHub(viewDate, isToday) {
+  var slot = document.getElementById('setup-hub-slot');
+  if (!slot) return;
+  // Only a nudge for "today", and only once the user has a profile (post-onboarding).
+  if (!isToday || !S.profile || !S.profile.goalType) { slot.innerHTML = ''; return; }
+  var mealCount = (S.meals || []).filter(function(m){ return m.date === viewDate; }).length;
+
+  if (mealCount > 0) {
+    // Essential done → collapse to a slim bar (never nags about optional items)
+    slot.innerHTML =
+      '<div class="hub-slim">' +
+        '<div class="hub-slim-check">✓</div>' +
+        '<div class="hub-slim-txt">บันทึกมื้อวันนี้แล้ว · ' + mealCount + ' มื้อ' +
+          '<span>เพิ่มมื้อ / ชั่งน้ำหนัก / ออกกำลังกาย ได้อีกจากปุ่ม +</span></div>' +
+        '<button class="hub-slim-add" onclick="openHubAddSheet()">+ เพิ่ม</button>' +
+      '</div>';
+    return;
+  }
+
+  // Not logged yet → meal logging as the primary call to action
+  var weightDone = (WT.log || []).some(function(e){ return e.date === viewDate; });
+  var workoutDone = (FT.workouts || []).some(function(w){ return w.date === viewDate; });
+  slot.innerHTML =
+    '<div class="hub">' +
+      '<div class="hub-head-row">' +
+        '<div><div class="hub-title">เริ่มบันทึกวันนี้</div>' +
+        '<div class="hub-desc">อยากให้ AI วิเคราะห์วันนี้ได้ — เริ่มจากบันทึกมื้ออาหาร</div></div>' +
+        '<span class="hub-profile-ok">✓ โปรไฟล์พร้อม</span>' +
+      '</div>' +
+      '<button type="button" class="hub-primary" onclick="showPage(\'analyze\')">' +
+        '<div class="hub-primary-icon">🍽️</div>' +
+        '<div class="hub-primary-txt"><div class="hub-primary-name">บันทึกมื้ออาหาร<span class="hub-badge">ทุกวัน</span></div>' +
+        '<div class="hub-primary-meta">ถ่ายรูป · พิมพ์ชื่อ · หรือป้อนเอง — ตัวหลักของการวิเคราะห์</div></div>' +
+        '<div class="hub-primary-cta">+ บันทึกมื้อ</div>' +
+      '</button>' +
+      '<div class="hub-opt-row">' +
+        '<div class="hub-opt-label">ไม่บังคับ · เพิ่มถ้ามี</div>' +
+        '<button class="hub-opt-chip' + (weightDone?' done':'') + '" onclick="showPage(\'weight\')">' + (weightDone?'✓ ':'') + '⚖️ ชั่งน้ำหนัก</button>' +
+        '<button class="hub-opt-chip' + (workoutDone?' done':'') + '" onclick="showPage(\'fitness\')">' + (workoutDone?'✓ ':'') + '🏋️ ออกกำลังกาย</button>' +
+      '</div>' +
+    '</div>';
+}
+
+// Slim-bar "+ เพิ่ม" → small action sheet routing to each flow (stays on dashboard feel)
+function openHubAddSheet() {
+  var existing = document.getElementById('hub-add-overlay');
+  if (existing) existing.remove();
+  var ov = document.createElement('div');
+  ov.id = 'hub-add-overlay';
+  ov.style.cssText = 'position:fixed;inset:0;z-index:1600;background:rgba(0,0,0,.5);display:flex;align-items:flex-end;';
+  ov.onclick = function(e){ if (e.target === ov) ov.remove(); };
+  ov.innerHTML =
+    '<div style="width:100%;max-width:860px;margin:0 auto;background:var(--surface);border-radius:22px 22px 0 0;border-top:1px solid var(--border-md);padding:10px 18px calc(env(safe-area-inset-bottom,10px) + 22px);">' +
+      '<div style="width:38px;height:4px;background:var(--border-md);border-radius:4px;margin:6px auto 16px;"></div>' +
+      '<div style="font-size:16px;font-weight:800;margin-bottom:14px;">เพิ่มบันทึกวันนี้</div>' +
+      '<button class="hub-primary" style="margin-bottom:10px;" onclick="hubAddGo(\'analyze\')"><div class="hub-primary-icon">🍽️</div><div class="hub-primary-txt"><div class="hub-primary-name">บันทึกมื้ออาหาร</div></div><div class="meal-chevron">›</div></button>' +
+      '<button class="hub-primary" style="margin-bottom:10px;border-color:var(--border-md);" onclick="hubAddGo(\'weight\')"><div class="hub-primary-icon" style="background:var(--surface2);border-color:var(--border-md);color:var(--text2);">⚖️</div><div class="hub-primary-txt"><div class="hub-primary-name">ชั่งน้ำหนัก</div></div><div class="meal-chevron">›</div></button>' +
+      '<button class="hub-primary" style="border-color:var(--border-md);" onclick="hubAddGo(\'fitness\')"><div class="hub-primary-icon" style="background:var(--surface2);border-color:var(--border-md);color:var(--text2);">🏋️</div><div class="hub-primary-txt"><div class="hub-primary-name">ออกกำลังกาย</div></div><div class="meal-chevron">›</div></button>' +
+    '</div>';
+  document.body.appendChild(ov);
+}
+function hubAddGo(page) {
+  var ov = document.getElementById('hub-add-overlay');
+  if (ov) ov.remove();
+  showPage(page);
+}
+
+// ============================================================
+// CENTRAL HELP TOOLTIP  ("?" after jargon headings, all pages)
+// ============================================================
+var HELP_GLOSSARY = {
+  visceral:'ไขมันที่ห่อหุ้มอวัยวะภายในช่องท้อง วัดจากเครื่องชั่งองค์ประกอบร่างกาย · ปกติ 1–9 · เสี่ยง 10–14 · สูง 15+',
+  bodyfat:'สัดส่วนไขมันต่อน้ำหนักตัวทั้งหมด (%) — ยิ่งต่ำยิ่งเห็นกล้ามชัด แต่ต่ำเกินไปก็เสียสุขภาพ',
+  smm:'<b>Skeletal Muscle Mass</b> — มวลกล้ามเนื้อโครงร่าง (กก.) ยิ่งมากยิ่งเผาผลาญพื้นฐานดีขึ้น',
+  smmPct:'สัดส่วนมวลกล้ามเนื้อโครงร่างต่อน้ำหนักตัว (%)',
+  bmr:'<b>Basal Metabolic Rate</b> — พลังงานที่ร่างกายใช้ขณะพักเต็มที่ (นอนเฉย ๆ ทั้งวัน)',
+  tdee:'<b>Total Daily Energy Expenditure</b> — แคลอรี่ที่เผาผลาญทั้งวันรวมกิจกรรม ใช้เป็นฐานตั้งเป้ากิน',
+  adaptiveTdee:'TDEE ที่ปรับตามเทรนด์น้ำหนักจริงของคุณ แม่นกว่าสูตรมาตรฐานเพราะสะท้อนการเผาผลาญจริง',
+  e1rm:'<b>Estimated 1-Rep Max</b> — น้ำหนักสูงสุดที่คาดว่ายกได้ 1 ครั้ง ประเมินจากน้ำหนัก×จำนวนครั้ง',
+  met:'<b>Metabolic Equivalent</b> — ความหนักของกิจกรรมเทียบขณะพัก (1 MET) ใช้คำนวณแคลที่เผาผลาญ',
+  loadTrend:'แนวโน้มปริมาณงานซ้อมสะสม เทียบระยะสั้นกับระยะยาว บอกว่ากำลัง overreaching หรือพักพอ',
+  retentionRisk:'โอกาสที่น้ำหนักจะเด้งขึ้นชั่วคราวจากน้ำ (โซเดียม/คาร์บสูง) ไม่ใช่ไขมันจริง',
+  carbLoad:'ระดับคาร์โบไฮเดรตของมื้อ — สูงอาจทำให้กักน้ำเพิ่มชั่วคราว',
+  sodium:'ระดับโซเดียม (เกลือ) ของมื้อ — สูงทำให้กักน้ำและน้ำหนักเด้งชั่วคราว',
+  sleepScore:'คะแนนคุณภาพการนอนรวม จากระยะเวลา ประสิทธิภาพ ช่วงหลับลึก และความสม่ำเสมอ',
+  sleepEff:'<b>Sleep Efficiency</b> — สัดส่วนเวลาที่หลับจริงต่อเวลาที่อยู่บนเตียง (%)',
+  sleepConsistency:'ความสม่ำเสมอของเวลาเข้านอน–ตื่น ยิ่งตรงเวลาทุกวันยิ่งดีต่อนาฬิกาชีวภาพ'
+};
+// Returns an inline "?" chip to place right after a heading/label.
+function helpTip(key) {
+  var txt = HELP_GLOSSARY[key];
+  if (!txt) return '';
+  return '<span class="htip" role="button" tabindex="0" aria-label="คำอธิบาย" onclick="toggleHelpTip(event,this)">?' +
+    '<span class="htip-pop">' + txt + '</span></span>';
+}
+function toggleHelpTip(e, el) {
+  e.stopPropagation();
+  var wasOn = el.classList.contains('on');
+  document.querySelectorAll('.htip.on').forEach(function(h){ h.classList.remove('on'); });
+  if (!wasOn) {
+    el.classList.add('on');
+    // Flip below the icon if there isn't room above (near top of viewport)
+    var pop = el.querySelector('.htip-pop');
+    if (pop) {
+      pop.classList.remove('flip');
+      var r = el.getBoundingClientRect();
+      if (r.top < 120) pop.classList.add('flip');
+    }
+  }
+}
+document.addEventListener('click', function(){
+  document.querySelectorAll('.htip.on').forEach(function(h){ h.classList.remove('on'); });
+});
+// Inject "?" into static headings that carry jargon (idempotent).
+function injectStaticHelpTips() {
+  document.querySelectorAll('[data-help]').forEach(function(el){
+    if (el.querySelector('.htip')) return; // already injected
+    var key = el.getAttribute('data-help');
+    el.insertAdjacentHTML('beforeend', helpTip(key));
+  });
+}
+
 // Run each initializer independently so a failure in one (e.g. a missing
 // external lib like Chart.js) cannot abort the others. Previously a throw in
 // init() would prevent initFitness() from ever running, leaving the fitness
 // tab's data unloaded and its buttons effectively dead.
+try { injectStaticHelpTips(); } catch(e){ console.error('injectStaticHelpTips failed:', e); }
 try { initFirebase(); } catch(e){ console.error('initFirebase failed:', e); }
 try { init(); }         catch(e){ console.error('init failed:', e); }
 try { initFitness(); }  catch(e){ console.error('initFitness failed:', e); }
