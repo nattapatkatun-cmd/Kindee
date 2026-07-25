@@ -7936,6 +7936,11 @@ function saveFitnessTarget() {
         pctBWPerWeek:feas.pctBWPerWeek, recommendedWeeks:feas.recommendedWeeks, belowEssential:feas.belowEssential, computedAt:localDateStr() }
     : null;
   localStorage.setItem('gd_ft_target', JSON.stringify(target));
+  // The target drives targetW / on-track / ETA / the goal-engine deficit inside the
+  // weight analysis, and that card is cached per-day. Without this, changing the target
+  // and refreshing kept showing the analysis built against the previous target.
+  localStorage.removeItem('gd_wt_analysis'); localStorage.removeItem('gd_wt_analysis_data');
+  localStorage.removeItem('gd_daily_summary'); localStorage.removeItem('gd_wt_ai_result');
   window._fitnessTarget = target; // expose for weight log module
   if (window.FB_OK) window.FB.saveSetting('fitnessTarget', target);
   if (S.webhook) { fetch('https://kindee.ojo0308.workers.dev/',{method:'POST',headers:{'Content-Type':'application/json','x-target-url':S.webhook},body:JSON.stringify({action:'saveFitnessTarget',data:target})}).catch(function(){}); }
@@ -7961,6 +7966,10 @@ function resetTargetStartDate() {
         pctBWPerWeek:feasR.pctBWPerWeek, recommendedWeeks:feasR.recommendedWeeks, belowEssential:feasR.belowEssential, computedAt:localDateStr() }
     : null;
   localStorage.setItem('gd_ft_target', JSON.stringify(t));
+  // Restarting the program moves the start date and the whole baseline — same cache
+  // invalidation as saveFitnessTarget, or the analysis keeps quoting the old round.
+  localStorage.removeItem('gd_wt_analysis'); localStorage.removeItem('gd_wt_analysis_data');
+  localStorage.removeItem('gd_daily_summary'); localStorage.removeItem('gd_wt_ai_result');
   window._fitnessTarget = t;
   if (window.FB_OK) window.FB.saveSetting('fitnessTarget', t);
   renderTargetDashboard();
@@ -10616,7 +10625,27 @@ function buildAnalysisHTML(recent) {
   html+='<div style="font-size:12px;color:var(--text3);font-weight:600;">STATUS</div>';
   html+='<div style="font-size:18px;font-weight:800;color:'+statusColor+';">'+statusLabel+'</div>';
   if(statusNote)html+='<div style="font-size:11px;color:var(--text3);margin-top:3px;">'+statusNote+'</div>';
-  if(requiredWeeklyLoss!==null&&!suppressRecommend)html+='<div style="font-size:11px;color:var(--text3);margin-top:2px;">Goal Engine: '+(requiredWeeklyLoss<0?'ลด ':'เพิ่ม ')+Math.abs(requiredWeeklyLoss).toFixed(2)+' กก./สัปดาห์</div>';
+  if(requiredWeeklyLoss!==null&&!suppressRecommend)html+='<div style="font-size:11px;color:var(--text3);margin-top:2px;">Goal Engine: '+(requiredWeeklyLoss<0?'ลด ':'เพิ่ม ')+Math.abs(requiredWeeklyLoss).toFixed(2)+' กก./สัปดาห์ <span style="opacity:0.75;">(จากเป้าแคลที่ตั้งไว้ '+(userGoalCal||'—')+' kcal)</span></div>';
+  // Reconcile the Fitness Target against the calorie goal actually in force.
+  // requiredDeficit above is deliberately derived from the USER'S committed calorie goal
+  // (trueTDEE − userGoalCal), NOT from the Fitness Target — so editing the target weight
+  // moves nothing on this card, and there was no hint the two had drifted apart. Say it
+  // out loud, and offer the one-tap fix that already exists.
+  if(!suppressRecommend && userGoalCal!=null && trueTDEE!=null){
+    var ftLive = (typeof calcTargetFeasibility==='function') ? calcTargetFeasibility(window._fitnessTarget||safeJSON('gd_ft_target',null)) : null;
+    if(ftLive && ftLive.direction==='loss' && ftLive.requiredDeficit>0){
+      var goalDelivers = Math.round(trueTDEE - userGoalCal);
+      var shortfall = ftLive.requiredDeficit - goalDelivers;
+      if(shortfall > 120){
+        // Weeks the CURRENT goal actually needs for the same fat gap, so the user sees a
+        // real alternative instead of only being told the plan is behind.
+        var realWeeks = goalDelivers>0 ? Math.ceil(ftLive.fatToLose*7700/(goalDelivers*7)) : null;
+        html+='<div style="font-size:11px;color:#eab308;margin-top:4px;line-height:1.6;">⚠️ Fitness Target ต้องการ deficit ~'+ftLive.requiredDeficit+' kcal/วัน แต่เป้าแคลปัจจุบันให้ได้ ~'+goalDelivers+' kcal/วัน'+
+          (realWeeks?' → ที่อัตรานี้จะใช้เวลาราว '+realWeeks+' สัปดาห์ (ตั้งไว้ '+ftLive.duration+')':'')+
+          (ftLive.status==='unrealistic'?'<br>เป้านี้เกินเกณฑ์ปลอดภัยอยู่แล้ว — ขยับกำหนดเวลาน่าจะเหมาะกว่าลดแคลเพิ่ม':'')+'</div>';
+      }
+    }
+  }
   html+='</div><div style="text-align:right;">';
   html+='<div style="font-size:11px;color:var(--text3);">Confidence</div>';
   html+='<div style="font-size:16px;font-weight:700;color:var(--text1);">'+confidencePct+'%</div>';
