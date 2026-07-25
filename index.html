@@ -10099,9 +10099,20 @@ function buildAnalysisHTML(recent) {
   var recompHold = (goalMode === 'fat_loss' || goalMode === 'recomp')
     && tgtWforGoal != null && lastW != null && lastW <= tgtWforGoal + 0.3
     && tgtBFforGoal != null && curBFforGoal != null && curBFforGoal > tgtBFforGoal + 0.3;
+  var recompDeficit = 0;
   if (recompHold) {
-    requiredDeficit = 0; // hold ~maintenance
-    if (trueTDEE != null) recommendedIntake = Math.round(trueTDEE);
+    // Weight target met but %BF still above goal. Policy: keep a SMALL deficit so
+    // fat keeps dropping — but ease it to maintenance when weight is already under
+    // the target or falling fast, so we don't overshoot the weight goal or shed
+    // muscle. Whichever number we land on, the sync button / analysis text / AI all
+    // quote it (engineRecommendedIntake is realigned below) so the plan is self-consistent.
+    recompDeficit = trueTDEE != null ? Math.max(150, Math.min(250, Math.round(trueTDEE * 0.10))) : 0;
+    var recompWeightUnder = (tgtWforGoal != null && lastW < tgtWforGoal - 0.5);
+    var recompDroppingFast = (trendPerWeek != null && trendPerWeek <= -0.4);
+    if (recompWeightUnder || recompDroppingFast) recompDeficit = 0; // already losing → hold at maintenance
+    requiredDeficit = recompDeficit;
+    if (trueTDEE != null) recommendedIntake = Math.round(trueTDEE - recompDeficit);
+    engineRecommendedIntake = recommendedIntake;
   }
   var requiredWeeklyLoss = -(requiredDeficit * 7 / 7700); // negative = loss, positive = gain
   var targetW = (window._fitnessTarget && window._fitnessTarget.weight) ? parseFloat(window._fitnessTarget.weight) : null;
@@ -10369,7 +10380,11 @@ function buildAnalysisHTML(recent) {
   if(sourceCal && sourceCal.preferred) html+='• Source calibration: <strong>'+getSourceAwareStatusText()+'</strong><br>';
   if(visualAnalysis) html+='• Visual signal: <strong>'+(visualAnalysis.summary||visualAnalysis.visualTrend||'available')+'</strong><br>';
   if(recompHold){
-    html+='• โหมด: <strong style="color:var(--accent);">Recomp 🔄 — น้ำหนักถึงเป้าแล้ว</strong> <span style="color:var(--text3);">(รักษา ~'+recommendedIntake+' kcal maintenance · เน้นโปรตีน+เวท ลด %BF ไม่ต้องเพิ่ม deficit)</span>';
+    if(recompDeficit>0){
+      html+='• โหมด: <strong style="color:var(--accent);">Recomp 🔄 — น้ำหนักถึงเป้าแล้ว</strong> <span style="color:var(--text3);">(BF ยังสูงกว่าเป้า → deficit เล็กน้อย ~'+recompDeficit+' kcal · ตั้ง intake ~'+recommendedIntake+' kcal เพื่อลดไขมันต่อ โดยเน้นโปรตีน+เวทรักษากล้าม)</span>';
+    } else {
+      html+='• โหมด: <strong style="color:var(--accent);">Recomp 🔄 — น้ำหนักถึงเป้าแล้ว</strong> <span style="color:var(--text3);">(น้ำหนักลงถึง/ต่ำกว่าเป้าแล้ว → รักษา ~'+recommendedIntake+' kcal maintenance · เน้นโปรตีน+เวท ลด %BF ไม่ต้องเพิ่ม deficit)</span>';
+    }
   } else if(requiredDeficit!==null){
     var deficitFeasNote='';
     if(centralGoalForAnalysis && (centralGoalForAnalysis.deficitFeasibility==='aggressive' || centralGoalForAnalysis.deficitFeasibility==='unrealistic')){
@@ -10506,7 +10521,7 @@ function runAIWeightDeepDive() {
   var prompt='You are a weight loss coach. Use ONLY the numbers below. Do NOT recalculate.\n\n'
     +'User: '+(profile.age||'?')+'y '+(profile.gender||'?')+' '+(profile.weight||'?')+'kg '+(profile.height||'?')+'cm\n'
     +'Goal Mode: '+(d.goalModeLabel||'?')+' | Calorie goal the user set: '+(d.userGoalCal||d.recommendedIntake||'?')+' kcal'+(d.engineRecommendedIntake&&d.engineRecommendedIntake!==d.userGoalCal?' (engine would suggest '+d.engineRecommendedIntake+', but analyze against the user-set goal)':'')+' | Target body weight reference: '+(ft.weight||'?')+'kg in '+(ft.duration||'?')+' weeks'+(function(){var pp=getTargetProgramPosition(ft);return pp?(pp.isOver?' (program period already complete)':' (currently week '+pp.week+'/'+pp.total+', '+pp.weeksRemaining+' weeks remaining — base timeline advice on the REMAINING weeks)'):'';})()+'\n\n'
-    +(d.recompHold?'RECOMP STATE: The body-weight target is already met but %BF is still above goal. This is body recomposition, NOT a weight-loss phase. DO NOT tell the user to increase their deficit or eat less — that would drop them below the weight target and risk muscle loss. Instead: hold intake near maintenance (~'+(d.recommendedIntake||'?')+' kcal), keep protein high, and drive %BF down through resistance training + progressive overload. Frame holding weight as SUCCESS, not slow progress.\n\n':'')
+    +(d.recompHold?('RECOMP STATE: The body-weight target is already met but %BF is still above goal — this is recomposition, not a fresh weight-loss phase. '+((d.requiredDeficit||0)>0?'Recommend a SMALL deficit only: set intake to ~'+(d.recommendedIntake||'?')+' kcal (about '+(d.requiredDeficit||'?')+' kcal under maintenance) to keep fat dropping while protecting muscle — do NOT prescribe an aggressive cut.':'The user is already at/under the weight target and still losing, so do NOT add any deficit — hold intake near maintenance (~'+(d.recommendedIntake||'?')+' kcal) and frame holding weight as SUCCESS.')+' Keep protein high and drive %BF down with resistance training + progressive overload. Express the calorie number as an adjustment from the goal the user set ('+(d.userGoalCal||'?')+' kcal) and state briefly why.\n\n'):'')
     +'EXACT DATA:\n'
     +'- Status: '+statusDesc+' (Confidence: '+(d.confidencePct||'?')+'%)\n'
     +'- Scale trend (regression): '+(d.trendPerWeek!==undefined?(d.trendPerWeek>=0?'+':'')+d.trendPerWeek.toFixed(2)+' kg/week ('+( d.trendPerWeek>0.25?'Gaining':d.trendPerWeek>=-0.25?'Plateau':'Losing')+')'  :'?')+'\n'
@@ -10538,7 +10553,7 @@ function runAIWeightDeepDive() {
     +(d.suppressRecommend
       ? '**ISSUE:**\n1. [สาเหตุหลัก]\n2. [สาเหตุรอง]\n\n**NEXT STEP:**\n- '+(d.dataError?'ตรวจสอบ duplicate logs':'Track ให้ครบ 5-7 วัน แล้ว recalculate')+'\n- อย่าเปลี่ยน calorie target ก่อนจนกว่า data จะถูกต้อง\n\n'
       : (d.recompHold
-          ? '**สรุป:** น้ำหนักถึงเป้าแล้ว — โฟกัสที่ %BF (recomposition)\n\n**ACTION:**\n- Calories: รักษาที่ ~'+(d.recommendedIntake||'?')+' kcal/วัน (maintenance) — อย่าลดเพิ่ม\n- เน้นโปรตีนสูง + เวทเทรนนิ่ง progressive overload เพื่อลด %BF โดยรักษากล้าม\n- พฤติกรรม: ...\n\n'
+          ? '**สรุป:** น้ำหนักถึงเป้าแล้ว — โฟกัสที่ %BF (recomposition)\n\n**ACTION:**\n- Calories: '+((d.requiredDeficit||0)>0?'ตั้งเป้า ~'+(d.recommendedIntake||'?')+' kcal/วัน (deficit เล็กน้อย ~'+(d.requiredDeficit||'?')+' kcal จาก maintenance เพื่อลดไขมันต่อ — อย่าคัทแรง)':'รักษาที่ ~'+(d.recommendedIntake||'?')+' kcal/วัน (maintenance) — อย่าลดเพิ่ม')+(d.userGoalCal&&d.recommendedIntake&&d.userGoalCal!==d.recommendedIntake?' [ปรับจากเป้าที่ตั้ง '+d.userGoalCal+' kcal '+(d.recommendedIntake>d.userGoalCal?'+':'')+(d.recommendedIntake-d.userGoalCal)+' kcal]':'')+'\n- เน้นโปรตีนสูง + เวทเทรนนิ่ง progressive overload เพื่อลด %BF โดยรักษากล้าม\n- พฤติกรรม: ...\n\n'
           : '**CAUSE (ถ้ามีปัญหา):**\n1. ...\n\n**ACTION:**\n- Calories: '+(d.recommendedIntake?'ตั้งเป้า '+d.recommendedIntake+' kcal/วัน':'รักษา intake ปัจจุบัน')+'\n- พฤติกรรม: ...\n\n')
     )
     +'**EXPECTED:** เป้า goal-engine '+(d.forecast7d||'?')+' กก./สัปดาห์ (ถ้าทำ deficit ได้ตามแผน)'+(d.currentPace7d!==null&&d.currentPace7d!==undefined?' · pace ปัจจุบัน '+d.currentPace7d+' กก./สัปดาห์':'');
