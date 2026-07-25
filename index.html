@@ -1193,7 +1193,7 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
         </div>
         <div style="font-size:11px;color:var(--text3);margin-top:6px;">
           📱 ดูจำนวนก้าวจากแอปสุขภาพหรือนาฬิกาที่คุณใช้ แล้วกรอกที่นี่<br>
-          สูตร: ก้าว × 0.04 × (น้ำหนัก÷70) — นับรวมใน Net Calories อัตโนมัติ
+          สูตร: ก้าว × 0.028 × (น้ำหนัก÷70) — พลังงาน "ส่วนเกินจากการนั่งเฉย ๆ" (เดิน ~3.5 METs หักค่า resting 1 MET ออกแล้ว) นับรวมใน Net Calories อัตโนมัติ
         </div>
       </div>
 
@@ -4148,15 +4148,29 @@ function renderDailySummary(r) {
         html += '<div style="font-size:10px;font-weight:700;color:#a855f7;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:5px;">⭐ จากเมนูโปรดของคุณ</div>';
         sg.from_favorites.forEach(function(item) {
           if (!item || !item.name) return;
+          // These are the USER'S OWN saved entries, and the app has their exact numbers —
+          // they were fed into the prompt in the first place. Render the stored record,
+          // not the model's restatement of it: a paraphrased "220 kcal · P 42g" under the
+          // heading "จากเมนูโปรดของคุณ" reads as if the user's own saved macros changed.
+          // The prompt lists favourites by `foodName` (see favContext), so match on that.
+          var favName = String(item.name || '').trim().toLowerCase();
+          var fav = (S.favorites || []).filter(function(f){
+            return f && String(f.foodName || '').trim().toLowerCase() === favName;
+          })[0];
+          var cal = fav ? fav.calories : item.cal;
+          var p   = fav ? fav.protein  : item.p;
+          var c   = fav ? fav.carbs    : item.c;
+          var f_  = fav ? fav.fat      : item.f;
           html += '<div style="background:rgba(168,85,247,0.06);border:1px solid rgba(168,85,247,0.15);border-radius:8px;padding:7px 10px;margin-bottom:5px;">' +
             '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px;">' +
             '<div style="font-size:12px;font-weight:600;color:var(--text);">' + item.name + '</div>' +
             '<div style="font-size:11px;color:var(--text3);">' + (item.amount||'') + '</div></div>' +
             '<div style="display:flex;gap:8px;font-size:11px;color:var(--text3);">' +
-            '<span style="color:var(--fire);">' + item.cal + ' kcal</span>' +
-            '<span>P <b style="color:#3b82f6;">' + item.p + 'g</b></span>' +
-            '<span>C <b style="color:#22c55e;">' + item.c + 'g</b></span>' +
-            '<span>F <b style="color:#eab308;">' + item.f + 'g</b></span>' +
+            '<span style="color:var(--fire);">' + cal + ' kcal</span>' +
+            '<span>P <b style="color:#3b82f6;">' + p + 'g</b></span>' +
+            '<span>C <b style="color:#22c55e;">' + c + 'g</b></span>' +
+            '<span>F <b style="color:#eab308;">' + f_ + 'g</b></span>' +
+            (fav ? '' : '<span style="color:var(--text3);">(ประมาณการ)</span>') +
             '</div>' +
             (item.note ? '<div style="font-size:11px;color:var(--text3);margin-top:3px;">💡 ' + item.note + '</div>' : '') +
           '</div>';
@@ -4589,18 +4603,22 @@ function renderWeeklyReview() {
   }
   var onTrackMsg='';
   if(target&&weightSlope!==null){
-    var currW=weekWeights.length?weekWeights[weekWeights.length-1].weight:null;
-    // Required rate: prefer the feasibility engine's fat-loss rate (from the real
-    // %BF gap), fall back to the old weight-gap ÷ duration estimate.
+    // Required rate comes from ONE place: the feasibility engine. The old fallback
+    // (weight gap ÷ FULL duration) was a different quantity computed over a different
+    // window — for a user at week 6 of 12 the two answers differed by 2x while both were
+    // printed as "ต้องการ X กก./wk", flipping the on-track verdict depending purely on
+    // which branch happened to fire.
+    //
+    // Units: weeklyFatLoss is FAT kg/week, compared here against weightSlope, which is
+    // SCALE kg/week. That equivalence is exactly the engine's own lean-constant model
+    // (tgtW is derived holding lean mass fixed), so under the plan's own assumption the
+    // two coincide — and leanGainUnrealistic now flags targets that violate it.
+    // Recomputed live rather than read from the frozen save-time target.feasibility,
+    // so this reflects current %BF and the weeks actually remaining.
     var reqRate=null;
-    // Recompute live rather than reading the frozen save-time target.feasibility
-    // snapshot, so this on-track check matches how far behind/ahead the plan
-    // actually is today (current %BF, duration net of elapsed weeks).
     var feasWR=(typeof calcTargetFeasibility==='function')?calcTargetFeasibility(target):null;
     if(feasWR&&feasWR.direction==='loss'&&feasWR.weeklyFatLoss){
       reqRate=-feasWR.weeklyFatLoss;
-    } else if(currW&&target.weight&&target.weight<currW&&target.duration){
-      reqRate=(currW-target.weight)/target.duration*-1;
     }
     var bfTrajWR=(typeof getBFTrajectory==='function')?getBFTrajectory(target):null;
     var recompWR=Math.abs(weightSlope)<0.1&&bfTrajWR&&bfTrajWR.bfPerWeek!==null&&bfTrajWR.bfPerWeek<=-0.05;
@@ -5277,15 +5295,22 @@ function buildGoalFromMode(mode, profile, tdee) {
     if (ibPro && ibPro.bf) bfForPro = parseFloat(ibPro.bf);
   }
   if (bfForPro && bfForPro > 3 && bfForPro < 60) {
+    // Protein need scales with LEAN mass, not scale weight — adipose tissue has
+    // negligible protein turnover, so a per-kg-bodyweight target over-prescribes as %BF
+    // rises and under-prescribes for very lean people. When %BF is known, use the lean
+    // basis unconditionally. The per-kg-LBM figures (proteinPerKg + 0.4 → 2.3–2.6 g/kg
+    // LBM depending on mode) sit inside the 2.3–3.1 g/kg FFM range recommended for
+    // athletes in an energy deficit (Helms et al., 2014).
+    //
+    // This used to switch bases at a %BF threshold (25% M / 32% F): below it the code
+    // took max(bodyweight basis, lean basis), above it the lean basis alone. Because the
+    // lean basis is the SMALLER of the two around that threshold, the target fell by
+    // ~0.2 g/kg the moment %BF crossed it — the protein goal dropped as body fat ROSE,
+    // and jumped back the moment it dipped under again. Using one basis removes the
+    // discontinuity and makes protein a smooth, monotonic function of lean mass.
     var lbm = weight * (1 - bfForPro/100);
-    var proLBM = Math.round(lbm * (cfg.proteinPerKg + 0.4));
-    var highBF = gender === 'female' ? bfForPro >= 32 : bfForPro >= 25;
-    var proBW = pro;
-    pro = highBF ? proLBM : Math.max(proBW, proLBM);
-    // Only claim the LBM basis when it actually won. Below the high-%BF threshold the
-    // per-kg-bodyweight number is usually the larger of the two, so the hint used to say
-    // "2.4g/kg Lean Mass" while the target shown was really 2.0g/kg bodyweight.
-    proteinBasis = (highBF || proLBM > proBW) ? 'lbm' : 'bw';
+    pro = Math.round(lbm * (cfg.proteinPerKg + 0.4));
+    proteinBasis = 'lbm';
   }
   var fat = Math.max(Math.round(weight * cfg.fatPerKg), Math.round(weight * 0.7));
   var crb = Math.round((cal - (pro*4) - (fat*9)) / 4);
@@ -6958,9 +6983,18 @@ function selectPreset(name, icon, met, isStepBased) {
   calcBurnPreview();
 }
 
+// Gross energy cost of a session, standard MET equation:
+//   kcal/min = MET × 3.5 mL O2/kg/min × kg / 200        (200 = ~5 kcal per litre of O2)
+//   over `minutes` → MET × 3.5 × kg × min / 200 ≡ MET × kg × hours × 1.05
+// The 1.05 used to be dropped, which ran ~4.8% low against every published MET table.
+// That also mislabelled honest users: cal_source compares typed input to this number
+// within ±1 kcal, so anyone entering the textbook-correct figure was tagged 'override'
+// and had their burn credited at 0.50 instead of 0.60/0.80.
+// Weight source matches the rest of the engine (latest check-in, then profile).
 function calcBurnKcal(met, minutes) {
-  var weight = (S.profile && S.profile.weight > 0) ? S.profile.weight : 65;
-  return Math.round(met * weight * (minutes/60));
+  var w = (typeof getLatestCheckinWeight === 'function') ? getLatestCheckinWeight() : null;
+  var weight = parseFloat(w || (S.profile && S.profile.weight)) || 65;
+  return Math.round(met * 3.5 * weight * minutes / 200);
 }
 
 // ── HR Zone (Karvonen / %HRR) helpers ──────────────────────────
@@ -7150,10 +7184,22 @@ function todayWorkouts() {
   return FT.workouts.filter(function(w){return w.date===today;});
 }
 
+// NEAT from steps, expressed as energy ABOVE resting metabolism.
+//
+// Derivation (standard MET equation, kcal/min = MET × 3.5 × kg / 200):
+//   normal walking ≈ 3.5 METs at ~110 steps/min
+//   NET kcal/min   = (3.5 − 1) × 3.5 × kg / 200      ← subtract the 1 MET resting cost
+//   at 70 kg       = 2.5 × 3.5 × 70 / 200 = 3.06 kcal/min
+//   per step       = 3.06 / 110 ≈ 0.028 kcal
+//
+// The old constant was 0.04/step, which is the GROSS figure (it matches 3.5 METs with the
+// resting 1 MET left in). Using a gross number as a deduction double-counts the resting
+// energy that BMR/TDEE already accounts for — ~168 kcal/day too much at 12,000 steps.
+var STEP_KCAL_NET_PER_STEP_AT_70KG = 0.028;
 function calcStepCalories(steps) {
   var w = (typeof getLatestCheckinWeight === 'function') ? getLatestCheckinWeight() : null;
   var weight = parseFloat(w || (S.profile && S.profile.weight)) || 70;
-  return Math.round(steps * 0.04 * (weight / 70));
+  return Math.round(steps * STEP_KCAL_NET_PER_STEP_AT_70KG * (weight / 70));
 }
 
 function getSessionStepsForDate(date) {
@@ -7752,10 +7798,30 @@ function calcTargetFeasibility(target, profile) {
   var tgtW = target.weight ? parseFloat(target.weight) : (leanCurr / (1 - tgtBF/100));
   var fatToLose = (currW * currBF/100) - (tgtW * tgtBF/100);
 
+  // When the user pins BOTH a target weight and a target %BF, those two numbers together
+  // dictate a target LEAN mass — and that was never checked against reality. Setting
+  // "same weight, much lower %BF" silently demands building muscle at a rate nobody can
+  // hit, and the Lean Mass card then displayed the impossible gap in green as if it were
+  // the plan working.
+  //
+  // Reference rates for maximum lean gain (Aragon's model): novice ~1.0–1.5% BW/month,
+  // intermediate ~0.5–1.0%, advanced ~0.25–0.5% — and those assume an energy SURPLUS.
+  // In a deficit, net lean gain is ~0 for anyone past the untrained/detrained stage, so
+  // the realistic allowance while cutting is small and roughly rate-independent.
+  var leanTgt = tgtW * (1 - tgtBF/100);
+  var impliedLeanGain = leanTgt - leanCurr;             // kg, positive = must BUILD muscle
+  var months = Math.max(0.25, duration / 4.345);
+  var impliedLeanGainPerMonth = impliedLeanGain / months;
+  var LEAN_GAIN_IN_DEFICIT_MAX_KG_PER_MONTH = 0.25;    // generous recomp allowance
+
   var res = {
     status:'ok', currW:currW, currBF:currBF, tgtBF:tgtBF, tgtW:+tgtW.toFixed(1),
     fatToLose:+fatToLose.toFixed(1), duration:duration, tdee:Math.round(tdee), floor:floor,
     belowEssential: tgtBF < essential, essential:essential,
+    leanCurr:+leanCurr.toFixed(1), leanTgt:+leanTgt.toFixed(1),
+    impliedLeanGain:+impliedLeanGain.toFixed(1),
+    impliedLeanGainPerMonth:+impliedLeanGainPerMonth.toFixed(2),
+    leanGainUnrealistic:false,
     weeklyFatLoss:0, requiredDeficit:0, pctBWPerWeek:0, intakeAtDeficit:Math.round(tdee), recommendedWeeks:null
   };
   if (fatToLose <= 0.2) { res.direction = fatToLose < -0.2 ? 'gain' : 'flat'; return res; }
@@ -7771,7 +7837,11 @@ function calcTargetFeasibility(target, profile) {
   // Duration this fat gap would need at a sustainable ~0.6% BW/week
   res.recommendedWeeks = Math.ceil(fatToLose / Math.max(0.2, currW * 0.006));
 
-  if (pctBW > 1.0 || res.intakeAtDeficit < floor) res.status = 'unrealistic';
+  // A plan that needs fat loss AND meaningful lean gain at the same time is internally
+  // contradictory — the deficit that drives the fat loss is what caps the lean gain.
+  res.leanGainUnrealistic = impliedLeanGainPerMonth > LEAN_GAIN_IN_DEFICIT_MAX_KG_PER_MONTH;
+
+  if (pctBW > 1.0 || res.intakeAtDeficit < floor || res.leanGainUnrealistic) res.status = 'unrealistic';
   else if (pctBW > 0.7 || requiredDeficit > tdee * 0.25) res.status = 'aggressive';
   return res;
 }
@@ -7789,7 +7859,16 @@ function feasibilityBannerHTML(f) {
   lines.push('📐 ต้องลดไขมัน <b>' + f.fatToLose + ' กก.</b> ใน ' + f.duration + ' สัปดาห์ = <b>' + f.weeklyFatLoss + ' กก./สัปดาห์</b> (' + f.pctBWPerWeek + '% BW/wk)');
   lines.push('ต้องการ deficit ~<b>' + f.requiredDeficit + ' kcal/วัน</b> → กินประมาณ ' + f.intakeAtDeficit + ' kcal/วัน (TDEE ' + f.tdee + ')');
   if (f.status === 'unrealistic') {
-    lines.push('❌ <b>เป้านี้เร็ว/หนักเกินไป</b> — ' + (f.intakeAtDeficit < f.floor ? 'intake จะต่ำกว่า floor ' + f.floor + ' kcal เสี่ยงเสียกล้าม/ฮอร์โมน' : 'เกิน 1% BW/สัปดาห์ เสี่ยงเสียกล้ามสูง') + '<br>💡 แนะนำใช้เวลา <b>' + f.recommendedWeeks + ' สัปดาห์ขึ้นไป</b> หรือขยับ %BF เป้าหมายให้ใกล้ขึ้น');
+    // Name the binding constraint. The lean-gain case needs its own wording — telling
+    // someone to "take more weeks" doesn't help when the problem is that their weight
+    // and %BF targets together demand building muscle during a cut.
+    var why = f.leanGainUnrealistic
+      ? 'เป้าน้ำหนัก ' + f.tgtW + ' กก. คู่กับ %BF ' + f.tgtBF + '% แปลว่าต้องเพิ่ม lean mass <b>' + f.impliedLeanGain + ' กก.</b> (' + f.impliedLeanGainPerMonth + ' กก./เดือน) ไปพร้อมกับการลดไขมัน — ในภาวะ deficit ทำได้จริงราว 0.25 กก./เดือนเท่านั้น'
+      : (f.intakeAtDeficit < f.floor ? 'intake จะต่ำกว่า floor ' + f.floor + ' kcal เสี่ยงเสียกล้าม/ฮอร์โมน' : 'เกิน 1% BW/สัปดาห์ เสี่ยงเสียกล้ามสูง');
+    var how = f.leanGainUnrealistic
+      ? '<br>💡 เลือกอย่างใดอย่างหนึ่ง: ตั้งเป้าน้ำหนักให้ต่ำลง (ลดไขมันล้วน) หรือคงน้ำหนักไว้แล้วตั้ง %BF ให้ใกล้ขึ้น แล้วค่อยไล่ทีหลัง'
+      : '<br>💡 แนะนำใช้เวลา <b>' + f.recommendedWeeks + ' สัปดาห์ขึ้นไป</b> หรือขยับ %BF เป้าหมายให้ใกล้ขึ้น';
+    lines.push('❌ <b>เป้านี้เร็ว/หนักเกินไป</b> — ' + why + how);
   } else if (f.status === 'aggressive') {
     lines.push('⚠️ <b>ทำได้แต่ตึง</b> — อัตรานี้ต้องเป๊ะทั้งอาหาร/เวท/การนอน ถ้าอยากสบายขึ้นใช้ ' + f.recommendedWeeks + ' สัปดาห์');
   } else {
@@ -7944,7 +8023,21 @@ function getBFTrajectory(target) {
   var currBF  = target.currBF ? parseFloat(target.currBF) : startBF;
   if (currBF == null && startBF == null) return null;
   var res = { startBF:startBF, currBF:currBF, tgtBF:tgtBF, bfPerWeek:null, method:null, projWeeks:null };
-  var logs = getBodyCompLogs().filter(function(x){ return x.bf != null && (!target.startDate || x.date >= target.startDate); });
+  var allBfLogs = getBodyCompLogs().filter(function(x){ return x.bf != null && (!target.startDate || x.date >= target.startDate); });
+  // Regress within ONE measurement source. InBody and a BIA scale (Eufy) carry different
+  // systematic offsets — routinely several %BF apart on the same body — so a series that
+  // mixes them converts a device switch into a fake trend. currBF is InBody-only by design
+  // (see loadFitnessTarget), so the slope must be InBody-only too or the anchor and the
+  // rate describe different instruments. The per-source outlier detector already groups
+  // this way; this function was the one place that didn't.
+  var bySrc = {};
+  allBfLogs.forEach(function(x){ var k = x.source || 'other'; (bySrc[k] = bySrc[k] || []).push(x); });
+  var logs = bySrc['inbody'] || [];
+  if (logs.length < 2) {
+    logs = [];
+    Object.keys(bySrc).forEach(function(k){ if (bySrc[k].length > logs.length) logs = bySrc[k]; });
+  }
+  res.bfSource = logs.length ? (logs[0].source || 'other') : null;
   if (logs.length >= 2) {
     var spanD = (new Date(logs[logs.length-1].date) - new Date(logs[0].date)) / 86400000;
     if (spanD >= 7) {
@@ -7954,7 +8047,7 @@ function getBFTrajectory(target) {
   }
   if (res.bfPerWeek === null && currBF != null) {
     var wlog = ((typeof WT !== 'undefined' && WT.log) ? WT.log : safeJSON('gd_weight', [])).slice().sort(function(a,b){ return a.date.localeCompare(b.date); });
-    var wkRate = estimateEMATrend(wlog.slice(-21), 21);
+    var wkRate = estimateEMATrend(entriesWithinDays(wlog, 21), 21);
     var latestW = wlog.length ? parseFloat(wlog[wlog.length-1].weight) : null;
     if (wkRate !== null && latestW) {
       var w2 = latestW + wkRate, fat2 = latestW * currBF/100 + wkRate;
@@ -8469,9 +8562,16 @@ function renderTargetDashboard() {
         '<div style="flex:1;background:#0f766e;display:flex;align-items:center;justify-content:center;font-size:11px;color:white;font-weight:700;">'+tgtFatKg+'</div></div>';
       if (currLean) {
         var leanDiff=(tgtLean-currLean).toFixed(1), fatDiff=(tgtFatKg-currFatKg).toFixed(1);
+        // A required lean-mass GAIN is not automatically good news. If the same plan also
+        // demands fat loss, that gain has to happen in a deficit — check it against the
+        // feasibility engine rather than painting any positive number green.
+        var leanFeas = (typeof calcTargetFeasibility === 'function') ? calcTargetFeasibility(target) : null;
+        var leanImpossible = leanFeas && leanFeas.leanGainUnrealistic;
+        var leanColor = leanDiff > 0 ? (leanImpossible ? 'var(--red)' : 'var(--green)') : 'var(--red)';
         html += '<div style="font-size:11px;color:var(--text3);">'+
-          'Lean Mass '+(leanDiff>0?'<span style="color:var(--green)">+'+leanDiff+'</span>':'<span style="color:var(--red)">'+leanDiff+'</span>')+' กก. &nbsp;'+
-          'ไขมัน '+(fatDiff<0?'<span style="color:var(--green)">'+fatDiff+'</span>':'<span style="color:var(--accent)">+'+fatDiff+'</span>')+' กก.</div>';
+          'Lean Mass <span style="color:'+leanColor+'">'+(leanDiff>0?'+':'')+leanDiff+'</span> กก. &nbsp;'+
+          'ไขมัน '+(fatDiff<0?'<span style="color:var(--green)">'+fatDiff+'</span>':'<span style="color:var(--accent)">+'+fatDiff+'</span>')+' กก.</div>'+
+          (leanImpossible ? '<div style="font-size:11px;color:var(--red);margin-top:4px;line-height:1.5;">⚠️ ต้องสร้างกล้าม '+leanFeas.impliedLeanGainPerMonth+' กก./เดือน ระหว่างที่ลดไขมันอยู่ — เกินอัตราที่ทำได้จริง (~0.25 กก./เดือน) ลองปรับเป้าน้ำหนักหรือ %BF</div>' : '');
       }
     }
     html += '<div style="display:flex;gap:12px;margin-top:8px;font-size:11px;"><span><span style="color:var(--blue)">■</span> Lean Mass</span><span><span style="color:var(--accent)">■</span> ไขมัน</span><span><span style="color:var(--green)">■</span> Lean (เป้า)</span></div></div>';
@@ -9773,6 +9873,17 @@ function renderBodyCompLogList(){
     '</div>';
   }).join('');
 }
+// Entries falling inside the last `days` calendar days (inclusive), sorted oldest-first.
+// Use this instead of slice(-N): N array elements is not N days unless the user happens
+// to weigh in exactly once a day, and the labels/prompts all say "21d".
+function entriesWithinDays(log, days) {
+  var cutoff = new Date(localDateStr() + 'T12:00:00');
+  cutoff.setDate(cutoff.getDate() - days);
+  var cutoffStr = cutoff.getFullYear() + '-' + String(cutoff.getMonth()+1).padStart(2,'0') + '-' + String(cutoff.getDate()).padStart(2,'0');
+  return (log || [])
+    .filter(function(e){ return e && e.date && e.date > cutoffStr && e.weight != null; })
+    .sort(function(a,b){ return a.date.localeCompare(b.date); });
+}
 function estimateEMATrend(entries, spanDays){
   // Exponentially-weighted linear regression → kg/week. Recent entries count more
   // (same recency bias as an EMA) but a weighted-least-squares slope stays unbiased
@@ -9915,8 +10026,18 @@ function renderProgressPhotoSummary(){
   el.innerHTML='<div style="background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:10px;font-size:12px;color:var(--text2);line-height:1.6;display:flex;gap:10px;align-items:flex-start;">'+thumb+
     '<div style="min-width:0;">รูปล่าสุด: <b style="color:var(--accent);">'+latest.date+' · '+latest.angle+'</b><br>'+(ai?('Visual: '+escapeHTML(ai.summary||ai.visualTrend||'มีผลวิเคราะห์แล้ว')):'ยังไม่ได้วิเคราะห์ AI')+'<br>ทั้งหมด '+logs.length+' รูป</div></div>';
 }
+// A visual read of the body is a statement about how things looked ON THAT DAY, so it
+// has to expire. Its flags are load-bearing in the weight analyzer — retentionSignal
+// forces emaWeight to 1 (replacing the short-term trend entirely) and recompSignal sets
+// likelyWaterNoise, which sets suppressRecommend and hides the whole CAUSE/ACTION section
+// while telling the AI "Recommended intake: SUPPRESSED". With no recency bound, a single
+// photo analyzed in January kept doing all of that in July.
+var VISUAL_ANALYSIS_MAX_AGE_DAYS = 21;
 function getLatestVisualAnalysis(){
-  var logs=getProgressPhotos().filter(function(x){ return x.analysis; });
+  var cutoff = new Date(localDateStr() + 'T12:00:00');
+  cutoff.setDate(cutoff.getDate() - VISUAL_ANALYSIS_MAX_AGE_DAYS);
+  var cutoffStr = cutoff.getFullYear() + '-' + String(cutoff.getMonth()+1).padStart(2,'0') + '-' + String(cutoff.getDate()).padStart(2,'0');
+  var logs=getProgressPhotos().filter(function(x){ return x.analysis && x.date && x.date > cutoffStr; });
   return logs.length ? logs[logs.length-1].analysis : null;
 }
 function analyzeProgressPhotoAI(){
@@ -10060,8 +10181,8 @@ function buildAnalysisHTML(recent) {
   // Trend via linear regression (last 7 or all if fewer) + 21d smoothing context
   var trendSrc = isLimited ? recent : recent.slice(-7);
   var trendPerWeek = _linReg(trendSrc);
-  var trend21PerWeek = _linReg([].concat(WT.log).sort(function(a,b){return a.date.localeCompare(b.date);}).slice(-21));
-  var ema21PerWeek = estimateEMATrend([].concat(WT.log).sort(function(a,b){return a.date.localeCompare(b.date);}).slice(-21), 21);
+  var trend21PerWeek = _linReg(entriesWithinDays(WT.log, 21));
+  var ema21PerWeek = estimateEMATrend(entriesWithinDays(WT.log, 21), 21);
   var sourceCal = getBodyCompCalibration();
   var visualAnalysis = getLatestVisualAnalysis();
   var waistPerWeek = getWaistTrend(recent);
@@ -10197,7 +10318,7 @@ function buildAnalysisHTML(recent) {
   // classic reverse-TDEE method: the weight trend already reflects true total expenditure
   // (BMR + NEAT + exercise) regardless of how much was logged, so no activity should be
   // subtracted out of the intake side here — that's what avgNetCal (below) is for instead.
-  var trueTDEE=null, tdeeIsEstimate=false;
+  var trueTDEE=null, tdeeIsEstimate=false, tdeeSignalClamped=false;
   if(calDays.length>=3&&daySpan>=5){
     // Use regression trend, not first-last raw change. Negative trend = deficit.
     // Blend the short-term regression with the 21d EMA trend by retention severity
@@ -10223,9 +10344,16 @@ function buildAnalysisHTML(recent) {
     // it's still 0; between DEAD and 2×DEAD it ramps up linearly; beyond, untouched.
     var DEAD=0.015;
     var absTrend=Math.abs(trendKgPerDay);
+    var preTransform=trendKgPerDay;
     if(absTrend<DEAD) trendKgPerDay=0;
     else if(absTrend<2*DEAD) trendKgPerDay=(trendKgPerDay>0?1:-1)*(absTrend-DEAD)*2;
     trendKgPerDay=Math.max(-0.10, Math.min(0.10, trendKgPerDay));
+    // Track whether the trend signal survived intact. Once the deadzone zeroes it or the
+    // +/-0.10 kg/day cap bites, the "deficit" derived downstream is an artifact of these
+    // transforms, not a measurement — and "pace ปัจจุบัน" is computed straight back out
+    // of it, which is how the card ended up printing -0.53 kg/wk directly above a scale
+    // trend of -1.20 kg/wk.
+    tdeeSignalClamped = Math.abs(preTransform - trendKgPerDay) > 1e-9;
 
     var deficitFromTrend = -(trendKgPerDay*7700); // positive if losing
     var estimatedTDEE = avgIntake + deficitFromTrend;
@@ -10234,7 +10362,7 @@ function buildAnalysisHTML(recent) {
     if(bmr!==null){
       var unclamped=estimatedTDEE;
       estimatedTDEE=Math.max(minTDEE, Math.min(maxTDEE, estimatedTDEE));
-      if(Math.abs(unclamped-estimatedTDEE)>50) tdeeIsEstimate=true;
+      if(Math.abs(unclamped-estimatedTDEE)>50){ tdeeIsEstimate=true; tdeeSignalClamped=true; }
     }
 
     trueTDEE=Math.round(estimatedTDEE);
@@ -10365,7 +10493,7 @@ function buildAnalysisHTML(recent) {
   // `undefined` state, so `!inconsistent` was always true and the suppression never fired —
   // the card rendered the red "Inconsistent Data" banner and a contradicting pace together.
   var currentPace7d=null;
-  if(actualDeficit!==null && !likelyWaterNoise && !inconsistent && !dataError){
+  if(actualDeficit!==null && !likelyWaterNoise && !inconsistent && !dataError && !tdeeSignalClamped){
     currentPace7d=Math.max(-1.0, Math.min(1.0, -(actualDeficit*7/7700))).toFixed(2);
   }
 
@@ -10465,7 +10593,7 @@ function buildAnalysisHTML(recent) {
     wVariance:wVariance, calVariance:Math.round(calVariance),
     n:n, daySpan:daySpan, firstW:firstW, lastW:lastW,
     targetW:targetW, durationWks:durationWks, isOnTrack:isOnTrack,
-    forecast7d:forecast7d, forecastLabel:forecastLabel, currentPace7d:currentPace7d, aiEligible:aiEligible,
+    forecast7d:forecast7d, forecastLabel:forecastLabel, currentPace7d:currentPace7d, tdeeSignalClamped:tdeeSignalClamped, aiEligible:aiEligible,
     goalMode:goalMode, goalModeLabel:goalCfg.label, centralGoal:centralGoalForAnalysis,
     recompHold:recompHold, userGoalCal:userGoalCal, engineRecommendedIntake:engineRecommendedIntake,
     confidencePct:confidencePct, // [6] fix: was missing
@@ -10741,7 +10869,13 @@ function runAIWeightDeepDive() {
     +'- EMA 21d trend: '+(d.ema21PerWeek!==null&&d.ema21PerWeek!==undefined?(d.ema21PerWeek>=0?'+':'')+d.ema21PerWeek.toFixed(2)+' kg/week':'N/A')+'\n'
     +'- Source calibration: '+(d.sourceCalibration||'N/A')+'\n'
     +'- Visual signal: '+(d.visualSignal||'N/A')+'\n'
-    +'- Target %BF: '+(ft.bf?ft.currBF+'% now → '+ft.bf+'% goal':'N/A')+(ft.feasibility&&ft.feasibility.direction==='loss'?' (required fat loss '+ft.feasibility.weeklyFatLoss+' kg/wk, feasibility: '+ft.feasibility.status+')':'')+'\n'
+    // Recompute feasibility live. ft.feasibility is a snapshot frozen at save time, and
+    // the InBody sync path updates currBF without refreshing it — so this prompt could
+    // quote "0.51 kg/wk, ok" while the dashboard one screen away showed "1.03, unrealistic".
+    +'- Target %BF: '+(ft.bf?ft.currBF+'% now → '+ft.bf+'% goal':'N/A')+(function(){
+        var fLive=(typeof calcTargetFeasibility==='function')?calcTargetFeasibility(ft):null;
+        return (fLive&&fLive.direction==='loss')?' (required fat loss '+fLive.weeklyFatLoss+' kg/wk, feasibility: '+fLive.status+')':'';
+      })()+'\n'
     +'- Lean mass guard: '+(lmGuardAI?('WARNING — lean mass down '+lmGuardAI.dropPct+'% ('+lmGuardAI.leanPrev+'→'+lmGuardAI.leanLast+'kg)'+(lmGuardAI.strengthConfirms?' AND strength e1RM regressing — likely real muscle loss; advise protein/deficit/volume fix':' — possibly device noise')):'OK')+'\n\n'
     +'Weight data:\n'+wtSummary+'\n\n'
     +'IMPORTANT RULES:\n'
