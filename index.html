@@ -4242,6 +4242,22 @@ function getAvgTrainingDayBurn(windowDays) {
   }
   return cnt ? total / cnt : null;
 }
+// Rest-day carb cut is milder once the weight goal is met and we're recomping
+// (lean, holding weight to drive %BF down) — over-restricting carbs then just
+// hurts training/recovery. The standard cut still applies while actively losing.
+var RECOMP_REST_DAY_CARB_CUT_PCT = 0.15;
+function isRecompHoldState() {
+  var ft = window._fitnessTarget || safeJSON('gd_ft_target', null) || {};
+  var profile = S.profile || safeJSON('gd_profile', {}) || {};
+  var mode = (typeof normalizeGoalMode === 'function') ? normalizeGoalMode(profile.goalType) : profile.goalType;
+  if (mode !== 'fat_loss' && mode !== 'recomp') return false;
+  var tgtW = ft.weight != null ? parseFloat(ft.weight) : null;
+  var tgtBF = ft.bf != null ? parseFloat(ft.bf) : null;
+  var curBF = ft.currBF != null ? parseFloat(ft.currBF) : null;
+  var lastW = (typeof getLatestCheckinWeight === 'function') ? parseFloat(getLatestCheckinWeight()) : (profile.weight != null ? parseFloat(profile.weight) : null);
+  if (tgtW == null || isNaN(tgtW) || lastW == null || isNaN(lastW) || tgtBF == null || isNaN(tgtBF) || curBF == null || isNaN(curBF)) return false;
+  return lastW <= tgtW + 0.3 && curBF > tgtBF + 0.3;
+}
 function getDayTypeAdjGoal() {
   if (!isTodayRestDayByPlan()) return null;
   var workoutsToday = (typeof todayWorkouts === 'function') ? todayWorkouts() : [];
@@ -4250,8 +4266,11 @@ function getDayTypeAdjGoal() {
   var baseCal = parseFloat(base.cal) || 0;
   var baseCrb = parseFloat(base.crb) || 0;
 
-  // Start from the original flat carb-based cut (25% of carbs, in kcal).
-  var carbCutKcal = Math.round(baseCrb * REST_DAY_CARB_CUT_PCT) * 4;
+  // Start from the flat carb-based cut — milder once the weight goal is met (recomp),
+  // otherwise the standard cut. Two tiers = the "reached goal" vs "still cutting" case.
+  var restMild = isRecompHoldState();
+  var cutPct = restMild ? RECOMP_REST_DAY_CARB_CUT_PCT : REST_DAY_CARB_CUT_PCT;
+  var carbCutKcal = Math.round(baseCrb * cutPct) * 4;
 
   // (B) Size the cut to what training actually burns. A rest day only needs to remove the
   // fuel a training day would have used, so someone who barely trains (low avg burn) gets a
@@ -4274,7 +4293,7 @@ function getDayTypeAdjGoal() {
   // Convert the (possibly reduced) kcal cut back into a carb-gram reduction so macros stay aligned.
   var crb = Math.max(0, Math.round(baseCrb - carbCutKcal / 4));
   var cal = Math.round(baseCal - carbCutKcal);
-  return { cal: cal, pro: base.pro, crb: crb, fat: base.fat, _dayType: 'rest', _carbCutKcal: carbCutKcal };
+  return { cal: cal, pro: base.pro, crb: crb, fat: base.fat, _dayType: 'rest', _carbCutKcal: carbCutKcal, _carbCutPct: cutPct, _recompMild: restMild };
 }
 // Single source of truth for "today's" live target — dashboard ring, over-goal
 // alert, AI Daily Coach, and AI chat must all compare intake against this same
@@ -4628,7 +4647,7 @@ function updateDash() {
   if (dtNoteEl) {
     if (g._dayType === 'rest') {
       dtNoteEl.style.display = 'block';
-      dtNoteEl.textContent = 'วันพักตามแผน — ลดคาร์บ ' + Math.round(REST_DAY_CARB_CUT_PCT*100) + '% (' + Math.round(g._carbCutKcal/4) + 'g / ' + g._carbCutKcal + ' kcal)';
+      dtNoteEl.textContent = (g._recompMild ? 'วันพักตามแผน (recomp) — ลดคาร์บแบบ mild ' : 'วันพักตามแผน — ลดคาร์บ ') + Math.round((g._carbCutPct != null ? g._carbCutPct : REST_DAY_CARB_CUT_PCT)*100) + '% (' + Math.round(g._carbCutKcal/4) + 'g / ' + g._carbCutKcal + ' kcal)' + (g._recompMild ? ' · ถึงเป้าน้ำหนักแล้ว' : '');
     } else {
       dtNoteEl.style.display = 'none';
     }
@@ -10114,18 +10133,6 @@ function buildAnalysisHTML(recent) {
     if (trueTDEE != null) recommendedIntake = Math.round(trueTDEE - recompDeficit);
     engineRecommendedIntake = recommendedIntake;
   }
-  // Rest-day carb guidance (carb cycling): rest days burn less, so trim carbs from
-  // the training-day target while keeping protein + total-week deficit as the real
-  // levers. Milder trim once the weight goal is met (recomp) — don't over-restrict a
-  // lean recomper — vs the standard trim during active fat loss. Only when today
-  // actually carries an intended deficit (requiredDeficit > 0); at pure maintenance
-  // there's nothing to cut. Two tiers = the "reached goal" vs "still cutting" numbers.
-  var restDayCarbPct = null, restDayCarbG = null;
-  var trainDayCarbG = (centralGoalForAnalysis && centralGoalForAnalysis.crb) ? centralGoalForAnalysis.crb : null;
-  if ((goalMode === 'fat_loss' || goalMode === 'recomp') && requiredDeficit > 0 && trainDayCarbG) {
-    restDayCarbPct = recompHold ? 15 : 30;
-    restDayCarbG = Math.round(trainDayCarbG * (1 - restDayCarbPct / 100));
-  }
   var requiredWeeklyLoss = -(requiredDeficit * 7 / 7700); // negative = loss, positive = gain
   var targetW = (window._fitnessTarget && window._fitnessTarget.weight) ? parseFloat(window._fitnessTarget.weight) : null;
   var durationWks = (window._fitnessTarget && window._fitnessTarget.duration) ? parseFloat(window._fitnessTarget.duration) : null;
@@ -10291,7 +10298,6 @@ function buildAnalysisHTML(recent) {
     forecast7d:forecast7d, forecastLabel:forecastLabel, currentPace7d:currentPace7d, aiEligible:aiEligible,
     goalMode:goalMode, goalModeLabel:goalCfg.label, centralGoal:centralGoalForAnalysis,
     recompHold:recompHold, userGoalCal:userGoalCal, engineRecommendedIntake:engineRecommendedIntake,
-    restDayCarbPct:restDayCarbPct, restDayCarbG:restDayCarbG, trainDayCarbG:trainDayCarbG,
     confidencePct:confidencePct, // [6] fix: was missing
     statusLabel:statusLabel, inconsistent:inconsistent, retentionRange:retentionRange, waistPerWeek:waistPerWeek, trend21PerWeek:trend21PerWeek, ema21PerWeek:ema21PerWeek, sourceCalibration:getSourceAwareStatusText(), visualSignal:visualAnalysis ? (visualAnalysis.summary||visualAnalysis.visualTrend||'available') : 'N/A', dataError:dataError,
     suppressRecommend:suppressRecommend, recent:recent
@@ -10456,9 +10462,6 @@ function buildAnalysisHTML(recent) {
       var intakeSuffix=calDays.length>0?' (ปัจจุบัน '+Math.round(avgIntake)+')':(trueTDEE?' (จาก TDEE '+trueTDEE+')':'');
       html+='• Intake ที่แนะนำ: <strong>'+recommendedIntake+' kcal/วัน</strong>'+intakeSuffix+'<br>';
     }
-    if(restDayCarbPct!==null){
-      html+='• Rest day: คาร์บ ~<strong>'+restDayCarbG+'g</strong> (ลด '+restDayCarbPct+'% จากวันเทรน '+trainDayCarbG+'g'+(recompHold?' · mild เพราะถึงเป้าน้ำหนักแล้ว':'')+') — วันเทรนคงคาร์บไว้เพื่อ performance/รักษากล้าม<br>';
-    }
     if(isOnTrack)html+='• รักษาความสม่ำเสมอต่อไป<br>';
     else{
       if(logRate<0.7)html+='• บันทึกอาหารทุกมื้อ (ตอนนี้ '+Math.round(logRate*100)+'%)<br>';
@@ -10547,7 +10550,6 @@ function runAIWeightDeepDive() {
     +'- Actual deficit (TDEE − gross intake): '+(d.actualDeficit!==null&&d.actualDeficit!==undefined?d.actualDeficit:'?')+' kcal/day\n'
     +'- Required deficit: '+(d.requiredDeficit||'?')+' kcal/day\n'
     +'- Recommended intake: '+(d.suppressRecommend?'SUPPRESSED — do not recommend calorie change':d.recommendedIntake||'?')+' kcal/day\n'
-    +(d.restDayCarbPct?'- Rest-day carbs: aim ~'+d.restDayCarbG+'g on rest days (−'+d.restDayCarbPct+'% vs training-day '+d.trainDayCarbG+'g'+(d.recompHold?', a MILD trim since the weight goal is met':'')+'); keep training-day carbs for performance. Mention this on the rest-day recommendation.\n':'')
     +'- Forecast (goal-engine): '+(d.forecast7d||'?')+' kg/week\n'
     +'- Log rate: '+(d.rawLogRate!==undefined?Math.round(d.rawLogRate*100)+'%':'?')+' (raw) / '+(d.logRate!==undefined?Math.round(d.logRate*100)+'%':'?')+' (capped)\n'
     +'- Data Error: '+(d.dataError?'YES — possible duplicate logs':'NO')+'\n'
