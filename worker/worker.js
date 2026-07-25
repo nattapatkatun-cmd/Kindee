@@ -13,6 +13,8 @@
 //   DAILY_LIMIT          (text)    โควตา AI ต่อ user ต่อวัน เช่น "20" (ไม่ตั้ง = 20)
 //   GEMINI_MODEL         (text)    โมเดล Gemini ที่ใช้ (ไม่ตั้ง = gemini-2.5-flash)
 //   ALLOWED_ORIGIN       (text)    origin ของเว็บ เช่น "https://nattapatkatun-cmd.github.io" (ไม่ตั้ง = *)
+//   QUOTA_TZ_OFFSET_HOURS (text)   timezone offset ของผู้ใช้ สำหรับให้ "วัน" ของโควตาตรงกับ
+//                                  วันของแอป (localDateStr ตัดวันที่ตี 4) ไม่ตั้ง = 7 (ไทย)
 // KV Namespace binding:
 //   QUOTA  → ผูกกับ namespace ที่สร้างไว้ (เก็บตัวนับโควตารายวัน)
 
@@ -23,7 +25,7 @@ const DEFAULT_GEMINI_MODEL = 'gemini-2.5-flash';
 const FIREBASE_PROJECT_ID = 'kindee-f0cc1';
 // bump ทุกครั้งที่แก้ไฟล์นี้ — เปิด https://kindee.ojo0308.workers.dev/health
 // ในเบราว์เซอร์แล้วเทียบเลขนี้ เพื่อเช็คว่าโค้ดบน Cloudflare ตรงกับ repo หรือยัง
-const WORKER_VERSION = '2026-07-20.1';
+const WORKER_VERSION = '2026-07-25.1';
 
 export default {
   async fetch(request, env) {
@@ -98,16 +100,25 @@ async function handleGemini(request, env, cors) {
     );
   }
 
-  // 2) โควตาต่อ user ต่อวัน (KV; นับตามวัน UTC — เพียงพอสำหรับกันการใช้เกิน)
+  // 2) โควตาต่อ user ต่อวัน (KV)
+  // วันของโควตาต้องตรงกับ "วัน" ของแอป ไม่ใช่วัน UTC — localDateStr() ในแอปตัดวันที่
+  // 04:00 ตามเวลาท้องถิ่น (ไทย = UTC+7) ดังนั้นวันของแอปเริ่มที่ 21:00 UTC ของวันก่อนหน้า
+  // = UTC+3 พอดี ถ้าใช้วัน UTC ตรง ๆ ผู้ใช้ไทยจะเจอช่วง 04:00–07:00 น. ที่แอปขึ้นวันใหม่
+  // (ตัวนับในหน้าจอรีเซ็ตเป็น 0) แต่ server ยังนับเป็นเมื่อวาน → ยิงครั้งแรกได้ 429 ทันที
+  // และโควตาจะไปรีเซ็ตกลางวันตอน 07:00 แทน ปรับ QUOTA_TZ_OFFSET_HOURS ได้ถ้าย้าย timezone
+  const tzOffsetH = parseFloat(env.QUOTA_TZ_OFFSET_HOURS || '7');
+  const APP_DAY_BOUNDARY_H = 4; // ต้องตรงกับ localDateStr() ใน index.html
+  const day = new Date(Date.now() + (tzOffsetH - APP_DAY_BOUNDARY_H) * 3600000)
+    .toISOString()
+    .slice(0, 10);
   const limit = parseInt(env.DAILY_LIMIT || '20', 10);
-  const day = new Date().toISOString().slice(0, 10);
   const quotaKey = `q:${user.uid}:${day}`;
   let used = 0;
   if (env.QUOTA) {
     used = parseInt((await env.QUOTA.get(quotaKey)) || '0', 10);
     if (used >= limit) {
       return json(
-        { error: 'quota', message: `ใช้ AI ครบ ${limit} ครั้งของวันนี้แล้ว — รีเซ็ตหลังเที่ยงคืน (UTC)`, used, limit },
+        { error: 'quota', message: `ใช้ AI ครบ ${limit} ครั้งของวันนี้แล้ว — รีเซ็ตตอนตี 4`, used, limit },
         429,
         cors
       );
@@ -162,6 +173,13 @@ async function handleGemini(request, env, cors) {
     }
   }
 
+  // ไม่มี key ไหนตอบสำเร็จเลย → คืนโควตาที่หักไปตอนต้น ไม่งั้นตอน Gemini ล่ม ผู้ใช้จะ
+  // เสียโควตาครบ 20 ครั้งโดยไม่ได้ผลวิเคราะห์สักครั้ง (หักก่อนยิงเพื่อกันยิงรัว แต่ถ้า
+  // ล้มเหลวทั้งหมดก็ไม่ควรคิดเงิน) เขียนกลับเป็นค่าเดิมที่อ่านมา — ไม่ atomic แต่ตรงกับ
+  // ที่ตัวนับทำอยู่แล้ว และพลาดได้แค่ ±1 เท่าเดิม
+  if (env.QUOTA) {
+    await env.QUOTA.put(quotaKey, String(used), { expirationTtl: 172800 }).catch(() => {});
+  }
   return json(
     { error: { message: 'AI ไม่พร้อมใช้งานชั่วคราว (ลองครบทุก key แล้ว): ' + ((lastErr && lastErr.message) || '') } },
     200,

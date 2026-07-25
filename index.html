@@ -3055,6 +3055,43 @@ function flagLabel(flag, type) {
 }
 function chipClassFromRisk(v) { return v >= 65 ? 'high' : v >= 35 ? 'med' : 'low'; }
 
+// Force a meal's four nutrition numbers to be internally consistent before anything
+// stores or displays them. Nothing on the logging path used to check this: the AI could
+// return 650 kcal with macros implying 335, and the dashboard's calorie ring and macro
+// rings would then tell two different stories about the same food — with every downstream
+// figure (netCal, avgIntake -> Adaptive TDEE, weekly review, AI prompts) inheriting one
+// number and the macro rings the other. Settings has had exactly this validator for the
+// user's own goal input (updateMacroKcalHint) since long before.
+//
+// Guarantees: all four fields are finite and non-negative, and calories agree with
+// 4/4/9 within 10% (the same tolerance showResult applies between an AI total and its
+// item sum). On a larger disagreement the MACROS win — they are the finer-grained figure
+// and drive the protein goal, the macro rings and every gap calculation. The original
+// value is kept on _calAdjustedFrom so the result card can disclose the correction.
+function reconcileMealMacros(r) {
+  if (!r) return r;
+  var num = function(v){ var n = parseFloat(v); return (isFinite(n) && n > 0) ? n : 0; };
+  r.protein = num(r.protein);
+  r.carbs   = num(r.carbs);
+  r.fat     = num(r.fat);
+  var cal = num(r.calories);
+  var macroCal = r.protein * 4 + r.carbs * 4 + r.fat * 9;
+  delete r._calAdjustedFrom;
+  if (macroCal > 0) {
+    if (!cal) {
+      cal = macroCal;                                   // missing/unparseable calories
+    } else if (Math.abs(cal - macroCal) > macroCal * 0.10) {
+      r._calAdjustedFrom = Math.round(cal);
+      cal = macroCal;
+    }
+  }
+  r.calories = Math.round(cal * 100) / 100;
+  r.protein  = Math.round(r.protein * 100) / 100;
+  r.carbs    = Math.round(r.carbs   * 100) / 100;
+  r.fat      = Math.round(r.fat     * 100) / 100;
+  return r;
+}
+
 function showResult(r) {
   r = normalizeMealContext(r);
   curResult = r;
@@ -3067,13 +3104,21 @@ function showResult(r) {
     var sumPro = r.items.reduce(function(a,i){return a+(+i.protein||0);},0);
     var sumCrb = r.items.reduce(function(a,i){return a+(+i.carbs||0);},0);
     var sumFat = r.items.reduce(function(a,i){return a+(+i.fat||0);},0);
-    // Use AI total if it looks right (within 10% of sum), else use sum
-    var aiCal = +r.calories || 0;
-    r.calories = (aiCal > 0 && Math.abs(aiCal - sumCal) < sumCal * 0.1) ? aiCal : sumCal;
-    r.protein  = +r.protein  || sumPro;
-    r.carbs    = +r.carbs    || sumCrb;
-    r.fat      = +r.fat      || sumFat;
+    // Use the AI total if it looks right (within 10% of the item sum), else use the sum.
+    // The macros get the SAME tolerance check — they used to be taken with a bare
+    // `|| sum` fallback, so an AI total of 40g protein survived next to items summing
+    // to 62g, and the per-item breakdown rendered below contradicted its own header.
+    var withinTol = function(total, sum) {
+      var t = +total || 0;
+      return (t > 0 && Math.abs(t - sum) <= sum * 0.1) ? t : sum;
+    };
+    r.calories = withinTol(r.calories, sumCal);
+    r.protein  = withinTol(r.protein,  sumPro);
+    r.carbs    = withinTol(r.carbs,    sumCrb);
+    r.fat      = withinTol(r.fat,      sumFat);
   }
+  // Final gate: calories must agree with 4/4/9 regardless of which path produced them.
+  r = reconcileMealMacros(r);
 
   document.getElementById('resFoodName').textContent = r.foodName;
   document.getElementById('resDesc').textContent = r.description||'';
@@ -3087,7 +3132,9 @@ function showResult(r) {
     '<span class="context-chip '+(r.carbLoadFlag==='high'?'high':r.carbLoadFlag==='normal'?'med':'low')+'">🍚 '+flagLabel(r.carbLoadFlag,'carb')+'</span>' +
     '<span class="context-chip '+chipClassFromRisk(r.retentionRisk)+'">Retention '+r.retentionRisk+'%</span>' +
     '<span class="context-chip">Confidence '+r.analysisConfidence+'%</span>' +
-    '</div>';
+    '</div>' +
+    // Disclose the correction rather than silently rewriting the number the user saw.
+    (r._calAdjustedFrom ? '<div style="margin-top:6px;font-size:11px;color:var(--text3);line-height:1.5;">ℹ️ ปรับแคลอรี่จาก ' + r._calAdjustedFrom + ' → <b>' + Math.round(r.calories) + '</b> kcal ให้ตรงกับมาโคร (P·4 + C·4 + F·9) — แก้ตัวเลขเองได้ก่อนบันทึก</div>' : '');
 
   var disc = document.getElementById('resDisclaimer');
   if(r.items && r.items.length > 1){
@@ -3127,6 +3174,7 @@ function sanitizeMealItems(items) {
 
 function saveMeal() {
   if(!curResult) return;
+  reconcileMealMacros(curResult); // last gate before storage / Firebase / Sheets
   var now = new Date();
   var meal = {
     id: Date.now(),
@@ -3193,10 +3241,10 @@ function confirmManual() {
   var result = {
     foodName: name,
     description: desc || 'ป้อนด้วยตนเอง',
-    calories: Math.round(cal * 100) / 100,
-    protein:  Math.round(pro * 100) / 100,
-    carbs:    Math.round(crb * 100) / 100,
-    fat:      Math.round(fat * 100) / 100,
+    calories: cal,
+    protein:  pro,
+    carbs:    crb,
+    fat:      fat,
     sodiumFlag: 'medium',
     carbLoadFlag: 'normal',
     mealContext: 'manual',
@@ -3550,7 +3598,7 @@ function generateMorningRecovery() {
   // Build WHOOP sleep context
   var sdh=sd.hours||0, stm=Math.round(sdh*60);
   var effLine='';
-  if(sd.timeInBed&&sdh){var eff=Math.round(sdh/sd.timeInBed*100);effLine='- Sleep Efficiency: '+eff+'% ('+sdh.toFixed(1)+'h / '+sd.timeInBed.toFixed(1)+'h in bed)'+(eff>=85?' (optimal)':eff>=75?' (below optimal)':' (poor)')+'\n';}
+  if(sd.timeInBed&&sdh&&sdh<=sd.timeInBed){var eff=Math.round(sdh/sd.timeInBed*100);effLine='- Sleep Efficiency: '+eff+'% ('+sdh.toFixed(1)+'h / '+sd.timeInBed.toFixed(1)+'h in bed)'+(eff>=85?' (optimal)':eff>=75?' (below optimal)':' (poor)')+'\n';}
   var stageLine='';
   if(sd.deepSleep||sd.remSleep){var lt=(sd.deepSleep&&sd.remSleep)?Math.max(0,stm-sd.deepSleep-sd.remSleep):null;stageLine='- Sleep Stages: '+(sd.deepSleep?'Deep '+sd.deepSleep+'min ('+Math.round(sd.deepSleep/stm*100)+'%)':'')+(sd.remSleep?(sd.deepSleep?' | ':'' )+'REM '+sd.remSleep+'min ('+Math.round(sd.remSleep/stm*100)+'%)':'')+(lt!==null?' | Light '+lt+'min':'')+'\n';}
   var hrvLine='';
@@ -3570,7 +3618,9 @@ function generateMorningRecovery() {
   if (strainTrend && strainTrend.days >= 3) {
     strainTrendLine = '- Load Trend ('+strainTrend.days+' คืนล่าสุด): Strain เกิน Tolerance '+strainTrend.overCount+'/'+strainTrend.days+' คืน (ratio เฉลี่ย '+strainTrend.avgRatio+'x)'+(strainTrend.overreaching?' → สัญญาณ overreaching สะสม เอียงคำแนะนำไปทาง Rest แม้ Sleep Score วันนี้จะดี':'')+'\n';
   }
-  var gradualBed = computeGradualBedtimeTarget(sd.wakeTime, today, 8, sd.bedtime);
+  // Use the same personalized need the debt engine uses — a hard-coded 8 here made the
+  // bedtime target, the debt badge and the weak-pillar tip quote three different numbers.
+  var gradualBed = computeGradualBedtimeTarget(sd.wakeTime, today, computeSleepNeedHours(today), sd.bedtime);
   var bedtimeTrendLine = '';
   if (gradualBed && (gradualBed.shifted || gradualBed.outlier || gradualBed.debtHeld)) {
     bedtimeTrendLine = '- Bedtime เมื่อคืน: '+gradualBed.fromBedtime+
@@ -3587,7 +3637,7 @@ function generateMorningRecovery() {
   var prompt =
     'คุณคือผู้เชี่ยวชาญด้านการนอนและโค้ชฟิตเนส วิเคราะห์ข้อมูลการนอนและคำนวณ Sleep Score แบบ WHOOP\n' +
     'SCORING RUBRIC (คำนวณ weighted average 0-100):\n' +
-    '  Duration (25%): <6h->15, 6-6.9h->45, 7-7.9h->72, 8-8.9h->88, 9h->95, >9h->90\n' +
+    '  Duration (25%): <4h->5, 4-4.9h->10, 5-5.9h->20, 6-6.9h->45, 7-7.9h->72, 8-8.9h->88, 9-9.5h->95, 9.5-10.5h->80, >10.5h->60\n' +
     '  Efficiency (20%): ถ้ามีข้อมูล TIB: <75%->20, 75-84%->55, 85-89%->85, >=90%->95. ถ้าไม่มี TIB: pillar นี้ถูกตัดออก (re-normalize) ห้ามพูดถึง Efficiency ในข้อความ\n' +
     '  Stages (20%): ช่วงเหมาะสมของผู้ใหญ่คือ Deep 13-23% และ REM 18-28% ของเวลาหลับ — อยู่ในช่วง = ดีมาก, เกิน/ขาดไม่เกิน 4 จุด = พอใช้, ห่างกว่านั้น = ควรปรับ (สูงเกินช่วงก็ไม่ใช่เรื่องดี อย่าชมว่า Deep ยิ่งเยอะยิ่งดี). ถ้าไม่มี stage data: ประมาณ 50\n' +
     '  Physio/HRV (20%): HRV vs baseline: >=+5%->25, 0-+4%->20, -1 to -4%->14, <=-5%->8. ไม่มี HRV: ใช้ RHR แทน\n' +
@@ -3663,12 +3713,18 @@ function generateMorningRecovery() {
       if (rec === 'Push' && restDayPlan) {
         reason = 'Recovery ดี แต่วันนี้เป็นวันพักตามแผน — คงเป้าปกติ เก็บแรงไว้ซ้อมเต็มที่พรุ่งนี้';
       } else if (rec === 'Push') {
-        delta = 150; carbDelta = 30;
+        // Derive the kcal bump FROM the carb grams so the calorie target and the macro
+        // targets stay reconcilable. The old pair (+150 kcal but only +30g carb = +120)
+        // left 30 kcal unaccounted for — enough to trip the app's own macro-vs-calorie
+        // validator (updateMacroKcalHint flags any gap > 15 kcal in red).
+        carbDelta = 38; delta = carbDelta * 4; // 152 kcal, all from carbs
         reason = 'Recovery ดี — เพิ่ม +' + delta + ' kcal (+' + carbDelta + 'g carbs) เพื่อ fuel training';
       } else if (rec === 'Rest') {
         // Poor recovery is the worst day to deepen the deficit — keep calories,
-        // shift carbs→protein (≈isocaloric) to support repair instead.
-        carbDelta = -20; proDelta = 15;
+        // shift carbs→protein (isocaloric) to support repair instead. Both are 4 kcal/g,
+        // so the swap must be gram-for-gram; the old -20/+15 pair quietly cut 20 kcal
+        // while the banner claimed calories were unchanged.
+        carbDelta = -20; proDelta = 20;
         reason = 'Recovery ต่ำ — คงแคลเท่าเดิม สลับคาร์บ ' + carbDelta + 'g เป็นโปรตีน +' + proDelta + 'g เพื่อซ่อมกล้ามเนื้อ (ไม่ลดแคลในวันที่ร่างกายฟื้นตัวแย่)';
       } else {
         reason = 'Maintain — เป้าหมายแคลปกติ';
@@ -3720,8 +3776,12 @@ function generateDailySummary() {
   var centralGoal = getCentralGoalProfile();
   var tdee = calCtx.officialTDEE || goals.cal;
   var manualGoal = { cal: goals.cal, pro: goals.pro, crb: goals.crb, fat: goals.fat }; // User's manually set goal, adjusted for today's rest/recovery status — never override with the engine's TDEE recommendation
-  var dayTypeNote = goals._dayType === 'rest' ? 'วันนี้เป็นวันพักตามแผน — เป้าคาร์บ/แคลถูกลดจากปกติอัตโนมัติ (' + goals._carbCutKcal + ' kcal, ' + Math.round(goals._carbCutKcal/4) + 'g carb)' :
-                     (goals._adj ? 'วันนี้ใช้เป้าที่ปรับจาก Recovery แล้ว: ' + goals._adj.reason : '');
+  // Both can now be true at once — a Recovery adjustment layers on top of the rest-day
+  // cut rather than replacing it — so report both instead of letting one hide the other.
+  var dayTypeNotes = [];
+  if (goals._dayType === 'rest') dayTypeNotes.push('วันนี้เป็นวันพักตามแผน — เป้าคาร์บ/แคลถูกลดจากปกติอัตโนมัติ (' + goals._carbCutKcal + ' kcal, ' + Math.round(goals._carbCutKcal/4) + 'g carb)');
+  if (goals._adj) dayTypeNotes.push('วันนี้ใช้เป้าที่ปรับจาก Recovery แล้ว: ' + goals._adj.reason);
+  var dayTypeNote = dayTypeNotes.join(' | ');
 
   // Meal list string
   var mealStr = meals.length
@@ -3879,7 +3939,10 @@ function generateDailySummary() {
     '{\n' +
     '  "nutrition": { "headline": "one-line assessment", "detail": "2-3 sentences with specific macro insight, explain the WHY behind each gap physiologically" },\n' +
     '  "strain": { "level": "Light"|"Moderate"|"High"|"Rest", "headline": "one-line", "detail": "2-3 sentences on training load vs capacity" },\n' +
-    '  "recovery": { "score": "Optimal"|"Moderate"|"Poor", "headline": "cross-reference: was todays strain appropriate given the morning recovery score?", "detail": "2-3 sentences in Thai comparing todays workout load against the morning recovery score. If no morning recovery was run, estimate from sleep data only." },\n' +
+    // No "score" field here on purpose — the app computes the recovery verdict
+    // deterministically (calculateSleepScoreFromData) and renders that. Letting the model
+    // return its own put a second, contradicting "Recovery" badge on the same dashboard.
+    '  "recovery": { "headline": "cross-reference: was todays strain appropriate given the morning recovery score?", "detail": "2-3 sentences in Thai comparing todays workout load against the morning recovery score. If no morning recovery was run, say so and reason from sleep data only. Do NOT state your own overall recovery rating — the app displays the computed one." },\n' +
     '  "progress": { "headline": "one-line", "detail": "2-3 sentences on trajectory toward fitness target, include estimated weeks/days if calculable. Anchor EVERY timeline statement to the current program position given in Fitness Target (ตำแหน่งในโปรแกรม — สัปดาห์ที่ X, เหลืออีก Y สัปดาห์): talk about the REMAINING weeks, never phrase it as if the full program duration still lies ahead" },\n' +
     '  "playbook": [\n' +
     '    { "category": "อาหาร", "action": "specific meal recommendation. If intake was over goal today, specify which meal to reduce tomorrow and what to swap it with" },\n' +
@@ -3951,12 +4014,18 @@ function renderDailySummary(r) {
   // Row 1: Recovery + Strain as score chips
   html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px;">';
   if (r.recovery) {
-    var sc = scoreClass[r.recovery.score] || 'ai-score-moderate';
-    var se = scoreEmoji[r.recovery.score] || '🟡';
+    // Recovery verdict comes from the app's own deterministic score, never from this
+    // AI response — the morning card and this card must not show two different ratings
+    // under the same "Recovery" heading. The AI only contributes the headline text.
+    var recScore = (S.sleepData && S.sleepData.date === localDateStr() && S.sleepData.recoveryScore) ? S.sleepData.recoveryScore : null;
+    var sc = recScore ? (scoreClass[recScore] || 'ai-score-moderate') : '';
+    var se = recScore ? (scoreEmoji[recScore] || '🟡') : '';
     html += '<div style="background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:10px 12px;">' +
       '<div style="font-size:11px;color:var(--text3);font-weight:600;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:5px;">Recovery</div>' +
-      '<div class="ai-score-badge ' + sc + '">' + se + ' ' + r.recovery.score + '</div>' +
-      '<div style="font-size:12px;color:var(--text2);line-height:1.5;">' + r.recovery.headline + '</div></div>';
+      (recScore
+        ? '<div class="ai-score-badge ' + sc + '">' + se + ' ' + recScore + '</div>'
+        : '<div style="font-size:11px;color:var(--text3);margin-bottom:5px;">ยังไม่ได้วิเคราะห์ Recovery วันนี้</div>') +
+      '<div style="font-size:12px;color:var(--text2);line-height:1.5;">' + (r.recovery.headline || '') + '</div></div>';
   }
   if (r.strain) {
     var sl = r.strain.level || 'Moderate';
@@ -4009,9 +4078,9 @@ function renderDailySummary(r) {
       if (sd && sd.date === today) {
         if (sd.hrv && sd.hrvBaseline) {
           var hrvPct = ((sd.hrv - sd.hrvBaseline) / sd.hrvBaseline * 100).toFixed(0);
-          reasons.push('Recovery <b>' + (r.recovery.score||'') + '</b> — HRV ' + sd.hrv + 'ms (' + (hrvPct>=0?'+':'') + hrvPct + '% vs baseline ' + sd.hrvBaseline + 'ms)' + (sd.rhr ? ', RHR ' + sd.rhr + ' bpm' : ''));
+          reasons.push('Recovery <b>' + (sd.recoveryScore||'') + '</b> — HRV ' + sd.hrv + 'ms (' + (hrvPct>=0?'+':'') + hrvPct + '% vs baseline ' + sd.hrvBaseline + 'ms)' + (sd.rhr ? ', RHR ' + sd.rhr + ' bpm' : ''));
         } else if (sd.hours) {
-          reasons.push('Recovery <b>' + (r.recovery.score||'') + '</b> — Sleep ' + sd.displayStr + (sd.rhr ? ', RHR ' + sd.rhr + ' bpm' : ''));
+          reasons.push('Recovery <b>' + (sd.recoveryScore||'') + '</b> — Sleep ' + sd.displayStr + (sd.rhr ? ', RHR ' + sd.rhr + ' bpm' : ''));
         }
       } else {
         reasons.push('Recovery — ไม่มีข้อมูล sleep วันนี้ ประเมินจาก workout load');
@@ -4136,7 +4205,7 @@ function renderDailySummary(r) {
     var snapshot = { date: today };
     if (r.nutrition) snapshot.nutrition = r.nutrition.headline + '. ' + (r.nutrition.detail || '');
     if (r.strain)    snapshot.strain    = r.strain.level + ': ' + r.strain.headline + '. ' + (r.strain.detail || '');
-    if (r.recovery)  snapshot.recovery  = r.recovery.score + ': ' + r.recovery.headline + '. ' + (r.recovery.detail || '');
+    if (r.recovery)  snapshot.recovery  = ((S.sleepData && S.sleepData.recoveryScore) ? S.sleepData.recoveryScore + ': ' : '') + r.recovery.headline + '. ' + (r.recovery.detail || '');
     if (r.progress)  snapshot.progress  = r.progress.headline + '. ' + (r.progress.detail || '');
     if (r.playbook && r.playbook.length)
       snapshot.playbook = r.playbook.map(function(p){ return p.category + ': ' + p.action; }).join(' | ');
@@ -4157,7 +4226,20 @@ function getRecoveryAdjGoals() {
   // A Rest-day macro swap has delta 0 but nonzero carb/protein deltas — still real.
   if (!adj || adj.date !== today || !adj.confirmed) return null;
   if (!adj.delta && !adj.carbDelta && !adj.proDelta) return null;
-  return { cal: (S.goals.cal||1800) + adj.delta, pro: (S.goals.pro||120) + (adj.proDelta||0), crb: (S.goals.crb||200) + (adj.carbDelta||0), fat: S.goals.fat||60, _adj: adj };
+  // Layer the recovery delta ON TOP of the rest-day carb cut instead of rebuilding from
+  // the raw saved goal. Building from S.goals silently discarded the cut, so confirming a
+  // "Rest" recommendation on a planned rest day RAISED the day's target by the full cut
+  // (~150-250 kcal) while the banner said "คงแคลเท่าเดิม" — and the rest-day note vanished.
+  var base = (typeof getDayTypeAdjGoal === 'function' && getDayTypeAdjGoal()) || S.goals || {};
+  return {
+    cal: (base.cal||1800) + adj.delta,
+    pro: (base.pro||120) + (adj.proDelta||0),
+    crb: (base.crb||200) + (adj.carbDelta||0),
+    fat: base.fat||60,
+    _adj: adj,
+    _dayType: base._dayType, _carbCutKcal: base._carbCutKcal,
+    _carbCutPct: base._carbCutPct, _recompMild: base._recompMild
+  };
 }
 function updateRecoveryAdjBanner(adj) {
   var el = document.getElementById('recovery-adj-banner'); if (!el) return;
@@ -4186,6 +4268,7 @@ function applyRecoveryAdj() {
   if (!adj || adj.date !== today) return;
   adj.confirmed = true;
   localStorage.setItem('gd_recovery_adj', JSON.stringify(adj));
+  localStorage.removeItem('gd_daily_summary'); // today's effective goal just changed
   if (window.FB_OK && window.FB) window.FB.saveSetting('recoveryAdj', adj).catch(function(){});
   updateRecoveryAdjBanner(adj);
   updateDash();
@@ -4199,6 +4282,7 @@ function cancelRecoveryAdj() {
   if (!adj || adj.date !== today) return;
   adj.confirmed = false;
   localStorage.setItem('gd_recovery_adj', JSON.stringify(adj));
+  localStorage.removeItem('gd_daily_summary'); // today's effective goal just changed
   if (window.FB_OK && window.FB) window.FB.saveSetting('recoveryAdj', adj).catch(function(){});
   updateRecoveryAdjBanner(adj);
   updateDash();
@@ -4413,12 +4497,14 @@ function detectAnomalies() {
       var prevDate = recentW[i-1].date, currDate = recentW[i].date;
       var dayMeals = meals.filter(function(m){ return m.date === prevDate; });
       var intake = dayMeals.reduce(function(s,m){ return s+(parseFloat(m.calories)||0); },0);
-      var burn = creditedBurnSum(workouts.filter(function(w){ return w.date===prevDate; }));
-      var neat = (typeof getNeatCalForDate === 'function') ? getNeatCalForDate(prevDate) : 0;
-      var net = intake - burn - neat;
       var wDiff = recentW[i].weight - recentW[i-1].weight;
-      // Conflict: deficit but weight rising, or surplus but weight falling
-      if (intake > 0 && ((net < tdeeRef - 200 && wDiff > 0.25) || (net > tdeeRef + 200 && wDiff < -0.25))) conflicts++;
+      // Conflict: deficit but weight rising, or surplus but weight falling.
+      // Compare GROSS intake against TDEE — the same convention the weight analyzer
+      // uses (see its comment: "Subtracting activity again on the intake side would
+      // double-count it"). This check used to subtract credited burn + NEAT from
+      // intake and then compare against TDEE, which counted activity twice and made
+      // near-maintenance days register as deficits, firing false conflicts.
+      if (intake > 0 && ((intake < tdeeRef - 200 && wDiff > 0.25) || (intake > tdeeRef + 200 && wDiff < -0.25))) conflicts++;
     }
     if (conflicts >= 3) flags.push('น้ำหนักเคลื่อนไหวสวนทางกับสมดุลพลังงาน (เทียบ TDEE ' + tdeeRef + ' kcal) ' + conflicts + ' วันใน 7 วัน — อาจเป็น water retention หรือข้อมูลแคลไม่ครบ');
   }
@@ -4592,9 +4678,12 @@ function renderCorrelations() {
   // P3 low protein
   var lowPro=days.filter(function(d){return dayData[d].hasMeal&&dayData[d].protein<goalProC*0.7;});
   if(lowPro.length>=3)findings.push({icon:'🥩',color:'var(--blue)',text:'มี '+lowPro.length+' วันใน 14 วัน ที่โปรตีน <70% ของเป้า — อาจส่งผลต่อ muscle preservation'});
-  // P4 surplus→weight (uses proper net = intake − burn − NEAT, consistent with updateDash)
-  var surp=days.filter(function(d){return dayData[d].hasMeal&&(dayData[d].intake-dayData[d].credBurn-dayData[d].neatCal)>calGoalC+200;});
-  if(surp.length>=3){var wu=0,ch3=0;surp.forEach(function(d){var ni=days.indexOf(d)+1;if(ni>=days.length)return;var nx=days[ni];if(dayData[d].weight!==null&&dayData[nx].weight!==null){ch3++;if(dayData[nx].weight>dayData[d].weight)wu++;}});if(ch3>=2){var p4=Math.round(wu/ch3*100);findings.push({icon:'⚖️',color:p4>=60?'var(--red)':'var(--green)',text:'Net Cal เกิน goal >200 kcal → น้ำหนักขึ้นวันถัดไป '+p4+'% ('+ch3+' ครั้งที่ตรวจได้)'});}}
+  // P4 surplus→weight. Compare GROSS intake against the goal: the goal is TDEE − deficit
+  // and that TDEE already includes workout + NEAT, so subtracting them again here made the
+  // threshold unreachable (it needed intake > goal + 200 + burn + NEAT, i.e. ~3100 kcal on
+  // a 2270 goal for anyone who logs steps) and this finding never appeared.
+  var surp=days.filter(function(d){return dayData[d].hasMeal&&dayData[d].intake>calGoalC+200;});
+  if(surp.length>=3){var wu=0,ch3=0;surp.forEach(function(d){var ni=days.indexOf(d)+1;if(ni>=days.length)return;var nx=days[ni];if(dayData[d].weight!==null&&dayData[nx].weight!==null){ch3++;if(dayData[nx].weight>dayData[d].weight)wu++;}});if(ch3>=2){var p4=Math.round(wu/ch3*100);findings.push({icon:'⚖️',color:p4>=60?'var(--red)':'var(--green)',text:'กินเกินเป้า >200 kcal → น้ำหนักขึ้นวันถัดไป '+p4+'% ('+ch3+' ครั้งที่ตรวจได้)'});}}
   // P5 RHR trend
   var rhrD=days.map(function(d){return dayData[d].rhr;}).filter(function(v){return v!==null;});
   if(rhrD.length>=5){var h1=rhrD.slice(0,Math.floor(rhrD.length/2));var h2=rhrD.slice(Math.floor(rhrD.length/2));var a1=h1.reduce(function(a,b){return a+b;},0)/h1.length;var a2=h2.reduce(function(a,b){return a+b;},0)/h2.length;var rd=Math.round((a2-a1)*10)/10;if(Math.abs(rd)>=3)findings.push({icon:'❤️',color:rd>0?'var(--red)':'var(--green)',text:'RHR '+(rd>0?'สูงขึ้น':'ลดลง')+' '+Math.abs(rd)+' bpm เทียบครึ่งแรก vs ครึ่งหลัง 14 วัน — '+(rd>0?'อาจ overreaching':'ฟื้นตัวดีขึ้น')});}
@@ -5151,11 +5240,12 @@ function buildGoalFromMode(mode, profile, tdee) {
   var floor = gender === 'female' ? 1200 : 1500;
   // Deficit: derive from the Fitness Target's actual fat-mass gap ÷ duration when
   // available (clamped to a safe 200–600 band), otherwise fall back to the mode preset.
-  var deficit = cfg.deficit, deficitSource = 'mode', deficitFeasibility = null;
+  var deficit = cfg.deficit, deficitSource = 'mode', deficitFeasibility = null, deficitCapped = false;
   var ftForGoal = safeJSON('gd_ft_target', null);
   if ((mode === 'fat_loss' || mode === 'recomp') && ftForGoal && typeof calcTargetFeasibility === 'function') {
     var feasG = calcTargetFeasibility(ftForGoal, profile);
     if (feasG && feasG.direction === 'loss' && feasG.requiredDeficit > 0) {
+      var uncappedDeficit = Math.round(feasG.requiredDeficit);
       var targetDeficit = Math.max(200, Math.min(600, feasG.requiredDeficit));
       // The target-timeline math can escalate past what the plan's own feasibility
       // check considers safe (e.g. %BF drifted the wrong way, or time ran down) —
@@ -5169,6 +5259,11 @@ function buildGoalFromMode(mode, profile, tdee) {
         : targetDeficit;
       deficitSource = 'target';
       deficitFeasibility = feasG.status;
+      // Whether the deficit was ACTUALLY reduced from what the target timeline demanded.
+      // The hint used to announce "ปรับลดเพราะเกินเกณฑ์ปลอดภัย" for any flagged status,
+      // including the common case where the flat 600 clamp had already done the limiting
+      // and the 25%-of-TDEE cap changed nothing (it only binds below TDEE 2400).
+      deficitCapped = deficit < uncappedDeficit;
     }
   }
   var cal = Math.max(Math.round(baseTDEE - deficit), floor);
@@ -5185,8 +5280,12 @@ function buildGoalFromMode(mode, profile, tdee) {
     var lbm = weight * (1 - bfForPro/100);
     var proLBM = Math.round(lbm * (cfg.proteinPerKg + 0.4));
     var highBF = gender === 'female' ? bfForPro >= 32 : bfForPro >= 25;
-    pro = highBF ? proLBM : Math.max(pro, proLBM);
-    proteinBasis = 'lbm';
+    var proBW = pro;
+    pro = highBF ? proLBM : Math.max(proBW, proLBM);
+    // Only claim the LBM basis when it actually won. Below the high-%BF threshold the
+    // per-kg-bodyweight number is usually the larger of the two, so the hint used to say
+    // "2.4g/kg Lean Mass" while the target shown was really 2.0g/kg bodyweight.
+    proteinBasis = (highBF || proLBM > proBW) ? 'lbm' : 'bw';
   }
   var fat = Math.max(Math.round(weight * cfg.fatPerKg), Math.round(weight * 0.7));
   var crb = Math.round((cal - (pro*4) - (fat*9)) / 4);
@@ -5196,9 +5295,14 @@ function buildGoalFromMode(mode, profile, tdee) {
   }
   // The carb/fat floors can push macro totals past the calorie target; show the
   // calories the macros actually add up to instead of an impossible combination.
+  var calBeforeFloors = cal;
   cal = Math.max(cal, pro*4 + crb*4 + fat*9);
+  // Surfaced so the Settings hint can stop printing a bare "TDEE − deficit" when the
+  // macro floors have silently raised the actual target above that number.
+  var macroFloorRaisedCal = Math.round(cal) > Math.round(calBeforeFloors);
   return { cal:Math.round(cal), pro:Math.round(pro), crb:Math.round(crb), fat:Math.round(fat), mode:mode, modeLabel:cfg.label, tdee:baseTDEE,
-           deficit:deficit, deficitSource:deficitSource, deficitFeasibility:deficitFeasibility, proteinBasis:proteinBasis, bfUsed:bfForPro||null };
+           deficit:deficit, deficitSource:deficitSource, deficitFeasibility:deficitFeasibility, deficitCapped:deficitCapped,
+           macroFloorRaisedCal:macroFloorRaisedCal, proteinBasis:proteinBasis, bfUsed:bfForPro||null };
 }
 function getOfficialCalorieContext() {
   var profile = S.profile || safeJSON('gd_profile', {}) || {};
@@ -5207,7 +5311,12 @@ function getOfficialCalorieContext() {
   var adaptiveTDEE = analyzer && analyzer.adaptiveTDEE ? Math.round(analyzer.adaptiveTDEE) : null;
   var settingsGoal = S.goals && S.goals.cal ? parseFloat(S.goals.cal) : null;
   var officialTDEE = adaptiveTDEE || formulaTDEE || settingsGoal || 1800;
-  var mode = normalizeGoalMode((analyzer && analyzer.goalMode) || profile.goalType);
+  // Profile-first, matching getCentralGoalProfile. Analyzer-cache-first meant a goalMode
+  // frozen into gd_calorie_context by the morning's weight analysis outranked a mode the
+  // user changed in Settings afterwards — and since getCentralGoalProfile reads the mode
+  // from the profile but its macros from ctx.modeGoal, a single AI prompt could carry the
+  // new mode's LABEL next to the old mode's deficit and protein target.
+  var mode = normalizeGoalMode(profile.goalType || (analyzer && analyzer.goalMode));
   var modeCfg = getGoalModeConfig(mode);
   var modeGoal = buildGoalFromMode(mode, profile, officialTDEE);
   return {
@@ -5229,11 +5338,22 @@ function getOfficialCalorieContext() {
 // Where the user currently is inside their fitness-target program timeline —
 // AI prompts must anchor timeline talk to this, not the full program duration.
 // Returns null when the target has no startDate/duration to anchor to.
+// Whole days elapsed since a YYYY-MM-DD start date, using the app's own day boundary.
+// Both ends are anchored at local noon: `new Date('YYYY-MM-DD')` parses as UTC MIDNIGHT
+// while `new Date()` is local, which made the program roll over at 07:00 local time in
+// Bangkok instead of at localDateStr()'s 04:00 boundary.
+function elapsedDaysSince(startDateStr) {
+  if (!startDateStr) return 0;
+  var start = new Date(startDateStr + 'T12:00:00');
+  var today = new Date(localDateStr() + 'T12:00:00');
+  if (isNaN(start.getTime())) return 0;
+  return Math.max(0, Math.round((today - start) / 86400000));
+}
 function getTargetProgramPosition(target) {
   if (!target || !target.startDate || !target.duration) return null;
   var total = parseInt(target.duration, 10);
   if (!total) return null;
-  var elapsedDays = Math.max(0, Math.floor((new Date() - new Date(target.startDate)) / 86400000));
+  var elapsedDays = elapsedDaysSince(target.startDate);
   var totalDays = total * 7;
   var remainingDays = Math.max(0, totalDays - elapsedDays);
   return {
@@ -5295,6 +5415,11 @@ function applyGoalValues(goal, persist) {
     localStorage.setItem('gd_goals', JSON.stringify(S.goals));
     localStorage.removeItem('gd_daily_summary');
     localStorage.removeItem('gd_wt_ai_result');
+    // The weight-analysis card is keyed by date only, and its cached _wtAnalysisData
+    // carries userGoalCal / requiredDeficit / forecast computed against the goal that
+    // was current when it ran. Without this the AI Deep-Dive quotes the old goal.
+    localStorage.removeItem('gd_wt_analysis');
+    localStorage.removeItem('gd_wt_analysis_data');
     if (window.FB_OK) window.FB.saveSetting('goals', S.goals);
     updateDash();
     if (typeof updateFitnessUI === 'function') updateFitnessUI();
@@ -5332,15 +5457,24 @@ function updateGoalModeHint(goal) {
   var trainCfg = getTrainingFocusConfig(focusEl ? focusEl.value : p.trainingFocus);
   var recCfg = getRecoveryPriorityConfig(recEl ? recEl.value : p.recoveryPriority);
   var ctx = getOfficialCalorieContext();
-  var tdee = goal && goal.tdee ? goal.tdee : ctx.officialTDEE;
-  var hintDeficit = (goal && goal.deficit != null) ? goal.deficit : (ctx.modeGoal && ctx.modeGoal.deficit != null ? ctx.modeGoal.deficit : cfg.deficit);
-  var deficitFromTarget = (goal && goal.deficitSource === 'target') || (!goal && ctx.modeGoal && ctx.modeGoal.deficitSource === 'target');
-  var deficitFeas = (goal && goal.deficitFeasibility) || (!goal && ctx.modeGoal && ctx.modeGoal.deficitFeasibility) || null;
-  var proFromLBM = (goal && goal.proteinBasis === 'lbm') || (!goal && ctx.modeGoal && ctx.modeGoal.proteinBasis === 'lbm');
+  // Preview the mode currently SELECTED in the dropdown, not the one last saved to the
+  // profile. ctx.modeGoal is built from the saved profile, so while the user is still
+  // choosing, this line showed the newly-picked label next to the old mode's deficit.
+  var previewGoal = goal || buildGoalFromMode(mode, p, ctx.officialTDEE);
+  var tdee = previewGoal && previewGoal.tdee ? previewGoal.tdee : ctx.officialTDEE;
+  var hintDeficit = (previewGoal && previewGoal.deficit != null) ? previewGoal.deficit : cfg.deficit;
+  var deficitFromTarget = previewGoal && previewGoal.deficitSource === 'target';
+  var proFromLBM = previewGoal && previewGoal.proteinBasis === 'lbm';
+  // Only claim a safety reduction when one actually happened — deficitCapped is set by
+  // buildGoalFromMode when the final deficit came out below what the target timeline asked for.
+  var showCapNote = previewGoal && previewGoal.deficitCapped;
   el.innerHTML = '<b style="color:var(--accent)">' + cfg.label + '</b> — ' + cfg.desc +
     '<br>Nutrition: TDEE ' + (tdee || '—') + ' ' + (hintDeficit > 0 ? '- ' + hintDeficit : hintDeficit < 0 ? '+ ' + Math.abs(hintDeficit) : '± 0') +
     ' kcal' + (deficitFromTarget ? ' <b style="color:var(--green)">(คำนวณจาก Fitness Target)</b>' : '') +
-    (deficitFeas === 'aggressive' || deficitFeas === 'unrealistic' ? ' <b style="color:#eab308">(ปรับลดจาก target-timeline เพราะเกินเกณฑ์ปลอดภัย — ดู %BF Progress)</b>' : '') +
+    (showCapNote ? ' <b style="color:#eab308">(ปรับลดจาก target-timeline เพราะเกินเกณฑ์ปลอดภัย — ดู %BF Progress)</b>' : '') +
+    // When the carb/fat floors raise the target above TDEE − deficit, say so instead of
+    // printing an equation whose result no longer matches the calorie box below it.
+    (previewGoal && previewGoal.macroFloorRaisedCal ? ' <b style="color:#eab308">→ ปรับขึ้นเป็น ' + previewGoal.cal + ' kcal (ชนขั้นต่ำคาร์บ/ไขมัน)</b>' : '') +
     ' | Protein ' + (proFromLBM ? (cfg.proteinPerKg + 0.4) + 'g/kg Lean Mass' : cfg.proteinPerKg + 'g/kg') + ' | Fat ' + cfg.fatPerKg + 'g/kg | Carb = calories ที่เหลือ' +
     '<br>Workout: <b style="color:var(--blue)">' + trainCfg.label + '</b> | ' + (freqEl ? freqEl.value : (p.weeklyFrequency||4)) + ' วัน/สัปดาห์ | Recovery: ' + recCfg.label;
 }
@@ -5480,6 +5614,7 @@ function saveGoals() {
     if(window.FB_OK) window.FB.saveSetting('profile',S.profile);
   }
   localStorage.removeItem('gd_daily_summary'); localStorage.removeItem('gd_wt_ai_result');
+  localStorage.removeItem('gd_wt_analysis'); localStorage.removeItem('gd_wt_analysis_data');
   if(window.FB_OK) window.FB.saveSetting('goals',S.goals);
   updateGoalModeHint({cal:cal,pro:pro,crb:crb,fat:fat,tdee:getOfficialCalorieContext().officialTDEE});
   showToast('บันทึกเป้าหมายแล้ว ✅','success');
@@ -7429,12 +7564,15 @@ function renderFitnessCharts() {
   if (ctxN) {
     if (ftCharts['net']) ftCharts['net'].destroy();
 
-    var netColors = netData.map(function(v) {
-      return v <= goalCal ? 'rgba(34,197,94,0.8)' : 'rgba(239,68,68,0.8)';
-    });
-    var netBorders = netData.map(function(v) {
-      return v <= goalCal ? '#22c55e' : '#ef4444';
-    });
+    // Net Cal is intake AFTER subtracting workout burn + step NEAT. The calorie goal
+    // is TDEE − deficit where TDEE = BMR × activity multiplier, which ALREADY contains
+    // that workout and that NEAT — so comparing net against the goal double-counts
+    // activity and invents a deficit that isn't there (a 12k-step day with a logged
+    // session reads ~680 kcal "under goal" when true intake is at goal). Intake vs goal
+    // is the real comparison and keeps its green/red coding below; Net Cal stays a
+    // neutral informational series.
+    var netColors  = netData.map(function() { return 'rgba(148,163,184,0.55)'; });
+    var netBorders = netData.map(function() { return '#94a3b8'; });
 
     var intakeColors = intakeData.map(function(v) {
       if (v === null) return 'transparent';
@@ -7511,9 +7649,8 @@ function renderFitnessCharts() {
                   return ' Intake: ' + ctx.raw + ' kcal (' + sign + diff + ' จากเป้า)';
                 }
                 if (ctx.dataset.label === 'Net Cal') {
-                  var diff = ctx.parsed.y - goalCal;
-                  var sign = diff > 0 ? '+' : '';
-                  return ' Net Cal: ' + ctx.parsed.y + ' kcal (' + sign + diff + ' จากเป้า)';
+                  // No "จากเป้า" here on purpose — see the netColors comment above.
+                  return ' Net Cal: ' + ctx.parsed.y + ' kcal (หลังหักกิจกรรม · ไม่ใช่ตัวเทียบเป้า)';
                 }
                 return ' เป้าหมาย ' + goalCal + ' kcal';
               }
@@ -7600,7 +7737,7 @@ function calcTargetFeasibility(target, profile) {
   // A program already underway plans with the weeks REMAINING — keeping the
   // original duration meant the required deficit forever assumed the full window.
   if (target.startDate) {
-    var elapsedWk = Math.floor(Math.max(0, (new Date() - new Date(target.startDate)) / 86400000) / 7);
+    var elapsedWk = Math.floor(elapsedDaysSince(target.startDate) / 7);
     if (elapsedWk > 0) duration = Math.max(2, duration - elapsedWk);
   }
   var gender = profile.gender || 'male';
@@ -8054,14 +8191,16 @@ function renderTargetDashboard() {
 
   // ── 1.5 Timeline Progress + Trend Analysis ──
   if (target.startDate && target.duration) {
-    var startD    = new Date(target.startDate);
+    var startD    = new Date(target.startDate + 'T12:00:00');
     var totalDays = target.duration * 7;
     var endD      = new Date(startD.getTime() + totalDays * 86400000);
-    var todayD    = new Date();
-    var elapsed   = Math.max(0, Math.floor((todayD - startD) / 86400000));
+    var elapsed   = elapsedDaysSince(target.startDate);
     var remaining = Math.max(0, totalDays - elapsed);
     var pct       = Math.min(100, Math.round(elapsed / totalDays * 100));
-    var weeksElapsed = Math.floor(elapsed / 7);
+    // 1-based, matching getTargetProgramPosition and the AI plan/summary prompts. This
+    // was Math.floor(elapsed/7) — 0-based — so day 3 of a 12-week program rendered
+    // "สัปดาห์ที่ 0 / 12" here while the AI was told "สัปดาห์ที่ 1 จาก 12".
+    var weeksElapsed = Math.min(target.duration, Math.floor(elapsed / 7) + 1);
     var weeksRem  = Math.floor(remaining / 7);
     var daysRem   = remaining % 7;
     var endStr    = endD.toLocaleDateString('th-TH', {day:'numeric', month:'short', year:'numeric'});
@@ -8513,7 +8652,7 @@ function generatePlan() {
   var progWeek = null, progTotal = null;
   if (target && target.startDate && target.duration) {
     progTotal = parseInt(target.duration);
-    var elapsedDays = Math.max(0, Math.floor((new Date() - new Date(target.startDate)) / 86400000));
+    var elapsedDays = elapsedDaysSince(target.startDate);
     progWeek = Math.min(progTotal, Math.floor(elapsedDays / 7) + 1);
     targetStr += '\n- ตอนนี้อยู่สัปดาห์ที่ '+progWeek+' จาก '+progTotal+' ของโปรแกรม';
   }
@@ -9055,7 +9194,10 @@ function renderWeightCalChart() {
   var stepData = JSON.parse(localStorage.getItem('gd_steps') || '{}');
   var netData = days.map(function(d) {
     var eaten  = S.meals.filter(function(m){ return m.date===d; }).reduce(function(a,m){ return a+m.calories; }, 0);
-    var burned = (FT.workouts||[]).filter(function(w){ return w.date===d; }).reduce(function(a,w){ return a+w.calories_burned; }, 0);
+    // Credited burn, same as getDailyMetrics/the Fitness net chart — using raw
+    // calories_burned here made this chart disagree with every other net figure
+    // in the app by the credit factor (up to 50% of a logged session).
+    var burned = creditedBurnSum((FT.workouts||[]).filter(function(w){ return w.date===d; }));
     var sessionSteps = (FT.workouts||[]).filter(function(w){ return w.date===d; }).reduce(function(a,w){ return a+(w.session_steps||0); }, 0);
     var neatCal = calcStepCalories(Math.max((stepData[d]||0) - sessionSteps, 0));
     return eaten - burned - neatCal;
@@ -9069,13 +9211,12 @@ function renderWeightCalChart() {
     return eaten || null;
   });
 
-  // Bar colors: green below goal, red above
-  var barColors = netData.map(function(v) {
-    return v <= goalCal ? 'rgba(34,197,94,0.7)' : 'rgba(239,68,68,0.7)';
-  });
-  var barBorders = netData.map(function(v) {
-    return v <= goalCal ? '#22c55e' : '#ef4444';
-  });
+  // Net Cal is NOT comparable to the calorie goal — the goal is TDEE − deficit and
+  // that TDEE already includes the workout + NEAT this series subtracts. Colouring it
+  // green/red against the goal reported a phantom deficit on every active day.
+  // Intake (below) is the series that legitimately compares against the goal.
+  var barColors  = netData.map(function() { return 'rgba(148,163,184,0.5)'; });
+  var barBorders = netData.map(function() { return '#94a3b8'; });
 
   // Intake colors: blue=under goal, orange=over goal (different palette from Net Cal green/red)
   var intakeColors = intakeData.map(function(v) {
@@ -9133,11 +9274,13 @@ function renderWeightCalChart() {
             label: function(ctx) {
               if (ctx.raw === null || ctx.raw === undefined) return null;
               if (ctx.dataset.yAxisID === 'yW') return ' น้ำหนัก: ' + ctx.raw + ' กก.';
-              var diff = Math.round(ctx.raw) - goalCal;
-              var sign = diff > 0 ? '+' : '';
-              if (ctx.dataset.label && ctx.dataset.label.indexOf('Intake') >= 0)
+              if (ctx.dataset.label && ctx.dataset.label.indexOf('Intake') >= 0) {
+                var diff = Math.round(ctx.raw) - goalCal;
+                var sign = diff > 0 ? '+' : '';
                 return ' Intake: ' + Math.round(ctx.raw) + ' kcal (' + sign + diff + ' จากเป้า)';
-              return ' Net Cal: ' + Math.round(ctx.raw) + ' kcal (' + sign + diff + ' จากเป้า)';
+              }
+              // No "จากเป้า" for Net Cal — see the barColors comment above.
+              return ' Net Cal: ' + Math.round(ctx.raw) + ' kcal (หลังหักกิจกรรม · ไม่ใช่ตัวเทียบเป้า)';
             }
           }
         }
@@ -9214,6 +9357,9 @@ function handleSaveWeight() {
   }
   WT.log.sort(function(a,b){ return (a.date+a.time).localeCompare(b.date+b.time); });
   localStorage.setItem('gd_weight', JSON.stringify(WT.log));
+  // New data point -> the cached same-day analysis (trend, Adaptive TDEE, forecast) is stale.
+  localStorage.removeItem('gd_wt_analysis'); localStorage.removeItem('gd_wt_analysis_data');
+  localStorage.removeItem('gd_daily_summary');
   if (window.FB_OK && window.FB.saveWeight) window.FB.saveWeight(entry); else queueFBWrite('weight','save',entry);
   if (S.webhook) autoSyncWeight(entry);
 
@@ -9249,11 +9395,14 @@ function handleDeleteWeight(id) {
   var deleted = WT.log.find(function(e){ return e.id === id; });
   WT.log = WT.log.filter(function(e){ return e.id !== id; });
   localStorage.setItem('gd_weight', JSON.stringify(WT.log));
+  // Removing a data point changes the trend / Adaptive TDEE — drop the same-day cache.
+  localStorage.removeItem('gd_wt_analysis'); localStorage.removeItem('gd_wt_analysis_data');
   if (window.FB_OK && window.FB.delWeight) window.FB.delWeight(id); else queueFBWrite('weight','del',id);
   _renderWeightTab();
   showUndoToast('ลบรายการแล้ว', function(){
     WT.log = backup;
     localStorage.setItem('gd_weight', JSON.stringify(WT.log));
+    localStorage.removeItem('gd_wt_analysis'); localStorage.removeItem('gd_wt_analysis_data');
     if (window.FB_OK && window.FB.saveWeight && deleted) window.FB.saveWeight(deleted); else if(deleted) queueFBWrite('weight','save',deleted);
     _renderWeightTab(); showToast('คืนค่าแล้ว','info');
   });
@@ -9941,10 +10090,27 @@ function buildAnalysisHTML(recent) {
   var sustainedRetention = retentionRange.avgScore >= 55; // genuinely elevated on average
   var highRetention = sustainedRetention || retentionRange.highDays >= 2; // spiky high-risk days also count as water noise
 
-  // [B3 DATA QUALITY] logRate: cap at 100% to catch duplicate logs
-  var rawLogRate = calDays.length / Math.max(daySpan, 1);
-  var logRate    = Math.min(rawLogRate, 1.0);
-  var dataError  = rawLogRate > 1.05; // >105% = likely duplicate logs
+  // [B3 DATA QUALITY]
+  // calDays.length <= daySpan by construction, so this is already in [0,1] — no cap needed.
+  var logRate = calDays.length / Math.max(daySpan, 1);
+  // Duplicate-log detection. The old test was `rawLogRate > 1.05`, which could never fire:
+  // calDays comes from getDateRangeMetrics, which emits exactly one row per calendar date
+  // in [cutoff, today], and daySpan is that same count — so calDays.length <= daySpan by
+  // construction and the ratio is capped at 1.0. (Ironically the meal filter added above
+  // to fix logRate reading ~100% is what made the gate unreachable.) Detect real duplicates
+  // instead: the same food, same calories, same minute is a double-tap on Save, not two
+  // separate meals. Two such days in the window is well past coincidence.
+  var dupDays = 0;
+  metricsDays.forEach(function(m){
+    if (!m.meals || m.meals.length < 2) return;
+    var seen = {}, hasDup = false;
+    m.meals.forEach(function(meal){
+      var k = (meal.foodName||'') + '|' + (meal.calories||0) + '|' + (meal.time||'');
+      if (seen[k]) hasDup = true; else seen[k] = true;
+    });
+    if (hasDup) dupDays++;
+  });
+  var dataError = dupDays >= 2;
 
   // Average intake / burn / NEAT (over days with food logged only — see filter above)
   var avgIntake=0, avgBurn=0, avgEffectiveBurn=0, avgNEAT=0;
@@ -10147,15 +10313,6 @@ function buildAnalysisHTML(recent) {
     forecast7d=projected.toFixed(2);
   }
 
-  // Current-pace projection from the ACTUAL deficit (TDEE − intake). forecast7d above is the
-  // target IF the planned deficit is met; this is what the current deficit actually yields,
-  // surfaced so "expected" is never mistaken for the plan when the real deficit is below
-  // target. Suppressed where the deficit signal is unreliable (water noise / conflict / error).
-  var currentPace7d=null;
-  if(actualDeficit!==null && !likelyWaterNoise && !inconsistent && !dataError){
-    currentPace7d=Math.max(-1.0, Math.min(1.0, -(actualDeficit*7/7700))).toFixed(2);
-  }
-
   // Trend context card label
   var trendContextNote='';
   if(forecast7d!==null){
@@ -10199,12 +10356,25 @@ function buildAnalysisHTML(recent) {
     trendContextNote = (trendContextNote ? trendContextNote + ' | ' : '') + 'Visual progress บ่งชี้ retention/bloating';
   }
 
+  // Current-pace projection from the ACTUAL deficit (TDEE − intake). forecast7d above is the
+  // target IF the planned deficit is met; this is what the current deficit actually yields,
+  // surfaced so "expected" is never mistaken for the plan when the real deficit is below
+  // target. Suppressed where the deficit signal is unreliable (water noise / conflict / error).
+  // MUST stay below the consistency gate and every likelyWaterNoise mutation above: this
+  // block used to sit ~50 lines earlier, where `inconsistent` was still in its hoisted
+  // `undefined` state, so `!inconsistent` was always true and the suppression never fired —
+  // the card rendered the red "Inconsistent Data" banner and a contradicting pace together.
+  var currentPace7d=null;
+  if(actualDeficit!==null && !likelyWaterNoise && !inconsistent && !dataError){
+    currentPace7d=Math.max(-1.0, Math.min(1.0, -(actualDeficit*7/7700))).toFixed(2);
+  }
+
   // STATUS priority: DataError > WaterNoise/Retention/Recomp > Inconsistent > Limited > Classification-based
   var statusLabel, statusColor, statusNote='';
   var suppressRecommend=false;
   if(dataError){
     statusLabel='Data Error 🔴'; statusColor='#ef4444';
-    statusNote='Log rate '+Math.round(rawLogRate*100)+'% — อาจมี duplicate logs';
+    statusNote='พบมื้อซ้ำ (ชื่อ+แคล+เวลาเดียวกัน) ใน '+dupDays+' วัน — ตัวเลข intake อาจสูงเกินจริง';
     suppressRecommend=true;
   } else if(likelyWaterNoise){
     statusLabel=recompByWaist?'Recomp Signal 📏':(sustainedRetention?'Retention Spike 💧':'Water Fluctuation 💧'); statusColor=recompByWaist?'#22c55e':'#38bdf8';
@@ -10291,7 +10461,7 @@ function buildAnalysisHTML(recent) {
     avgIntake:Math.round(avgIntake), avgBurn:Math.round(avgBurn), avgNEAT:Math.round(avgNEAT), avgNetCal:Math.round(avgNetCal),
     actualDeficit:actualDeficit!==null?Math.round(actualDeficit):null,
     requiredDeficit:requiredDeficit, requiredWeeklyLoss:requiredWeeklyLoss,
-    recommendedIntake:recommendedIntake, logRate:logRate, rawLogRate:rawLogRate,
+    recommendedIntake:recommendedIntake, logRate:logRate, dupDays:dupDays,
     wVariance:wVariance, calVariance:Math.round(calVariance),
     n:n, daySpan:daySpan, firstW:firstW, lastW:lastW,
     targetW:targetW, durationWks:durationWks, isOnTrack:isOnTrack,
@@ -10328,7 +10498,7 @@ function buildAnalysisHTML(recent) {
     html+='<div style="font-size:13px;font-weight:700;color:#ef4444;margin-bottom:8px;">'+(dataError?'🔴 Data Error Detected':'⚠️ Inconsistent Data Detected')+'</div>';
     html+='<div style="font-size:12px;color:var(--text2);line-height:1.8;">';
     if(dataError){
-      html+='Log rate '+Math.round(rawLogRate*100)+'% — สูงกว่า 100% = มี duplicate หรือ double-count<br>';
+      html+='พบมื้อที่บันทึกซ้ำ (ชื่อ + แคลอรี่ + เวลาเดียวกัน) ใน '+dupDays+' วัน — น่าจะกดบันทึกซ้ำ ทำให้ intake และ Adaptive TDEE สูงเกินจริง<br>';
       html+='• ตรวจสอบว่ามีบันทึกซ้ำในวันเดียวกันไหม<br>';
       html+='• ลบ/แก้รายการที่ซ้ำก่อน แล้ว วิเคราะห์ใหม่';
     } else {
@@ -10337,7 +10507,7 @@ function buildAnalysisHTML(recent) {
       html+='<strong>สาเหตุที่เป็นไปได้:</strong><br>';
       html+='1. Intake underestimate — กินจริงมากกว่าที่บันทึก<br>';
       html+='2. TDEE overestimate — '+trueTDEE+' kcal อาจสูงเกินจริง<br>';
-      html+='3. Logging inconsistency (log rate '+Math.round(rawLogRate*100)+'%)<br><br>';
+      html+='3. Logging inconsistency (log rate '+Math.round(logRate*100)+'%)<br><br>';
       html+='<strong>สิ่งที่ต้องทำ:</strong><br>';
       html+='• ❌ อย่าปรับ calorie target ตอนนี้<br>';
       html+='• ✅ Track อาหารให้ครบ + แม่นยำ 5-7 วัน<br>';
@@ -10505,11 +10675,23 @@ function syncRecommendedCalToGoal(cal) {
   var mode = normalizeGoalMode(profile.goalType);
   var baseTDEE = (window._wtAnalysisData && window._wtAnalysisData.trueTDEE) || getOfficialCalorieContext().officialTDEE || calcFormulaTDEE(profile) || cal;
   var goal = buildGoalFromMode(mode, profile, baseTDEE);
-  goal.cal = Math.round(cal);
-  // Recalculate carbs from selected calories, while keeping protein/fat logic by mode.
+  // Respect the same safety floor buildGoalFromMode enforces — overwriting goal.cal
+  // straight from the analyzer bypassed it (the recomp-hold branch can hand over an
+  // unfloored trueTDEE − deficit).
+  var floor = (profile.gender === 'female') ? 1200 : 1500;
+  goal.cal = Math.max(Math.round(cal), floor);
+  // Recalculate carbs from the selected calories, keeping protein/fat logic by mode.
   goal.crb = Math.max(80, Math.round((goal.cal - (goal.pro*4) - (goal.fat*9)) / 4));
+  // ...and apply the SAME reconciliation buildGoalFromMode ends with. Without it, a bound
+  // 80g carb floor left the saved goal's macros summing to more than its own calorie
+  // number, and Settings then flagged "เกินเป้าแคลอรี่ N kcal" in red on a goal the app
+  // had just written itself.
+  goal.fat = Math.max(Math.round((parseFloat(getLatestCheckinWeight() || profile.weight) || 65) * 0.7),
+                      Math.min(goal.fat, Math.round((goal.cal - (goal.pro*4) - (goal.crb*4)) / 9)));
+  goal.cal = Math.max(goal.cal, goal.pro*4 + goal.crb*4 + goal.fat*9);
   applyGoalValues(goal, true);
   localStorage.removeItem('gd_daily_summary');
+  localStorage.removeItem('gd_wt_analysis'); localStorage.removeItem('gd_wt_analysis_data');
   showToast('✅ ตั้งเป้า '+goal.cal+' kcal และ macro ตาม '+goal.modeLabel+' แล้ว','success');
 }
 
@@ -10551,8 +10733,8 @@ function runAIWeightDeepDive() {
     +'- Required deficit: '+(d.requiredDeficit||'?')+' kcal/day\n'
     +'- Recommended intake: '+(d.suppressRecommend?'SUPPRESSED — do not recommend calorie change':d.recommendedIntake||'?')+' kcal/day\n'
     +'- Forecast (goal-engine): '+(d.forecast7d||'?')+' kg/week\n'
-    +'- Log rate: '+(d.rawLogRate!==undefined?Math.round(d.rawLogRate*100)+'%':'?')+' (raw) / '+(d.logRate!==undefined?Math.round(d.logRate*100)+'%':'?')+' (capped)\n'
-    +'- Data Error: '+(d.dataError?'YES — possible duplicate logs':'NO')+'\n'
+    +'- Log rate: '+(d.logRate!==undefined?Math.round(d.logRate*100)+'%':'?')+' of days in window\n'
+    +'- Data Error: '+(d.dataError?'YES — duplicate meals detected on '+d.dupDays+' day(s)':'NO')+'\n'
     +'- Inconsistent: '+(d.inconsistent?'YES — trend direction contradicts deficit':'NO')+'\n'
     +'- Retention context: '+(d.retentionRange?d.retentionRange.avgScore+'% avg / '+d.retentionRange.highDays+' high-risk days':'N/A')+'\n'
     +'- Waist trend: '+(d.waistPerWeek!==null&&d.waistPerWeek!==undefined?(d.waistPerWeek>=0?'+':'')+d.waistPerWeek.toFixed(2)+' cm/week':'N/A')+'\n'
@@ -10626,15 +10808,26 @@ function pillarBar(label, val) {
 
 function scoreDuration(hours) {
   if (!hours || hours < 1) return 0;
-  if (hours < 6) return 15;
+  // Short nights used to all collapse to a flat 15, so a 2h night and a 5.9h night
+  // were indistinguishable. Graded instead.
+  if (hours < 4) return 5;
+  if (hours < 5) return 10;
+  if (hours < 6) return 20;
   if (hours < 7) return 45;
   if (hours < 8) return 72;
   if (hours < 9) return 88;
   if (hours <= 9.5) return 95;
-  return 90;
+  // Oversleeping must score BELOW a solid 8-9h night. This used to return a flat 90,
+  // which ranked a 12-hour night higher than 8.5 hours.
+  if (hours <= 10.5) return 80;
+  return 60;
 }
 function scoreEfficiency(hours, timeInBed) {
   if (!hours || !timeInBed || timeInBed <= 0) return null;
+  // Sleep can never exceed time in bed. A screenshot import that misreads TIB used to
+  // produce >100% efficiency, which then landed in the TOP band and printed things like
+  // "หลับจริง 107% ของเวลาบนเตียง" to the user and into the AI prompt.
+  if (hours > timeInBed) return null;
   var eff = (hours / timeInBed) * 100;
   if (eff < 75) return 20;
   if (eff < 85) return 55;
@@ -10681,10 +10874,13 @@ function calculateSleepScoreFromData(sd) {
   // The old fallback copied the Duration score into Efficiency, silently counting
   // Duration at 45% weight and showing an "Efficiency" bar that was never measured.
   var efficiency = scoreEfficiency(sd && sd.hours, sd && sd.timeInBed);
+  // These two used to fall back to a hard-coded 50 while keeping their full 0.20 weight,
+  // which meant 40% of the score was a constant for anyone without a stage/HRV-capable
+  // wearable (a 4h night still scored 37 = "Fair"), and — worse — logging an honest bad
+  // RHR (physio 35) scored LOWER than leaving the field blank (placeholder 50). Leaving
+  // them null lets the re-normalization below drop them, as the comment above always said.
   var stages = scoreStages(sd && sd.hours, sd && sd.deepSleep, sd && sd.remSleep);
-  if (stages === null) stages = 50;
   var physio = scorePhysio(sd && sd.hrv, sd && sd.hrvBaseline, sd && sd.rhr);
-  if (physio === null) physio = 50;
   var consistency = (sd && sd.consistency != null) ? sd.consistency : null;
   var parts = [
     { v: duration,    w: 0.25 },
@@ -10730,7 +10926,7 @@ function normalizeRecoveryResult(r, sd) {
   // here is fully replaced on each call, so re-rendering is safe.)
   var sdRef = sd || S.sleepData || {};
   r.sleep_actions = r.sleep_actions || {};
-  var gradualBed = computeGradualBedtimeTarget(sdRef.wakeTime, sdRef.date, 8, sdRef.bedtime);
+  var gradualBed = computeGradualBedtimeTarget(sdRef.wakeTime, sdRef.date, computeSleepNeedHours(sdRef.date), sdRef.bedtime);
   if (gradualBed) {
     var bedNotes = [];
     if (gradualBed.outlier) bedNotes.push('เมื่อคืนนอนหลุดตาราง (' + gradualBed.fromBedtime + ') — คืนเดียวไม่ได้เลื่อนนาฬิกาชีวภาพ คืนนี้กลับมานอนเวลาปกติของคุณ (~' + gradualBed.typicalHHMM + ') ได้เลย ไม่ต้องไต่จากเวลาที่หลุด');
@@ -10816,7 +11012,8 @@ function buildResultHTML(r, em) {
     '</div>' +
     '<div style="background:var(--surface2);border-radius:16px;padding:16px;margin-bottom:12px;">' +
       '<div style="font-size:11px;font-weight:700;color:var(--text3);margin-bottom:12px;text-transform:uppercase;letter-spacing:0.5px;">Score Breakdown</div>' +
-      pillarBar('Duration',pil.duration)+(pil.efficiency!=null?pillarBar('Efficiency',pil.efficiency):'')+pillarBar('Sleep Stages',pil.stages)+pillarBar('HRV / Physio',pil.physio)+(pil.consistency!=null?pillarBar('Consistency',pil.consistency):'') +
+      pillarBar('Duration',pil.duration)+(pil.efficiency!=null?pillarBar('Efficiency',pil.efficiency):'')+(pil.stages!=null?pillarBar('Sleep Stages',pil.stages):'')+(pil.physio!=null?pillarBar('HRV / Physio',pil.physio):'')+(pil.consistency!=null?pillarBar('Consistency',pil.consistency):'') +
+      (pil.stages==null||pil.physio==null?'<div style="font-size:10px;color:var(--text3);margin-top:8px;line-height:1.5;">ไม่มีข้อมูล'+(pil.stages==null?' Sleep Stages':'')+(pil.stages==null&&pil.physio==null?' และ':'')+(pil.physio==null?' HRV/RHR':'')+' — คะแนนคิดจากหมวดที่วัดได้จริงเท่านั้น (ถ่วงน้ำหนักใหม่แล้ว)</div>':'') +
     '</div>' +
     (r.strengths?'<div style="background:rgba(34,197,94,0.07);border:1px solid rgba(34,197,94,0.2);border-radius:10px;padding:10px 12px;margin-bottom:8px;"><div style="font-size:11px;font-weight:700;color:#22c55e;margin-bottom:6px;text-transform:uppercase;letter-spacing:0.5px;">✅ ทำไมคะแนนดี</div><div style="font-size:12px;color:var(--text2);line-height:1.8;">'+mdBold(r.strengths)+'</div></div>':'') +
     (r.improvements?'<div style="background:rgba(59,130,246,0.07);border:1px solid rgba(59,130,246,0.2);border-radius:10px;padding:10px 12px;margin-bottom:10px;"><div style="font-size:11px;font-weight:700;color:#3b82f6;margin-bottom:6px;text-transform:uppercase;letter-spacing:0.5px;">💡 Improve ยังไงได้อีก</div><div style="font-size:12px;color:var(--text2);line-height:1.8;">'+mdBold(r.improvements)+'</div></div>':'') +
@@ -10916,11 +11113,38 @@ function saveSleep() {
   var timeInBed=(tibH||tibM)?Math.round((tibH+tibM/60)*100)/100:null;
   var deepSleep=(deepH||deepM)?deepH*60+deepM:null;
   var remSleep=(remH||remM)?remH*60+remM:null;
+  // Range-validate everything that feeds the score. Only total sleep used to be checked,
+  // so an AI screenshot import (which sets these fields programmatically, bypassing the
+  // inputs' own min/max) could push e.g. HRV 390 instead of 39 straight into scorePhysio
+  // and swing the Sleep Score ~14 points — enough to flip the Push/Rest recommendation
+  // and with it the day's calorie target.
+  var totalMinAsleep=Math.round(totalHours*60);
+  if(timeInBed!==null&&timeInBed<totalHours){showToast('เวลาบนเตียงต้องไม่น้อยกว่าเวลาที่หลับจริง','error');return;}
+  if(deepSleep!==null&&(deepSleep<0||deepSleep>totalMinAsleep)){showToast('Deep Sleep ต้องอยู่ระหว่าง 0 ถึงเวลานอนรวม','error');return;}
+  if(remSleep!==null&&(remSleep<0||remSleep>totalMinAsleep)){showToast('REM Sleep ต้องอยู่ระหว่าง 0 ถึงเวลานอนรวม','error');return;}
+  if(deepSleep!==null&&remSleep!==null&&(deepSleep+remSleep)>totalMinAsleep){showToast('Deep + REM รวมกันเกินเวลานอนทั้งหมด','error');return;}
+  if(rhr!==null&&(rhr<30||rhr>120)){showToast('RHR ควรอยู่ระหว่าง 30–120 bpm','error');return;}
+  if(hrv!==null&&(hrv<10||hrv>200)){showToast('HRV ควรอยู่ระหว่าง 10–200 ms','error');return;}
+  if(hrvBaseline!==null&&(hrvBaseline<10||hrvBaseline>200)){showToast('HRV baseline ควรอยู่ระหว่าง 10–200 ms','error');return;}
+  if(respRate!==null&&(respRate<5||respRate>40)){showToast('อัตราการหายใจควรอยู่ระหว่าง 5–40 ครั้ง/นาที','error');return;}
   var consistency=computeConsistency(bedtime,wakeTime,today);
   var data={date:today,hours:Math.round(totalHours*100)/100,displayStr:displayStr,
     rhr:rhr,hrv:hrv,hrvBaseline:hrvBaseline,
     timeInBed:timeInBed,deepSleep:deepSleep,remSleep:remSleep,respRate:respRate,
     bedtime:bedtime,wakeTime:wakeTime,consistency:consistency,polarStrain:polarStrain,polarTolerance:polarTolerance};
+  // Score at save time. This is fully deterministic, but it used to be written only
+  // inside the Gemini .then — so a night logged without running the AI analysis kept
+  // sleepScore null: a gap in the trend chart, and excluded from the behaviour
+  // correlations, which therefore needed ~10 AI-ANALYZED nights instead of 10 logged ones.
+  if (typeof calculateSleepScoreFromData === 'function') {
+    try {
+      var calcNow = calculateSleepScoreFromData(data);
+      data.sleepScore = calcNow.sleepScore;
+      data.scoreLabel = calcNow.scoreLabel;
+      data.recoveryScore = calcNow.score;
+      data.recoveryEmoji = calcNow.emoji;
+    } catch(e) {}
+  }
   S.sleepData=data;
   localStorage.setItem('gd_sleep',JSON.stringify(data));
   syncSleepLog(data);
@@ -11403,10 +11627,13 @@ function buildWeakPillarAction(pillars, sd) {
   if (w.v >= 75) return null; // nothing meaningfully weak — no forced advice
   var totalMin = Math.round((sd.hours || 0) * 60);
   if (w.k === 'duration') {
-    return 'Duration ฉุดคะแนนมากที่สุด (หลับ ' + (sd.displayStr || ((sd.hours || 0) + 'h')) + ') — คืนนี้เข้านอนตามเวลาเป้าหมายด้านบนเพื่อให้ถึง 8 ชม.';
+    // Quote the same personalized need as the bedtime target and the debt engine,
+    // not a hard-coded 8h that contradicts both.
+    var needH = (typeof computeSleepNeedHours === 'function' && sd.date) ? computeSleepNeedHours(sd.date) : SLEEP_NEED_DEFAULT_HOURS;
+    return 'Duration ฉุดคะแนนมากที่สุด (หลับ ' + (sd.displayStr || ((sd.hours || 0) + 'h')) + ') — คืนนี้เข้านอนตามเวลาเป้าหมายด้านบนเพื่อให้ถึง ' + needH + ' ชม.';
   }
   if (w.k === 'efficiency') {
-    var eff = (sd.timeInBed && sd.hours) ? Math.round(sd.hours / sd.timeInBed * 100) : null;
+    var eff = (sd.timeInBed && sd.hours && sd.hours <= sd.timeInBed) ? Math.round(sd.hours / sd.timeInBed * 100) : null;
     return 'Efficiency ฉุดคะแนนมากที่สุด' + (eff ? ' (หลับจริง ' + eff + '% ของเวลาบนเตียง)' : '') + ' — ขึ้นเตียงเมื่อง่วงจริงเท่านั้น ถ้า ~20 นาทีแล้วยังไม่หลับ ให้ลุกไปนั่งที่แสงน้อยจนง่วงแล้วค่อยกลับมา (stimulus control)';
   }
   if (w.k === 'stages') {
@@ -12211,23 +12438,26 @@ function buildChatMealObject(args) {
   var autoLabel = h < 11 ? 'มื้อเช้า' : h < 15 ? 'มื้อกลางวัน' : h < 21 ? 'มื้อเย็น' : 'ของว่าง';
   var validLabels = ['มื้อเช้า', 'มื้อกลางวัน', 'มื้อเย็น', 'ของว่าง'];
   var label = (args.label && validLabels.indexOf(args.label) >= 0) ? args.label : autoLabel;
-  return {
+  // Same reconciliation + the same mealContext enum as the Analyze path. 'chat' was not
+  // one of the values normalizeMealContext accepts, so any later re-normalization of a
+  // chat-logged meal silently reclassified it as 'normal' anyway.
+  return reconcileMealMacros({
     id: Date.now(),
     date: localDateStr(),
     time: now.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }),
     label: label,
     foodName: args.foodName || 'อาหารจากแชท',
     description: args.portion || '',
-    calories: Math.round((+args.calories || 0) * 100) / 100,
-    protein: Math.round((+args.protein || 0) * 100) / 100,
-    carbs: Math.round((+args.carbs || 0) * 100) / 100,
-    fat: Math.round((+args.fat || 0) * 100) / 100,
+    calories: +args.calories || 0,
+    protein: +args.protein || 0,
+    carbs: +args.carbs || 0,
+    fat: +args.fat || 0,
     sodiumFlag: 'medium',
     carbLoadFlag: 'normal',
-    mealContext: 'chat',
+    mealContext: 'normal',
     retentionRisk: 0,
     analysisConfidence: 65
-  };
+  });
 }
 function _appendChatMealConfirmCard(args) {
   var body = document.getElementById('chatBody');
