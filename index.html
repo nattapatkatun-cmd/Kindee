@@ -10114,6 +10114,18 @@ function buildAnalysisHTML(recent) {
     if (trueTDEE != null) recommendedIntake = Math.round(trueTDEE - recompDeficit);
     engineRecommendedIntake = recommendedIntake;
   }
+  // Rest-day carb guidance (carb cycling): rest days burn less, so trim carbs from
+  // the training-day target while keeping protein + total-week deficit as the real
+  // levers. Milder trim once the weight goal is met (recomp) — don't over-restrict a
+  // lean recomper — vs the standard trim during active fat loss. Only when today
+  // actually carries an intended deficit (requiredDeficit > 0); at pure maintenance
+  // there's nothing to cut. Two tiers = the "reached goal" vs "still cutting" numbers.
+  var restDayCarbPct = null, restDayCarbG = null;
+  var trainDayCarbG = (centralGoalForAnalysis && centralGoalForAnalysis.crb) ? centralGoalForAnalysis.crb : null;
+  if ((goalMode === 'fat_loss' || goalMode === 'recomp') && requiredDeficit > 0 && trainDayCarbG) {
+    restDayCarbPct = recompHold ? 15 : 30;
+    restDayCarbG = Math.round(trainDayCarbG * (1 - restDayCarbPct / 100));
+  }
   var requiredWeeklyLoss = -(requiredDeficit * 7 / 7700); // negative = loss, positive = gain
   var targetW = (window._fitnessTarget && window._fitnessTarget.weight) ? parseFloat(window._fitnessTarget.weight) : null;
   var durationWks = (window._fitnessTarget && window._fitnessTarget.duration) ? parseFloat(window._fitnessTarget.duration) : null;
@@ -10279,6 +10291,7 @@ function buildAnalysisHTML(recent) {
     forecast7d:forecast7d, forecastLabel:forecastLabel, currentPace7d:currentPace7d, aiEligible:aiEligible,
     goalMode:goalMode, goalModeLabel:goalCfg.label, centralGoal:centralGoalForAnalysis,
     recompHold:recompHold, userGoalCal:userGoalCal, engineRecommendedIntake:engineRecommendedIntake,
+    restDayCarbPct:restDayCarbPct, restDayCarbG:restDayCarbG, trainDayCarbG:trainDayCarbG,
     confidencePct:confidencePct, // [6] fix: was missing
     statusLabel:statusLabel, inconsistent:inconsistent, retentionRange:retentionRange, waistPerWeek:waistPerWeek, trend21PerWeek:trend21PerWeek, ema21PerWeek:ema21PerWeek, sourceCalibration:getSourceAwareStatusText(), visualSignal:visualAnalysis ? (visualAnalysis.summary||visualAnalysis.visualTrend||'available') : 'N/A', dataError:dataError,
     suppressRecommend:suppressRecommend, recent:recent
@@ -10443,6 +10456,9 @@ function buildAnalysisHTML(recent) {
       var intakeSuffix=calDays.length>0?' (ปัจจุบัน '+Math.round(avgIntake)+')':(trueTDEE?' (จาก TDEE '+trueTDEE+')':'');
       html+='• Intake ที่แนะนำ: <strong>'+recommendedIntake+' kcal/วัน</strong>'+intakeSuffix+'<br>';
     }
+    if(restDayCarbPct!==null){
+      html+='• Rest day: คาร์บ ~<strong>'+restDayCarbG+'g</strong> (ลด '+restDayCarbPct+'% จากวันเทรน '+trainDayCarbG+'g'+(recompHold?' · mild เพราะถึงเป้าน้ำหนักแล้ว':'')+') — วันเทรนคงคาร์บไว้เพื่อ performance/รักษากล้าม<br>';
+    }
     if(isOnTrack)html+='• รักษาความสม่ำเสมอต่อไป<br>';
     else{
       if(logRate<0.7)html+='• บันทึกอาหารทุกมื้อ (ตอนนี้ '+Math.round(logRate*100)+'%)<br>';
@@ -10531,6 +10547,7 @@ function runAIWeightDeepDive() {
     +'- Actual deficit (TDEE − gross intake): '+(d.actualDeficit!==null&&d.actualDeficit!==undefined?d.actualDeficit:'?')+' kcal/day\n'
     +'- Required deficit: '+(d.requiredDeficit||'?')+' kcal/day\n'
     +'- Recommended intake: '+(d.suppressRecommend?'SUPPRESSED — do not recommend calorie change':d.recommendedIntake||'?')+' kcal/day\n'
+    +(d.restDayCarbPct?'- Rest-day carbs: aim ~'+d.restDayCarbG+'g on rest days (−'+d.restDayCarbPct+'% vs training-day '+d.trainDayCarbG+'g'+(d.recompHold?', a MILD trim since the weight goal is met':'')+'); keep training-day carbs for performance. Mention this on the rest-day recommendation.\n':'')
     +'- Forecast (goal-engine): '+(d.forecast7d||'?')+' kg/week\n'
     +'- Log rate: '+(d.rawLogRate!==undefined?Math.round(d.rawLogRate*100)+'%':'?')+' (raw) / '+(d.logRate!==undefined?Math.round(d.logRate*100)+'%':'?')+' (capped)\n'
     +'- Data Error: '+(d.dataError?'YES — possible duplicate logs':'NO')+'\n'
@@ -11205,7 +11222,13 @@ function computeTypicalBedtimeMin(forDate) {
 function computeGradualBedtimeTarget(wakeTime, forDate, goalHours, lastBedtime) {
   if (!wakeTime || !forDate) return null;
   var goalH = goalHours || 8;
-  var desiredMin = _timeToMin(wakeTime, false) - goalH * 60;
+  // When sleep debt has built up, the repayment is "extend nightly sleep with the
+  // wake time held fixed" — which means an EARLIER target bedtime, not the same one.
+  // Add a nightly repayment buffer on top of the need so the target actually moves
+  // earlier and starts paying the debt down (capped, so we never chase a wild lie-in).
+  var debtForTarget = (typeof computeSleepDebt === 'function') ? computeSleepDebt(forDate) : null;
+  var repayMin = (debtForTarget && debtForTarget.hours >= 2) ? (debtForTarget.hours >= 6 ? 45 : 30) : 0;
+  var desiredMin = _timeToMin(wakeTime, false) - goalH * 60 - repayMin;
   var desiredAnchored = desiredMin; if (desiredAnchored < 720) desiredAnchored += 1440;
   var fromBed = lastBedtime || null;
   if (!fromBed) {
@@ -11226,7 +11249,9 @@ function computeGradualBedtimeTarget(wakeTime, forDate, goalHours, lastBedtime) 
   var anchorMin = isOutlier ? typicalMin : lastBedMin;
   var diff = desiredAnchored - anchorMin;
   var targetMin = Math.abs(diff) <= BEDTIME_SHIFT_CAP_MIN ? desiredAnchored : anchorMin + (diff > 0 ? 1 : -1) * BEDTIME_SHIFT_CAP_MIN;
-  var debt = (typeof computeSleepDebt === 'function') ? computeSleepDebt(forDate) : null;
+  // Debt may only pull the bedtime EARLIER (via repayMin above) or hold it — never
+  // let a late wake time push the recommended bedtime later while a debt is unpaid.
+  var debt = debtForTarget;
   var debtHeld = false;
   if (debt && debt.hours >= 3 && targetMin > anchorMin) { targetMin = anchorMin; debtHeld = true; }
   return { hhmm: fmt(targetMin), shifted: Math.abs(diff) > BEDTIME_SHIFT_CAP_MIN && !isOutlier && !debtHeld,
