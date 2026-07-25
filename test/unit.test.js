@@ -1,0 +1,240 @@
+'use strict';
+// Unit tests for the calculation engines, run against the real function bodies extracted
+// from index.html. No browser, no DOM — these are fast and should stay that way.
+//
+// Every assertion here is tied to a reference formula or a documented invariant, not to
+// whatever the code happened to return when the test was written. If a number changes,
+// the test should be telling you the physiology changed, not that a snapshot went stale.
+
+const test = require('node:test');
+const assert = require('node:assert');
+const { load } = require('./helpers/extract');
+
+// ── Activity expenditure ──────────────────────────────────────────────────────
+test('calcBurnKcal matches the standard MET equation', () => {
+  const ctx = load(['calcBurnKcal'], {
+    prelude: 'var S = { profile: { weight: 70 } };\nfunction getLatestCheckinWeight(){ return S.profile.weight; }',
+  });
+  // kcal = MET × 3.5 mL O2/kg/min × kg / 200
+  const textbook = (met, kg, min) => (met * 3.5 * kg * min) / 200;
+
+  assert.strictEqual(ctx.calcBurnKcal(8.5, 45), Math.round(textbook(8.5, 70, 45)), '8.5 MET / 45 min / 70 kg');
+  assert.strictEqual(ctx.calcBurnKcal(3.5, 60), Math.round(textbook(3.5, 70, 60)), 'walking, 1 h');
+  assert.strictEqual(ctx.calcBurnKcal(0, 45), 0, 'zero MET burns nothing');
+  assert.strictEqual(ctx.calcBurnKcal(8.5, 0), 0, 'zero minutes burns nothing');
+
+  // Regression: the 1.05 factor was missing, running ~4.8% under every published table.
+  assert.ok(ctx.calcBurnKcal(8.5, 45) > 8.5 * 70 * 0.75, 'must not drop the 3.5/200 conversion');
+});
+
+test('calcStepCalories is NET of resting metabolism', () => {
+  const ctx = load(['calcStepCalories'], {
+    consts: ['STEP_KCAL_NET_PER_STEP_AT_70KG'],
+    prelude: 'var S = { profile: { weight: 70 } };\nfunction getLatestCheckinWeight(){ return S.profile.weight; }',
+  });
+  // Walking ≈ 3.5 METs at ~110 steps/min. NET subtracts the 1 MET resting cost, which
+  // BMR/TDEE already accounts for — using the gross figure as a deduction double-counts it.
+  const netPerMin = ((3.5 - 1) * 3.5 * 70) / 200;
+  const expected10k = (netPerMin / 110) * 10000;
+
+  assert.ok(Math.abs(ctx.calcStepCalories(10000) - expected10k) <= 6,
+    `10k steps @70kg should be ~${Math.round(expected10k)} net, got ${ctx.calcStepCalories(10000)}`);
+  assert.ok(ctx.calcStepCalories(10000) < 340, 'must be below the ~370 kcal GROSS figure');
+  assert.strictEqual(ctx.calcStepCalories(0), 0);
+
+  ctx.S.profile.weight = 140;
+  assert.ok(Math.abs(ctx.calcStepCalories(10000) - 2 * expected10k) <= 12, 'scales linearly with bodyweight');
+});
+
+// ── Protein ───────────────────────────────────────────────────────────────────
+test('protein tracks lean mass continuously across the whole %BF range', () => {
+  const ctx = load(
+    ['buildGoalFromMode', 'getGoalModeConfig', 'normalizeGoalMode', 'calcBMRFromProfile', 'getActivityMultiplier', 'calcFormulaTDEE'],
+    {
+      prelude: `
+        var MOCK = { weight: 70, bf: null };
+        var S = { profile: {}, goals: { cal: 2000 } };
+        function getLatestCheckinWeight(){ return MOCK.weight; }
+        function safeJSON(k, d){ return d; }
+        function getLatestBodyCompBySource(){ return MOCK.bf != null ? { bf: MOCK.bf } : null; }
+        function readAnalyzerContext(){ return null; }`,
+    }
+  );
+  const profile = { age: 30, weight: 70, height: 175, gender: 'male', activity: 1.55, goalType: 'fat_loss' };
+
+  let prev = null;
+  for (let bf = 15; bf <= 35; bf += 0.5) {
+    ctx.MOCK.bf = bf;
+    const g = ctx.buildGoalFromMode('fat_loss', profile, 2500);
+    const perLbm = g.pro / (70 * (1 - bf / 100));
+
+    // Requirement scales with fat-free mass; 2.4 g/kg LBM sits inside the 2.3–3.1 g/kg
+    // FFM band recommended for athletes in an energy deficit.
+    assert.ok(Math.abs(perLbm - 2.4) < 0.05, `${bf}%BF should hold ~2.4 g/kg LBM, got ${perLbm.toFixed(2)}`);
+
+    if (prev !== null) {
+      // The old code switched bases at a %BF threshold, so the target FELL ~13 g the
+      // moment body fat rose past 25% — and jumped back when it dipped under.
+      assert.ok(g.pro <= prev, `protein must not RISE as %BF rises (at ${bf}%)`);
+      assert.ok(prev - g.pro <= 2, `no discontinuity at ${bf}%BF (${prev} → ${g.pro})`);
+    }
+    prev = g.pro;
+  }
+
+  ctx.MOCK.bf = 20;
+  assert.strictEqual(ctx.buildGoalFromMode('fat_loss', profile, 2500).proteinBasis, 'lbm', 'basis is reported honestly');
+});
+
+test('buildGoalFromMode keeps calories and macros reconciled', () => {
+  const ctx = load(
+    ['buildGoalFromMode', 'getGoalModeConfig', 'normalizeGoalMode', 'calcBMRFromProfile', 'getActivityMultiplier', 'calcFormulaTDEE'],
+    {
+      prelude: `
+        var MOCK = { weight: 70, bf: null };
+        var S = { profile: {}, goals: { cal: 2000 } };
+        function getLatestCheckinWeight(){ return MOCK.weight; }
+        function safeJSON(k, d){ return d; }
+        function getLatestBodyCompBySource(){ return MOCK.bf != null ? { bf: MOCK.bf } : null; }
+        function readAnalyzerContext(){ return null; }`,
+    }
+  );
+  for (const [gender, weight, bf, tdee] of [['male', 70, 20, 2500], ['female', 55, 28, 1900], ['male', 100, 35, 2000]]) {
+    ctx.MOCK.weight = weight;
+    ctx.MOCK.bf = bf;
+    const g = ctx.buildGoalFromMode('fat_loss', { age: 30, weight, height: 175, gender, activity: 1.55 }, tdee);
+    const macroKcal = g.pro * 4 + g.crb * 4 + g.fat * 9;
+    // The app's own Settings validator flags a gap > 15 kcal in red; a goal the engine
+    // generates must never fail that check.
+    assert.ok(Math.abs(macroKcal - g.cal) <= 15, `${gender} ${weight}kg ${bf}%BF: cal ${g.cal} vs macros ${macroKcal}`);
+    assert.ok(g.cal >= (gender === 'female' ? 1200 : 1500), 'respects the gender calorie floor');
+  }
+});
+
+// ── Sleep ─────────────────────────────────────────────────────────────────────
+test('scoreDuration ranks oversleep below a solid night and grades short nights', () => {
+  const { scoreDuration } = load(['scoreDuration']);
+  assert.ok(scoreDuration(12) < scoreDuration(8.5), '12 h must score below 8.5 h');
+  assert.ok(scoreDuration(10) < scoreDuration(9.2), 'past the optimal band the score declines');
+  assert.ok(scoreDuration(2) < scoreDuration(5.9), 'a 2 h night must score below a 5.9 h night');
+  assert.ok(scoreDuration(9.2) >= scoreDuration(8.5), '9–9.5 h is the peak band');
+  assert.strictEqual(scoreDuration(0), 0);
+});
+
+test('unmeasured sleep pillars are dropped, never filled with a placeholder', () => {
+  const ctx = load(['calculateSleepScoreFromData', 'scoreDuration', 'scoreEfficiency', 'scoreStages', 'scorePhysio']);
+
+  const phoneOnly = ctx.calculateSleepScoreFromData({ hours: 4.0 });
+  assert.strictEqual(phoneOnly.pillars.stages, null, 'no stage data → null, not 50');
+  assert.strictEqual(phoneOnly.pillars.physio, null, 'no HRV/RHR → null, not 50');
+  // With only Duration measured, the score IS the duration score. A hard-coded 50 at
+  // 20% weight each used to drag a 4 h night up to 37 ("Fair").
+  assert.strictEqual(phoneOnly.sleepScore, ctx.scoreDuration(4.0));
+  assert.strictEqual(phoneOnly.scoreLabel, 'Poor');
+
+  const full = ctx.calculateSleepScoreFromData({
+    hours: 7.5, timeInBed: 8, deepSleep: 70, remSleep: 100, hrv: 65, hrvBaseline: 60, consistency: 80,
+  });
+  assert.ok(full.sleepScore > 0 && full.sleepScore <= 100, 'stays in range with every pillar present');
+  for (const v of Object.values(full.pillars)) assert.ok(v !== null, 'all pillars measured');
+});
+
+test('sleep efficiency cannot exceed 100%', () => {
+  const { scoreEfficiency } = load(['scoreEfficiency']);
+  // A misread screenshot import used to yield >100% and land in the TOP band.
+  assert.strictEqual(scoreEfficiency(7.83, 7.33), null, 'more sleep than time in bed is not a top score');
+  assert.strictEqual(scoreEfficiency(6.67, 6.83), 95, '97.6% is legitimately excellent');
+  assert.strictEqual(scoreEfficiency(7, 0), null);
+  assert.strictEqual(scoreEfficiency(0, 8), null);
+});
+
+// ── Meal data ─────────────────────────────────────────────────────────────────
+test('reconcileMealMacros keeps calories and macros consistent', () => {
+  const { reconcileMealMacros } = load(['reconcileMealMacros']);
+
+  const wrong = reconcileMealMacros({ calories: 650, protein: 20, carbs: 30, fat: 15 });
+  assert.strictEqual(wrong.calories, 20 * 4 + 30 * 4 + 15 * 9, 'macros win when the gap is large');
+  assert.strictEqual(wrong._calAdjustedFrom, 650, 'the correction is disclosed, not silent');
+
+  const ok = reconcileMealMacros({ calories: 520, protein: 40, carbs: 60, fat: 12 });
+  assert.strictEqual(ok.calories, 520, 'within 10% the stated calories are kept');
+  assert.strictEqual(ok._calAdjustedFrom, undefined);
+
+  // An AI returning prose where a number belongs used to put NaN on the dashboard ring.
+  const junk = reconcileMealMacros({ calories: 'ประมาณ 550', protein: 20, carbs: 30, fat: 15 });
+  assert.ok(Number.isFinite(junk.calories), 'never emits NaN');
+  assert.strictEqual(junk.calories, 335, 'unparseable calories are derived from macros');
+
+  const noMacros = reconcileMealMacros({ calories: 300, protein: null, carbs: undefined, fat: 'x' });
+  assert.deepStrictEqual(
+    [noMacros.calories, noMacros.protein, noMacros.carbs, noMacros.fat],
+    [300, 0, 0, 0],
+    'with no macros the calorie figure stands'
+  );
+});
+
+// ── Fitness target ────────────────────────────────────────────────────────────
+test('calcTargetFeasibility rejects targets needing impossible lean gain', () => {
+  const ctx = load(['calcTargetFeasibility', 'elapsedDaysSince', 'calcBMRFromProfile', 'getActivityMultiplier', 'calcFormulaTDEE'], {
+    prelude: `
+      var MOCK = { weight: 75 };
+      var S = { goals: { cal: 2000 } };
+      function getLatestCheckinWeight(){ return MOCK.weight; }
+      function profileSafe(){ return {}; }
+      function localDateStr(){ return '2026-07-25'; }
+      function readAnalyzerContext(){ return null; }`,
+  });
+  const profile = { gender: 'male', weight: 75, age: 30, height: 175, activity: 1.55 };
+
+  // Same weight, far lower %BF ⇒ must BUILD muscle while running a deficit.
+  const impossible = ctx.calcTargetFeasibility({ currBF: 22, bf: 12, weight: 75, duration: 12 }, profile);
+  assert.ok(impossible.leanGainUnrealistic, 'flags the contradiction');
+  assert.strictEqual(impossible.status, 'unrealistic');
+  assert.ok(impossible.impliedLeanGainPerMonth > 0.25, 'exceeds the realistic in-deficit rate');
+
+  // A straight cut holding lean mass is fine.
+  const fine = ctx.calcTargetFeasibility({ currBF: 22, bf: 15, weight: 69, duration: 12 }, profile);
+  assert.ok(!fine.leanGainUnrealistic, 'a legitimate cut is not flagged');
+});
+
+// ── Date handling ─────────────────────────────────────────────────────────────
+test('elapsedDaysSince counts whole days regardless of timezone', () => {
+  const ctx = load(['elapsedDaysSince'], { prelude: "function localDateStr(){ return '2026-08-01'; }" });
+  // 'YYYY-MM-DD' parses as UTC midnight while new Date() is local; anchoring both ends at
+  // local noon is what stops the program week rolling over at 07:00 in Bangkok.
+  assert.strictEqual(ctx.elapsedDaysSince('2026-07-25'), 7);
+  assert.strictEqual(ctx.elapsedDaysSince('2026-08-01'), 0);
+  assert.strictEqual(ctx.elapsedDaysSince('2026-09-01'), 0, 'future start dates clamp at zero');
+  assert.strictEqual(ctx.elapsedDaysSince(null), 0);
+  assert.strictEqual(ctx.elapsedDaysSince(''), 0);
+});
+
+test('entriesWithinDays uses a day window, not a row count', () => {
+  const ctx = load(['entriesWithinDays'], { prelude: "function localDateStr(){ return '2026-07-25'; }" });
+
+  // 21 weekly weigh-ins span ~147 days. slice(-21) would hand all of them to something
+  // labelled "21d trend" — a five-month slope diluting a real recent cut.
+  const weekly = [];
+  for (let i = 20; i >= 0; i--) {
+    const d = new Date('2026-07-25T12:00:00');
+    d.setDate(d.getDate() - i * 7);
+    weekly.push({ date: d.toISOString().slice(0, 10), weight: 80 - i * 0.1 });
+  }
+  assert.ok(ctx.entriesWithinDays(weekly, 21).length <= 4, 'a weekly logger has ≤4 points in 21 days');
+
+  const daily = [];
+  for (let i = 19; i >= 0; i--) {
+    const d = new Date('2026-07-25T12:00:00');
+    d.setDate(d.getDate() - i);
+    daily.push({ date: d.toISOString().slice(0, 10), weight: 80 - i * 0.05 });
+  }
+  assert.strictEqual(ctx.entriesWithinDays(daily, 21).length, 20, 'a daily logger keeps every point');
+
+  const mixed = [
+    { date: '2026-01-01', weight: 90 },
+    { date: '2026-07-24', weight: 79 },
+    { date: '2026-07-20', weight: 80 },
+    { date: '2026-07-22', weight: null },
+  ];
+  const win = ctx.entriesWithinDays(mixed, 21);
+  assert.deepStrictEqual(win.map((e) => e.date), ['2026-07-20', '2026-07-24'], 'filters, drops nulls, sorts oldest-first');
+});

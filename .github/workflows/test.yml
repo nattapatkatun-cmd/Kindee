@@ -1,0 +1,43 @@
+name: test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci || npm install
+
+      # playwright-core ships no browsers of its own. Install just Chromium and point the
+      # test helper at it, so no test has to hardcode a path.
+      - name: Cache Chromium
+        id: chromium-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-chromium-${{ hashFiles('package.json') }}
+
+      - name: Install Chromium
+        if: steps.chromium-cache.outputs.cache-hit != 'true'
+        run: npx --yes playwright@1.49.0 install --with-deps chromium
+
+      - name: Run tests
+        env:
+          PLAYWRIGHT_BROWSERS_PATH: ${{ github.workspace }}/../.cache/ms-playwright
+          # The app's day boundary is 04:00 local and several date helpers are
+          # timezone-sensitive, so pin CI to the timezone the app is actually used in.
+          TZ: Asia/Bangkok
+        run: npm test

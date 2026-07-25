@@ -1,0 +1,14 @@
+{
+  "name": "kindee",
+  "private": true,
+  "version": "0.0.0",
+  "description": "กินดี — calorie, training and recovery tracker (single-file PWA)",
+  "scripts": {
+    "test": "node --test --test-concurrency=1 test/*.test.js",
+    "test:unit": "node --test test/unit.test.js",
+    "test:app": "node --test --test-concurrency=1 test/app.test.js"
+  },
+  "devDependencies": {
+    "playwright-core": "^1.49.0"
+  }
+}
