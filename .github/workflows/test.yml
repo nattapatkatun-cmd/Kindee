@@ -21,6 +21,12 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # Runs in about a second and catches undefined variables, which is the class of bug
+      # that has actually reached production here. Kept as its own step, before the browser
+      # install, so a typo fails in ~30s instead of ~5 minutes.
+      - name: Lint
+        run: npm run lint
+
       # playwright-core ships no browsers of its own. The `playwright` CLI is used only to
       # download Chromium, and its version must match playwright-core exactly — a mismatch
       # downloads a browser build the client does not expect. Deriving it from the
