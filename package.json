@@ -4,11 +4,15 @@
   "version": "0.0.0",
   "description": "กินดี — calorie, training and recovery tracker (single-file PWA)",
   "scripts": {
-    "test": "node --test --test-concurrency=1 test/*.test.js",
+    "lint": "eslint .",
+    "test": "npm run lint && node --test --test-concurrency=1 test/*.test.js",
     "test:unit": "node --test test/unit.test.js",
     "test:app": "node --test --test-concurrency=1 test/app.test.js"
   },
   "devDependencies": {
+    "eslint": "^10.8.0",
+    "eslint-plugin-html": "^8.1.4",
+    "globals": "^17.7.0",
     "playwright-core": "1.62.0"
   }
 }
