@@ -8327,7 +8327,10 @@ function renderTargetDashboard() {
       var wRemaining = tgtWeight - latestW;
       if ((wRemaining < 0 && weeklyRate < 0) || (wRemaining > 0 && weeklyRate > 0)) {
         projWeeksLeft = Math.ceil(wRemaining / weeklyRate);
-        var projDate  = new Date(todayD.getTime() + projWeeksLeft * 7 * 86400000);
+        // Anchor at local noon like every other date calculation in this block, so the
+        // projected date can't drift across a day boundary. (This used to read `todayD`,
+        // which was removed when elapsed-day math moved to elapsedDaysSince().)
+        var projDate  = new Date(new Date(localDateStr() + 'T12:00:00').getTime() + projWeeksLeft * 7 * 86400000);
         projReachDate = projDate.toLocaleDateString('th-TH', {day:'numeric', month:'short', year:'numeric'});
       }
     }
