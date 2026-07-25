@@ -1,0 +1,258 @@
+'use strict';
+// End-to-end tests against the real index.html in headless Chromium.
+//
+// These exist because index.html has no build step and no module boundaries, so a rename
+// or a deleted variable produces a *runtime* ReferenceError that no syntax check can see.
+// Two such regressions reached production before this suite existed:
+//   • `todayD is not defined` — the Fitness Target tab threw and silently fell back to
+//     its empty state, so the app looked like it had lost the user's target.
+//   • editing the Fitness Target left the weight analysis serving a cached card built
+//     against the previous target.
+// Both are covered below.
+
+const test = require('node:test');
+const assert = require('node:assert');
+const { launch, openApp, errorsFor, openWeightAnalysis } = require('./helpers/browser');
+const { buildSeed } = require('./fixtures/seed');
+
+let browser;
+test.before(async () => { browser = await launch(); });
+test.after(async () => { if (browser) await browser.close(); });
+
+const noErrors = async (page, what) => {
+  const errs = await errorsFor(page);
+  assert.deepStrictEqual(errs, [], what + ' produced JS errors:\n  ' + errs.join('\n  '));
+};
+
+test('every page and sub-tab renders without a JS error', async () => {
+  const page = await openApp(browser, buildSeed());
+
+  // Drive the app's own navigation rather than clicking DOM nodes: a click re-renders the
+  // container, which invalidates any element handles taken beforehand and makes the walk
+  // silently skip tabs. What matters here is that every render path executes, and calling
+  // the navigation functions covers exactly the same code the click handlers do.
+  const visited = await page.evaluate(async () => {
+    const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+    const names = new Set();
+    document.querySelectorAll('[onclick*="showFitnessTab"]').forEach((el) => {
+      const m = /showFitnessTab\(\s*'([^']+)'/.exec(el.getAttribute('onclick') || '');
+      if (m) names.add(m[1]);
+    });
+    const out = { pages: [], ftTabs: [...names] };
+    for (const p of ['dashboard', 'analyze', 'log', 'fitness', 'weight', 'settings']) {
+      if (typeof showPage === 'function') { showPage(p); out.pages.push(p); await sleep(150); }
+    }
+    showPage('fitness');
+    for (const t of out.ftTabs) {
+      if (typeof showFitnessTab === 'function') { showFitnessTab(t); await sleep(150); }
+    }
+    return out;
+  });
+
+  assert.ok(visited.pages.length === 6, 'all six top-level pages rendered');
+  assert.ok(visited.ftTabs.length >= 5, 'expected the fitness sub-tabs, found ' + visited.ftTabs.length);
+
+  await page.waitForTimeout(400);
+  await noErrors(page, `${visited.pages.length} pages + ${visited.ftTabs.length} sub-tabs`);
+  await page.close();
+});
+
+test('the Fitness Target tab renders for every shape of target data', async () => {
+  // Regression guard for `todayD is not defined`: the projection branch only executes
+  // when a target HAS a start date and a projectable trend, so the with-target case is
+  // the one that actually exercises it. The other two guard the empty paths.
+  for (const scenario of ['with-target', 'no-target', 'target-without-start-date']) {
+    const seed = buildSeed();
+    if (scenario === 'no-target') delete seed.gd_ft_target;
+    if (scenario === 'target-without-start-date') {
+      delete seed.gd_ft_target.startDate;
+      delete seed.gd_ft_target.startBF;
+    }
+
+    const page = await openApp(browser, seed);
+    const rendered = await page.evaluate(() => {
+      showPage('fitness');
+      if (typeof showFitnessTab === 'function') showFitnessTab('target');
+      if (typeof renderTargetDashboard === 'function') renderTargetDashboard();
+      // Scope to the dashboard container: the empty-state markup also lives in the static
+      // HTML further up the page, so scanning document.body would always match it.
+      const el = document.getElementById('ft-target-dashboard');
+      const t = ((el && el.textContent) || '').replace(/\s+/g, ' ');
+      return {
+        found: !!el,
+        hasTimeline: /สัปดาห์ที่/.test(t),
+        hasEmptyState: /ยังไม่มี Fitness Target/.test(t),
+      };
+    });
+    assert.ok(rendered.found, '#ft-target-dashboard should exist');
+    await page.waitForTimeout(300);
+    await noErrors(page, 'Fitness Target tab (' + scenario + ')');
+
+    if (scenario === 'with-target') {
+      assert.ok(rendered.hasTimeline, 'a target with a start date must render its timeline');
+      assert.ok(!rendered.hasEmptyState, 'must not fall back to the empty state — that is the bug signature');
+    }
+    if (scenario === 'no-target') {
+      assert.ok(rendered.hasEmptyState, 'with no target the empty state is correct');
+    }
+    await page.close();
+  }
+});
+
+test('editing the Fitness Target changes the analysis, and survives a reload', async () => {
+  const page = await openApp(browser, buildSeed());
+
+  const targetInAnalysis = () => page.evaluate(() => {
+    showPage('weight');
+    if (typeof initWeightTab === 'function') initWeightTab();
+    runWeightAnalysis();
+    return (window._wtAnalysisData || {}).targetW;
+  });
+
+  assert.strictEqual(await targetInAnalysis(), 72, 'fixture starts at a 72 kg target');
+
+  await page.evaluate(() => {
+    showPage('settings');
+    document.getElementById('ft-target-weight').value = 66;
+    document.getElementById('ft-curr-bf').value = 21.5;
+    document.getElementById('ft-target-bf').value = 15;
+    document.getElementById('ft-target-duration').value = 12;
+    saveFitnessTarget();
+  });
+  await page.waitForTimeout(400);
+  assert.strictEqual(await targetInAnalysis(), 66, 'the analysis picks up the new target immediately');
+
+  // The reported symptom was specifically "changed it, hit refresh, nothing moved" — the
+  // analysis card is cached per calendar day, so only a real reload reproduces it.
+  await page.reload({ waitUntil: 'load' });
+  await page.waitForTimeout(1800);
+  assert.strictEqual(await targetInAnalysis(), 66, 'the new target survives a full page reload');
+
+  await noErrors(page, 'editing the Fitness Target');
+  await page.close();
+});
+
+test('the analysis card names the calorie goal it derives its deficit from', async () => {
+  // requiredDeficit comes from the committed calorie goal, not the Fitness Target. That
+  // is intentional, but it must be visible — otherwise editing the target appears to do
+  // nothing and the two can drift apart silently.
+  const page = await openApp(browser, buildSeed());
+  const text = await openWeightAnalysis(page);
+  assert.match(text, /Goal Engine:/, 'the Goal Engine line is present');
+  assert.match(text, /จากเป้าแคลที่ตั้งไว้/, 'it states which number it came from');
+  await noErrors(page, 'the weight analysis');
+  await page.close();
+});
+
+test('changing the calorie goal invalidates the cached analysis', async () => {
+  const page = await openApp(browser, buildSeed());
+
+  const goalInAnalysis = () => page.evaluate(() => {
+    showPage('weight');
+    if (typeof initWeightTab === 'function') initWeightTab();
+    runWeightAnalysis();
+    return (window._wtAnalysisData || {}).userGoalCal;
+  });
+
+  assert.strictEqual(await goalInAnalysis(), 1800);
+
+  await page.evaluate(() => {
+    S.goals = { cal: 2100, pro: 150, crb: 200, fat: 62 };
+    localStorage.setItem('gd_goals', JSON.stringify(S.goals));
+    applyGoalValues({ cal: 2100, pro: 150, crb: 200, fat: 62 }, true);
+  });
+  await page.waitForTimeout(300);
+  assert.strictEqual(await goalInAnalysis(), 2100, 'a goal change must not be masked by the same-day cache');
+
+  await noErrors(page, 'changing the calorie goal');
+  await page.close();
+});
+
+test('a meal whose macros contradict its calories is reconciled before it is stored', async () => {
+  const page = await openApp(browser, buildSeed());
+
+  const saved = await page.evaluate(() => {
+    showPage('analyze');
+    // 650 kcal against P20/C30/F15 = 335 kcal by 4-4-9.
+    showResult({
+      foodName: 'ทดสอบ', description: '', calories: 650, protein: 20, carbs: 30, fat: 15,
+      sodiumFlag: 'medium', carbLoadFlag: 'normal', mealContext: 'normal',
+      retentionRisk: 20, analysisConfidence: 80, items: [],
+    });
+    curLabel = 'ของว่าง';
+    saveMeal();
+    const m = S.meals[S.meals.length - 1];
+    return { cal: m.calories, pro: m.protein, crb: m.carbs, fat: m.fat };
+  });
+
+  assert.strictEqual(saved.cal, saved.pro * 4 + saved.crb * 4 + saved.fat * 9,
+    'the stored meal must be internally consistent');
+  await noErrors(page, 'saving a meal');
+  await page.close();
+});
+
+test('multi-item meals reconcile both calories and macros to the item sums', async () => {
+  const page = await openApp(browser, buildSeed());
+  const result = await page.evaluate(() => {
+    showPage('analyze');
+    // Stated totals disagree with the items by more than the 10% tolerance, in both
+    // calories (900 vs 1200) and protein (40 vs 62).
+    showResult({
+      foodName: 'รวม', calories: 900, protein: 40, carbs: 100, fat: 30,
+      items: [
+        { foodName: 'a', calories: 400, protein: 22, carbs: 45, fat: 12 },
+        { foodName: 'b', calories: 400, protein: 20, carbs: 44, fat: 11 },
+        { foodName: 'c', calories: 400, protein: 20, carbs: 45, fat: 12 },
+      ],
+      sodiumFlag: 'medium', carbLoadFlag: 'normal', mealContext: 'normal',
+      retentionRisk: 20, analysisConfidence: 80,
+    });
+    return { cal: curResult.calories, pro: curResult.protein };
+  });
+  assert.strictEqual(result.pro, 62, 'protein follows the item sum, not the stated total');
+  assert.ok(result.cal >= 1150, 'calories follow the item sum too, got ' + result.cal);
+  await noErrors(page, 'a multi-item meal');
+  await page.close();
+});
+
+test('out-of-range imported sleep values are rejected instead of scoring', async () => {
+  const page = await openApp(browser, buildSeed());
+  const outcome = await page.evaluate(() => {
+    showPage('fitness');
+    if (typeof showFitnessTab === 'function') showFitnessTab('sleep');
+    if (typeof loadSleepUI === 'function') loadSleepUI();
+    const set = (id, v) => { const e = document.getElementById(id); if (e) e.value = v; };
+    set('sleep-hours', 7); set('sleep-minutes', 10);
+    set('sleep-tib-h', 7); set('sleep-tib-m', 50);
+    set('sleep-deep-h', 1); set('sleep-deep-m', 2);
+    set('sleep-rem-h', 1); set('sleep-rem-m', 35);
+    set('sleep-rhr', 56); set('sleep-hrv', 61); set('sleep-hrv-baseline', 60);
+    set('sleep-bedtime', '23:40'); set('sleep-waketime', '06:50');
+    saveSleep();
+    const good = { hrv: S.sleepData.hrv, score: S.sleepData.sleepScore };
+
+    // A screenshot import misreading 39 as 390 used to swing the score ~14 points, which
+    // is enough to flip the Push/Rest recommendation and the day's calorie target.
+    set('sleep-hrv', 390);
+    saveSleep();
+    return { good, hrvAfter: S.sleepData.hrv };
+  });
+
+  assert.strictEqual(outcome.hrvAfter, 61, 'the out-of-range HRV must not reach the score');
+  assert.ok(outcome.good.score > 0, 'a valid save still computes a score without an AI call');
+  await noErrors(page, 'saving sleep');
+  await page.close();
+});
+
+test('the recommended-calorie sync respects the floor and stays reconciled', async () => {
+  const page = await openApp(browser, buildSeed());
+  const goal = await page.evaluate(() => {
+    syncRecommendedCalToGoal(1200); // below the 1500 male floor on purpose
+    return { ...S.goals };
+  });
+  assert.ok(goal.cal >= 1500, 'clamps to the safety floor, got ' + goal.cal);
+  assert.strictEqual(goal.cal, goal.pro * 4 + goal.crb * 4 + goal.fat * 9,
+    'macros must add up to the calorie target the app just wrote');
+  await noErrors(page, 'syncing the recommended calories');
+  await page.close();
+});

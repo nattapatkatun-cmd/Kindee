@@ -1,0 +1,50 @@
+name: test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # playwright-core ships no browsers of its own. The `playwright` CLI is used only to
+      # download Chromium, and its version must match playwright-core exactly — a mismatch
+      # downloads a browser build the client does not expect. Deriving it from the
+      # installed package makes the two impossible to drift apart.
+      - name: Resolve Playwright version
+        id: pw
+        run: echo "version=$(node -p "require('playwright-core/package.json').version")" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Chromium
+        id: chromium-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-chromium-${{ steps.pw.outputs.version }}
+
+      - name: Install Chromium
+        if: steps.chromium-cache.outputs.cache-hit != 'true'
+        run: npx --yes playwright@${{ steps.pw.outputs.version }} install --with-deps chromium
+
+      # No PLAYWRIGHT_BROWSERS_PATH: the browsers land in playwright's default location and
+      # test/helpers/browser.js lets playwright-core resolve them itself.
+      - name: Run tests
+        env:
+          # The app's day boundary is 04:00 local and several date helpers are
+          # timezone-sensitive, so pin CI to the timezone the app is actually used in.
+          TZ: Asia/Bangkok
+        run: npm test
