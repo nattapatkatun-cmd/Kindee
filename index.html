@@ -1299,9 +1299,21 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
         <div id="planSavedLabel" style="font-size:11px;color:var(--text3);text-align:center;margin-top:8px;display:none;"></div>
       </div>
       <div class="card" id="progression-card" style="display:none;">
-        <div class="card-title">ความก้าวหน้ารายท่า</div>
-        <div style="font-size:12px;color:var(--text3);margin-bottom:10px;line-height:1.5;">วัดจาก e1RM 2-3 ครั้งล่าสุดต่อท่า (ต้องมี ≥2 session ถึงประเมินได้) — ใช้เป็นข้อมูลอ้างอิงเวลากด "สร้างแผนสัปดาห์นี้" ด้วย</div>
-        <div id="progression-list"></div>
+        <div id="progression-header" style="display:flex;align-items:center;justify-content:space-between;gap:8px;cursor:pointer;" onclick="toggleProgressionOverview()">
+          <div class="card-title" style="margin-bottom:0;">ความก้าวหน้ารายท่า</div>
+          <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;">
+            <span id="progression-summary" style="font-size:11px;color:var(--text3);white-space:nowrap;"></span>
+            <span id="progression-caret" style="font-size:13px;color:var(--text3);">▼</span>
+          </div>
+        </div>
+        <!-- Deload sits OUTSIDE the collapsible body on purpose: it is a fatigue warning,
+             and a warning behind a collapsed card is a warning nobody reads. -->
+        <div id="progression-deload"></div>
+        <div id="progression-body" style="display:none;margin-top:10px;">
+          <div style="font-size:12px;color:var(--text3);margin-bottom:10px;line-height:1.5;">วัดจาก e1RM 2-3 ครั้งล่าสุดต่อท่า (ต้องมี ≥2 session ถึงประเมินได้) — ใช้เป็นข้อมูลอ้างอิงเวลากด "สร้างแผนสัปดาห์นี้" ด้วย</div>
+          <div class="ex-filter-row" id="progression-filter-row" style="margin-bottom:8px;"></div>
+          <div id="progression-list"></div>
+        </div>
       </div>
       <div class="loading" id="planLoading"><div class="spinner"></div><div style="font-size:14px;color:var(--text2);">AI กำลังวิเคราะห์...</div></div>
       <div class="input-group" id="plan-day-filter-row" style="margin-bottom:10px;display:none;">
@@ -6122,7 +6134,8 @@ function migrateThaiExercisesToEnglish() {
   var names = ids.map(function(id){ var ex = getExById(moves[id]); return ex ? ex.name : moves[id]; });
   showToast('🔄 รวมประวัติท่าชื่อไทย '+ids.length+' ท่าเข้ากับท่าอังกฤษ: '+names.join(', '), 'info');
 }
-var ST = {curExercise:null, sets:[], sessionExercises:[], curFilter:'all', prFilter:'all'};
+var ST = {curExercise:null, sets:[], sessionExercises:[], curFilter:'all', prFilter:'all',
+          progOpen:false, progFilter:'all', _progRows:[]};
 
 function calcE1RM(weight, reps, rir) {
   if (!weight || !reps || reps <= 0) return 0;
@@ -6398,6 +6411,35 @@ function renderExTarget(exerciseId) {
   el.style.display = 'block';
 }
 
+var PROG_VERDICT_META = {
+  up:      {icon:'📈', label:'กำลังโต', color:'var(--green)'},
+  plateau: {icon:'⏸️', label:'นิ่ง',     color:'var(--text3)'},
+  down:    {icon:'📉', label:'ถดถอย',   color:'var(--red)'}
+};
+// Pill order and labels mirror the exercise picker and the PR card so "Push" means the
+// same thing and sits in the same place everywhere in the app.
+var PROG_GROUP_META = [
+  {id:'push',   label:'🔴 Push'},
+  {id:'pull',   label:'🔵 Pull'},
+  {id:'legs',   label:'🟢 Legs'},
+  {id:'core',   label:'🟡 Core'},
+  {id:'custom', label:'🟣 อื่น ๆ'}
+];
+// Collapse/expand the whole card. State is in-memory like FT._historyOpen — it resets on
+// reload rather than persisting, matching the app's other collapsible sections.
+function toggleProgressionOverview() {
+  ST.progOpen = !ST.progOpen;
+  var body = document.getElementById('progression-body');
+  var caret = document.getElementById('progression-caret');
+  if (body) body.style.display = ST.progOpen ? 'block' : 'none';
+  if (caret) caret.textContent = ST.progOpen ? '▲' : '▼';
+}
+function filterProgressionGroup(group, btn) {
+  ST.progFilter = group;
+  document.querySelectorAll('#progression-filter-row .ex-pill').forEach(function(p){ p.classList.remove('active'); });
+  if (btn) btn.classList.add('active');
+  renderProgressionList();
+}
 // Render the Plan-tab progression overview card (called from showFitnessTab).
 function renderProgressionOverview() {
   var card = document.getElementById('progression-card');
@@ -6414,13 +6456,6 @@ function renderProgressionOverview() {
   }).filter(Boolean);
   var deload = (typeof checkDeloadNeed === 'function') ? checkDeloadNeed() : null;
   if (!rows.length && !deload) { card.style.display = 'none'; return; }
-  var deloadHTML = deload
-    ? '<div style="background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.35);border-radius:10px;padding:10px 12px;margin-bottom:10px;">' +
-      '<div style="font-size:12px;font-weight:700;color:#f59e0b;margin-bottom:4px;">🪫 ถึงเวลา Deload — สัญญาณล้าสะสม ' + deload.count + ' อย่าง</div>' +
-      '<div style="font-size:11px;color:var(--text2);line-height:1.6;">' + deload.signals.map(function(s){ return '• ' + s; }).join('<br>') +
-      '<br><b>สัปดาห์นี้: ลด volume ~40-50% (ลดจำนวน sets) คงน้ำหนักใกล้เดิม แล้วกลับมาโหลดเต็มสัปดาห์หน้า</b></div></div>'
-    : '';
-  if (!rows.length) { listEl.innerHTML = deloadHTML; card.style.display = 'block'; return; }
   var order = {down:0, plateau:1, up:2};
   rows.sort(function(a,b){
     var oa = order[a.verdict] !== undefined ? order[a.verdict] : 1;
@@ -6428,24 +6463,93 @@ function renderProgressionOverview() {
     if (oa !== ob) return oa - ob;
     return b.sessions[0].date.localeCompare(a.sessions[0].date);
   });
-  var vMeta = {
-    up:      {icon:'📈', label:'กำลังโต', color:'var(--green)'},
-    plateau: {icon:'⏸️', label:'นิ่ง',     color:'var(--text3)'},
-    down:    {icon:'📉', label:'ถดถอย',   color:'var(--red)'}
-  };
-  listEl.innerHTML = deloadHTML + rows.map(function(r){
-    var m = vMeta[r.verdict] || vMeta.plateau;
+  // Cached so switching a filter pill does not re-run getProgressionVerdict() and
+  // getNextTarget() over the whole strength log again. Rebuilt on every tab entry.
+  ST._progRows = rows;
+
+  var deloadEl = document.getElementById('progression-deload');
+  if (deloadEl) {
+    deloadEl.innerHTML = deload
+      ? '<div style="background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.35);border-radius:10px;padding:10px 12px;margin-top:10px;">' +
+        '<div style="font-size:12px;font-weight:700;color:#f59e0b;margin-bottom:4px;">🪫 ถึงเวลา Deload — สัญญาณล้าสะสม ' + deload.count + ' อย่าง</div>' +
+        '<div style="font-size:11px;color:var(--text2);line-height:1.6;">' + deload.signals.map(function(s){ return '• ' + s; }).join('<br>') +
+        '<br><b>สัปดาห์นี้: ลด volume ~40-50% (ลดจำนวน sets) คงน้ำหนักใกล้เดิม แล้วกลับมาโหลดเต็มสัปดาห์หน้า</b></div></div>'
+      : '';
+  }
+
+  var header = document.getElementById('progression-header');
+  var summaryEl = document.getElementById('progression-summary');
+  var caret = document.getElementById('progression-caret');
+  var body = document.getElementById('progression-body');
+  // Nothing to expand into — show the deload warning alone rather than a header that
+  // opens onto an empty card.
+  if (!rows.length) {
+    if (header) header.style.cursor = 'default';
+    if (caret) caret.style.display = 'none';
+    if (summaryEl) summaryEl.textContent = '';
+    if (body) body.style.display = 'none';
+    card.style.display = 'block';
+    return;
+  }
+  if (header) header.style.cursor = 'pointer';
+  if (caret) { caret.style.display = ''; caret.textContent = ST.progOpen ? '▲' : '▼'; }
+  // The counts have to be readable while collapsed, or closing the card hides the one
+  // number the user opened it for.
+  if (summaryEl) {
+    var counts = {up:0, plateau:0, down:0};
+    rows.forEach(function(r){ if (counts[r.verdict] !== undefined) counts[r.verdict]++; });
+    summaryEl.textContent = ['up','plateau','down']
+      .filter(function(k){ return counts[k]; })
+      .map(function(k){ return PROG_VERDICT_META[k].icon + ' ' + counts[k]; })
+      .join('  ') + '  ·  ' + rows.length + ' ท่า';
+  }
+  if (body) body.style.display = ST.progOpen ? 'block' : 'none';
+
+  // Only offer groups the user actually trains, with counts. A fixed pill row would show
+  // dead categories and would hide custom exercises (group 'custom') behind "ทั้งหมด".
+  var groupCounts = {};
+  rows.forEach(function(r){ var g = r.ex.group || 'custom'; groupCounts[g] = (groupCounts[g] || 0) + 1; });
+  var present = PROG_GROUP_META.filter(function(g){ return groupCounts[g.id]; });
+  if (!groupCounts[ST.progFilter]) ST.progFilter = 'all'; // a filtered-out group would render an empty list
+  var filterRow = document.getElementById('progression-filter-row');
+  if (filterRow) {
+    filterRow.style.display = present.length > 1 ? 'flex' : 'none';
+    filterRow.innerHTML = [{id:'all', label:'ทั้งหมด'}].concat(present).map(function(g){
+      var n = g.id === 'all' ? rows.length : groupCounts[g.id];
+      return '<button class="ex-pill' + (ST.progFilter === g.id ? ' active' : '') + '" ' +
+        'onclick="filterProgressionGroup(\'' + g.id + '\',this)">' + g.label + ' ' + n + '</button>';
+    }).join('');
+  }
+  renderProgressionList();
+  card.style.display = 'block';
+}
+// Paint just the filtered rows. Split out so a pill tap is a cheap re-render.
+function renderProgressionList() {
+  var listEl = document.getElementById('progression-list');
+  if (!listEl) return;
+  var filter = ST.progFilter || 'all';
+  var rows = (ST._progRows || []).filter(function(r){
+    return filter === 'all' || (r.ex.group || 'custom') === filter;
+  });
+  if (!rows.length) {
+    listEl.innerHTML = '<div style="text-align:center;padding:16px 0;color:var(--text3);font-size:12px;">ยังไม่มีท่าในหมวดนี้</div>';
+    return;
+  }
+  listEl.innerHTML = rows.map(function(r){
+    var m = PROG_VERDICT_META[r.verdict] || PROG_VERDICT_META.plateau;
     var trend = r.sessions.slice().reverse().map(function(s){ return s.bestE1RM; }).join(' → ');
     var t = r.next ? r.next.target : null;
     var targetTxt = t ? (t.weight > 0 ? (t.weight + 'kg×' + t.reps) : (t.reps + ' reps (BW)')) : '—';
+    var c = GROUP_COLOR[r.ex.group] || 'var(--accent)';
     return '<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border);gap:8px;">' +
-      '<div style="min-width:0;"><div style="font-size:13px;font-weight:600;">' + r.ex.name + '</div>' +
-      '<div style="font-size:11px;color:var(--text3);margin-top:2px;">e1RM ' + trend + 'kg</div></div>' +
+      '<div style="min-width:0;display:flex;align-items:center;gap:8px;">' +
+      '<span style="width:3px;align-self:stretch;background:' + c + ';border-radius:2px;flex-shrink:0;"></span>' +
+      '<div style="min-width:0;"><div style="font-size:13px;font-weight:600;">' + escapeHTML(r.ex.name) + '</div>' +
+      '<div style="font-size:11px;color:var(--text3);margin-top:2px;">e1RM ' + trend + 'kg</div></div></div>' +
       '<div style="text-align:right;flex-shrink:0;"><div style="font-size:11px;font-weight:700;color:' + m.color + ';">' + m.icon + ' ' + m.label + '</div>' +
       '<div style="font-size:11px;color:var(--accent);margin-top:2px;">' + targetTxt + '</div></div>' +
       '</div>';
   }).join('');
-  card.style.display = 'block';
 }
 
 function filterExercises(group, btn) {

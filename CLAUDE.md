@@ -14,7 +14,7 @@ State lives in `localStorage` under `gd_*` keys, mirrored to Firebase when signe
 ## Before you push
 
 ```bash
-npm test        # lint + 27 tests, ~3 min
+npm test        # lint + 28 tests, ~3 min
 npm run lint    # ~1 s — run this constantly while editing
 ```
 

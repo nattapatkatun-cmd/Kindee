@@ -256,3 +256,67 @@ test('the recommended-calorie sync respects the floor and stays reconciled', asy
   await noErrors(page, 'syncing the recommended calories');
   await page.close();
 });
+
+test('the progression card collapses, filters by group, and keeps the deload warning visible', async () => {
+  // Two sessions minimum per exercise or the row has no verdict and is dropped.
+  const dateBack = (n) => {
+    const d = new Date();
+    d.setDate(d.getDate() - n);
+    return d.toISOString().slice(0, 10);
+  };
+  const log = [];
+  let id = 1;
+  for (const [ex, base] of [['bench-press', 80], ['ohp', 50], ['deadlift', 140], ['bb-row', 70], ['squat', 110]]) {
+    for (const [i, back] of [21, 14, 7].entries()) {
+      const w = base + i * 2.5;
+      log.push({ id: id++, date: dateBack(back), exerciseId: ex, exerciseName: ex,
+        weight: w, reps: 8, rir: 2, e1RM: Math.round(w * (4 / 3) * 10) / 10 });
+    }
+  }
+  const page = await openApp(browser, Object.assign(buildSeed(), {
+    gd_strength_log: log,
+    // A custom exercise carries group 'custom'; a fixed push/pull/legs/core pill row would
+    // strand it behind "ทั้งหมด" with no way to select it.
+    gd_custom_ex: [{ id: 'custom-x', name: 'Cable Crossover', muscle: 'Custom',
+      group: 'custom', equipment: '—', tier: 'isolation', emoji: '🏷️', custom: true }],
+  }));
+
+  const state = () => page.evaluate(() => ({
+    body: getComputedStyle(document.getElementById('progression-body')).display,
+    caret: document.getElementById('progression-caret').textContent,
+    summary: document.getElementById('progression-summary').textContent,
+    pills: [...document.querySelectorAll('#progression-filter-row .ex-pill')].map((p) => p.textContent.trim()),
+    rows: document.querySelectorAll('#progression-list > div').length,
+  }));
+
+  await page.evaluate(() => { showPage('fitness'); showFitnessTab('plan'); });
+  await page.waitForTimeout(400);
+
+  const collapsed = await state();
+  assert.strictEqual(collapsed.body, 'none', 'starts collapsed');
+  assert.strictEqual(collapsed.caret, '▼');
+  // The counts have to survive collapsing, or closing the card hides the summary the
+  // header exists to provide.
+  assert.match(collapsed.summary, /5 ท่า/, 'header still reports the total while collapsed');
+
+  await page.click('#progression-header');
+  await page.waitForTimeout(200);
+  const open = await state();
+  assert.strictEqual(open.body, 'block', 'expands on tap');
+  assert.strictEqual(open.caret, '▲');
+  assert.strictEqual(open.rows, 5);
+  // Only groups actually trained get a pill, so no dead categories and no empty list.
+  assert.deepStrictEqual(open.pills, ['ทั้งหมด 5', '🔴 Push 2', '🔵 Pull 2', '🟢 Legs 1']);
+
+  await page.locator('#progression-filter-row .ex-pill', { hasText: 'Pull' }).click();
+  await page.waitForTimeout(200);
+  const pull = await state();
+  assert.strictEqual(pull.rows, 2, 'filters to the Pull lifts only');
+  assert.strictEqual(pull.body, 'block', 'filtering does not close the card');
+
+  await page.click('#progression-header');
+  await page.waitForTimeout(200);
+  assert.strictEqual((await state()).body, 'none', 'collapses again');
+
+  await noErrors(page, 'the progression card');
+});
