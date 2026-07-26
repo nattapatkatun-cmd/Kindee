@@ -289,6 +289,19 @@ test('the progression card collapses, filters by group, and keeps the deload war
     rows: document.querySelectorAll('#progression-list > div').length,
   }));
 
+  // Dispatch through the element's own onclick rather than page.click(). Offline — which
+  // is every CI run — the sign-in overlay (#authGate) never resolves and covers the page,
+  // so Playwright's actionability check blocks on "subtree intercepts pointer events"
+  // until it times out. This still exercises the real onclick wiring, and it is the same
+  // reason the rest of this suite drives the app's functions instead of clicking DOM.
+  const tap = (sel, text) => page.evaluate(([s, t]) => {
+    const el = t
+      ? [...document.querySelectorAll(s)].find((e) => e.textContent.includes(t))
+      : document.querySelector(s);
+    if (!el) throw new Error('nothing to tap for ' + s + (t ? ' / ' + t : ''));
+    el.click();
+  }, [sel, text]);
+
   await page.evaluate(() => { showPage('fitness'); showFitnessTab('plan'); });
   await page.waitForTimeout(400);
 
@@ -299,7 +312,7 @@ test('the progression card collapses, filters by group, and keeps the deload war
   // header exists to provide.
   assert.match(collapsed.summary, /5 ท่า/, 'header still reports the total while collapsed');
 
-  await page.click('#progression-header');
+  await tap('#progression-header');
   await page.waitForTimeout(200);
   const open = await state();
   assert.strictEqual(open.body, 'block', 'expands on tap');
@@ -308,13 +321,13 @@ test('the progression card collapses, filters by group, and keeps the deload war
   // Only groups actually trained get a pill, so no dead categories and no empty list.
   assert.deepStrictEqual(open.pills, ['ทั้งหมด 5', '🔴 Push 2', '🔵 Pull 2', '🟢 Legs 1']);
 
-  await page.locator('#progression-filter-row .ex-pill', { hasText: 'Pull' }).click();
+  await tap('#progression-filter-row .ex-pill', 'Pull');
   await page.waitForTimeout(200);
   const pull = await state();
   assert.strictEqual(pull.rows, 2, 'filters to the Pull lifts only');
   assert.strictEqual(pull.body, 'block', 'filtering does not close the card');
 
-  await page.click('#progression-header');
+  await tap('#progression-header');
   await page.waitForTimeout(200);
   assert.strictEqual((await state()).body, 'none', 'collapses again');
 
