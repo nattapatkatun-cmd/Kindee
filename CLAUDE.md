@@ -14,7 +14,7 @@ State lives in `localStorage` under `gd_*` keys, mirrored to Firebase when signe
 ## Before you push
 
 ```bash
-npm test        # lint + 20 tests, ~3 min
+npm test        # lint + 25 tests, ~3 min
 npm run lint    # ~1 s — run this constantly while editing
 ```
 
@@ -60,6 +60,16 @@ Bangkok. Anchor at local noon (`new Date(str + 'T12:00:00')`) or use `elapsedDay
 *today's* target (recovery adjustment > rest-day carb cut > saved goal). The dashboard
 ring, the over-goal alert, the AI daily coach and the chat context must all read it.
 `getOfficialCalorieContext()` is the engine's view, for Settings and AI prompts.
+
+**Wake time is a constraint, not an outcome.** The target bedtime is solved as
+`habitual wake − need − debt repayment`. The anchor is `computeTypicalWakeAnchor()` — a
+median bucketed weekday vs weekend — *never* last night's raw reading, which ratchets the
+schedule later every time the user sleeps in. Two bucket rules that are easy to invert: a
+sleep record dated D holds the night that **ended** on the morning of D, so the record's
+own date is the wake morning; and tonight's sleep ends **tomorrow**, so tonight's anchor
+comes from `forDate + 1`'s bucket — a Sunday night is a weekday night. The weekend anchor
+is clamped to `WEEKEND_WAKE_MAX_LAG_MIN` past the weekday one, or the app prescribes the
+social jetlag it warns about two rows below.
 
 **Gross vs net calories.** The calorie goal is `TDEE − deficit` where TDEE already contains
 workouts and NEAT. **Never compare `netCal` (intake − burn − NEAT) against the goal** —
