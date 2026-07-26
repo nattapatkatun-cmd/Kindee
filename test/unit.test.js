@@ -238,3 +238,146 @@ test('entriesWithinDays uses a day window, not a row count', () => {
   const win = ctx.entriesWithinDays(mixed, 21);
   assert.deepStrictEqual(win.map((e) => e.date), ['2026-07-20', '2026-07-24'], 'filters, drops nulls, sorts oldest-first');
 });
+
+// ── Bedtime target / habitual schedule anchors ────────────────────────────────
+// The target bedtime is solved as `habitual wake − need − debt repayment`. Deriving it
+// from THIS MORNING's single wake reading instead ratchets the schedule later every
+// time the user sleeps in: late wake → later target → later wake. These tests pin the
+// anchor to a bucketed median and pin the weekday/weekend split that sits on top of it.
+
+const SCHEDULE_PRELUDE = `
+  var LS = {};
+  var localStorage = { getItem: function(k){ return LS[k] || null; } };
+  var DEBT = null;
+  function computeSleepDebt(){ return DEBT; }
+`;
+const SCHEDULE_FNS = [
+  'localDateStr', '_timeToMin', '_isWeekendDateStr', '_shiftDateStr', '_medianOf',
+  '_fmtClockMin', '_scheduleMinsInWindow', '_typicalScheduleMin',
+  'computeTypicalBedtimeMin', 'computeTypicalWakeAnchor', 'computeGradualBedtimeTarget',
+];
+const SCHEDULE_CONSTS = [
+  'BEDTIME_SHIFT_CAP_MIN', 'BEDTIME_OUTLIER_MIN', 'SCHEDULE_WINDOW_DAYS',
+  'SCHEDULE_WINDOW_WIDE_DAYS', 'SCHEDULE_MIN_NIGHTS', 'WEEKEND_WAKE_MAX_LAG_MIN',
+];
+const loadSchedule = () => load(SCHEDULE_FNS, { consts: SCHEDULE_CONSTS, prelude: SCHEDULE_PRELUDE });
+
+/** `nights` days of history ending on `endDate`, wake/bed chosen per weekday vs weekend. */
+function buildSleepLog(endDate, nights, pick) {
+  const log = [];
+  for (let i = nights - 1; i >= 0; i--) {
+    const d = new Date(endDate + 'T12:00:00');
+    d.setDate(d.getDate() - i);
+    const date = d.toISOString().slice(0, 10);
+    const isWeekend = d.getDay() === 0 || d.getDay() === 6;
+    const { bedtime, wakeTime, hours = 7.5 } = pick(date, isWeekend);
+    log.push({ date, bedtime, wakeTime, hours });
+  }
+  return log;
+}
+
+test('a single lie-in cannot push the target bedtime later (oversleep ratchet)', () => {
+  const ctx = loadSchedule();
+  // Habitual 00:30 → 08:00. One morning the user wakes at 10:00 with no sleep debt at all,
+  // so nothing but the anchor itself stands between them and a later recommended bedtime.
+  const endDate = '2026-07-27'; // Monday morning; tonight ends Tuesday ⇒ weekday bucket
+  const log = buildSleepLog(endDate, 28, (date) => ({
+    bedtime: '00:30',
+    wakeTime: date === endDate ? '10:00' : '08:00',
+  }));
+  ctx.LS['gd_sleep_log'] = JSON.stringify(log);
+  ctx.DEBT = null;
+
+  const g = ctx.computeGradualBedtimeTarget('10:00', endDate, 8, '00:30');
+  assert.strictEqual(g.wakeAnchorHHMM, '08:00', 'one lie-in does not move a 28-night median');
+  assert.strictEqual(g.wakeAnchorBucket, 'weekday');
+  // Solved against 08:00 the target can only hold or move earlier. Solved against the raw
+  // 10:00 reading it lands at 00:50 — twenty minutes LATER than the habit it should defend.
+  assert.ok(
+    ctx._timeToMin(g.hhmm, true) <= ctx._timeToMin('00:30', true),
+    `target ${g.hhmm} must not be later than the habitual 00:30`,
+  );
+});
+
+test('wake anchor buckets by tomorrow morning, not today', () => {
+  const ctx = loadSchedule();
+  // Weekday mornings 07:00, weekend mornings 07:45 — a 45min lag, inside the cap.
+  const pick = (date, isWeekend) => ({ bedtime: isWeekend ? '00:00' : '23:15', wakeTime: isWeekend ? '07:45' : '07:00' });
+
+  // Sunday morning. Tonight is Sunday NIGHT, which ends on Monday ⇒ weekday anchor,
+  // even though "today" is a weekend day. Bucketing off forDate would get this backwards.
+  ctx.LS['gd_sleep_log'] = JSON.stringify(buildSleepLog('2026-07-26', 42, pick));
+  const sunday = ctx.computeGradualBedtimeTarget('07:45', '2026-07-26', 8, '00:00');
+  assert.strictEqual(sunday.wakeAnchorBucket, 'weekday');
+  assert.strictEqual(sunday.wakeAnchorHHMM, '07:00');
+
+  // Friday morning. Tonight ends on Saturday ⇒ weekend anchor.
+  ctx.LS['gd_sleep_log'] = JSON.stringify(buildSleepLog('2026-07-24', 42, pick));
+  const friday = ctx.computeGradualBedtimeTarget('07:00', '2026-07-24', 8, '23:15');
+  assert.strictEqual(friday.wakeAnchorBucket, 'weekend');
+  assert.strictEqual(friday.wakeAnchorHHMM, '07:45');
+
+  // The split has to actually reach the recommendation, not just the metadata.
+  assert.strictEqual(sunday.desiredHHMM, '23:00');
+  assert.strictEqual(friday.desiredHHMM, '23:45');
+});
+
+test('weekend wake anchor is capped near the weekday anchor (social jetlag)', () => {
+  const ctx = loadSchedule();
+  // A real 3.5h social-jetlag pattern: 07:00 weekdays, 10:30 weekends.
+  ctx.LS['gd_sleep_log'] = JSON.stringify(buildSleepLog('2026-07-24', 42, (date, isWeekend) => ({
+    bedtime: isWeekend ? '02:00' : '23:15',
+    wakeTime: isWeekend ? '10:30' : '07:00',
+  })));
+
+  const friday = ctx.computeGradualBedtimeTarget('07:00', '2026-07-24', 8, '23:15');
+  assert.strictEqual(friday.wakeAnchorCapped, true);
+  // Uncapped this anchors at 10:30 and prescribes a 02:30 bedtime — the app endorsing the
+  // very weekend phase shift buildDebtPlanText() warns about one row below it.
+  assert.strictEqual(friday.wakeAnchorHHMM, '08:00', 'clamped to weekday + WEEKEND_WAKE_MAX_LAG_MIN');
+  assert.strictEqual(
+    friday.wakeAnchorHHMM,
+    ctx._fmtClockMin(ctx._timeToMin('07:00', false) + ctx.WEEKEND_WAKE_MAX_LAG_MIN),
+  );
+});
+
+test('sparse history falls back down the ladder instead of giving up', () => {
+  const ctx = loadSchedule();
+  // Four nights logged, all weekday mornings: the weekend bucket can never reach
+  // SCHEDULE_MIN_NIGHTS, so a Friday night has to fall through to the pooled median
+  // rather than dropping back to the raw reading.
+  ctx.LS['gd_sleep_log'] = JSON.stringify([
+    { date: '2026-07-21', bedtime: '23:30', wakeTime: '07:00', hours: 7.5 },
+    { date: '2026-07-22', bedtime: '23:40', wakeTime: '07:10', hours: 7.5 },
+    { date: '2026-07-23', bedtime: '23:20', wakeTime: '07:00', hours: 7.6 },
+    { date: '2026-07-24', bedtime: '23:35', wakeTime: '07:05', hours: 7.5 },
+  ]);
+  const friday = ctx.computeGradualBedtimeTarget('07:05', '2026-07-24', 8, '23:35');
+  assert.strictEqual(friday.wakeAnchorBucket, 'pooled');
+  assert.strictEqual(friday.wakeAnchorNights, 4);
+  // 07:00, 07:00, 07:05, 07:10 ⇒ mean of the middle pair.
+  assert.strictEqual(friday.wakeAnchorHHMM, '07:03', 'median of the four logged mornings');
+
+  // One night is not a median of anything — fall back to the raw wake time, and say so.
+  ctx.LS['gd_sleep_log'] = JSON.stringify([{ date: '2026-07-24', bedtime: '23:35', wakeTime: '07:05', hours: 7.5 }]);
+  const firstNight = ctx.computeGradualBedtimeTarget('07:05', '2026-07-24', 8, '23:35');
+  assert.strictEqual(firstNight.wakeAnchorHHMM, null);
+  assert.strictEqual(firstNight.wakeFallbackHHMM, '07:05');
+  assert.strictEqual(firstNight.desiredHHMM, '23:05', 'still produces a usable target');
+});
+
+test('bedtime outlier test buckets weekday vs weekend', () => {
+  const ctx = loadSchedule();
+  // Bedtime is habitually 23:15 on weeknights and 02:00 at weekends. A 02:00 Saturday
+  // bedtime is normal FOR A SATURDAY; judged against a weekday-dominated median it looks
+  // like a 165-minute aberration and the target gets anchored on the wrong time.
+  ctx.LS['gd_sleep_log'] = JSON.stringify(buildSleepLog('2026-07-25', 42, (date, isWeekend) => ({
+    bedtime: isWeekend ? '02:00' : '23:15',
+    wakeTime: isWeekend ? '07:45' : '07:00',
+  })));
+  // 2026-07-25 is a Saturday morning ⇒ last night was Friday night, a weekend night.
+  const g = ctx.computeGradualBedtimeTarget('07:45', '2026-07-25', 8, '02:00');
+  assert.strictEqual(g.outlier, false, '02:00 is the weekend habit, not an outlier');
+  assert.strictEqual(ctx._fmtClockMin(ctx.computeTypicalBedtimeMin('2026-07-25', true)), '02:00');
+  assert.strictEqual(ctx._fmtClockMin(ctx.computeTypicalBedtimeMin('2026-07-25', false)), '23:15');
+});

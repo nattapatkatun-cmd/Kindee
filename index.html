@@ -3622,11 +3622,12 @@ function generateMorningRecovery() {
   // bedtime target, the debt badge and the weak-pillar tip quote three different numbers.
   var gradualBed = computeGradualBedtimeTarget(sd.wakeTime, today, computeSleepNeedHours(today), sd.bedtime);
   var bedtimeTrendLine = '';
-  if (gradualBed && (gradualBed.shifted || gradualBed.outlier || gradualBed.debtHeld)) {
+  if (gradualBed) {
     bedtimeTrendLine = '- Bedtime เมื่อคืน: '+gradualBed.fromBedtime+
       (gradualBed.outlier ? ' (หลุดจากเวลาปกติ ~'+gradualBed.typicalHHMM+' — คืนนี้ระบบแนะนำให้กลับมาเวลาปกติเลย ไม่ไต่จากเวลาที่หลุด)' : '')+
       (gradualBed.debtHeld ? ' | มี Sleep Debt สะสม ระบบจึงไม่เลื่อนเวลานอนแนะนำให้ดึกลง' : '')+
-      ' | เวลานอนแนะนำคืนนี้ (คำนวณโดยแอป): '+gradualBed.hhmm+'\n';
+      ' | เวลานอนแนะนำคืนนี้ (คำนวณโดยแอป): '+gradualBed.hhmm+
+      ' | '+describeWakeAnchor(gradualBed)+'\n';
   }
   var sleepDebt = (typeof computeSleepDebt === 'function') ? computeSleepDebt(today) : null;
   var sleepDebtLine = '';
@@ -11095,6 +11096,9 @@ function normalizeRecoveryResult(r, sd) {
   var gradualBed = computeGradualBedtimeTarget(sdRef.wakeTime, sdRef.date, computeSleepNeedHours(sdRef.date), sdRef.bedtime);
   if (gradualBed) {
     var bedNotes = [];
+    // Lead with the assumption the whole number rests on — without it the user cannot
+    // tell whether a target is wrong or just solved against a wake time they disagree with.
+    bedNotes.push(describeWakeAnchor(gradualBed));
     if (gradualBed.outlier) bedNotes.push('เมื่อคืนนอนหลุดตาราง (' + gradualBed.fromBedtime + ') — คืนเดียวไม่ได้เลื่อนนาฬิกาชีวภาพ คืนนี้กลับมานอนเวลาปกติของคุณ (~' + gradualBed.typicalHHMM + ') ได้เลย ไม่ต้องไต่จากเวลาที่หลุด');
     if (gradualBed.debtHeld) bedNotes.push('มี Sleep Debt สะสม จึงไม่เลื่อนเวลานอนให้ดึกลงตาม wake time ที่สายกว่าปกติ');
     if (gradualBed.shifted) bedNotes.push('ขยับจากเมื่อคืน ' + gradualBed.fromBedtime + ' ทีละ ' + BEDTIME_SHIFT_CAP_MIN + ' นาที — เป้าหมายสุดท้าย ' + gradualBed.desiredHHMM + ', ค่อย ๆ ปรับเพื่อไม่ให้ผิดจังหวะนาฬิกาชีวภาพ');
@@ -11584,19 +11588,126 @@ var BEDTIME_SHIFT_CAP_MIN = 20;
 // A single night this far off the habitual bedtime is an aberration, not a
 // schedule change — the circadian clock stays where the habit is.
 var BEDTIME_OUTLIER_MIN = 60;
-// Habitual bedtime = median (robust to one-off late nights) of the last
-// up-to-7 logged bedtimes, in anchored minutes. Needs >=3 nights.
-function computeTypicalBedtimeMin(forDate) {
-  var log = []; try { log = JSON.parse(localStorage.getItem('gd_sleep_log') || '[]'); } catch(e) {}
-  var mins = log.filter(function(s){ return s.date <= forDate && s.bedtime; })
-                .sort(function(a,b){ return a.date < b.date ? 1 : -1; })
-                .slice(0, 7)
-                .map(function(s){ return _timeToMin(s.bedtime, true); })
-                .sort(function(a,b){ return a - b; });
-  if (mins.length < 3) return null;
-  return mins[Math.floor(mins.length / 2)];
+// Habitual-schedule windows. 28 days ≈ 20 weekday + 8 weekend mornings — long enough
+// for the weekend bucket to hold samples, short enough to follow a real schedule
+// change (the 60-day need look-back is far too slow for this). Widened to 56 days
+// before the two buckets get pooled together.
+var SCHEDULE_WINDOW_DAYS = 28;
+var SCHEDULE_WINDOW_WIDE_DAYS = 56;
+var SCHEDULE_MIN_NIGHTS = 3;
+// How much later than the weekday anchor the weekend anchor is allowed to sit.
+// Without a cap, deriving Friday's bedtime from a 10:30 Saturday lie-in tells the user
+// to go to bed two hours later — the app would be prescribing exactly the social jetlag
+// that buildDebtPlanText() warns against in the very next row.
+var WEEKEND_WAKE_MAX_LAG_MIN = 60;
+
+// A sleep record dated D holds the night that ENDED on the morning of D, so the
+// record's own date IS the wake morning and buckets directly. 'YYYY-MM-DD' parses as
+// UTC midnight, which lands on the previous local day — and therefore the wrong
+// weekday — anywhere west of UTC, so anchor at local noon.
+function _isWeekendDateStr(dateStr) {
+  if (!dateStr) return null;
+  var day = new Date(dateStr + 'T12:00:00').getDay();
+  return day === 0 || day === 6;
 }
-// Gradual target bedtime. Anchor rules, in order:
+function _shiftDateStr(dateStr, days) {
+  var d = new Date(dateStr + 'T12:00:00');
+  d.setDate(d.getDate() + days);
+  return localDateStr(d);
+}
+function _medianOf(nums) {
+  if (!nums.length) return null;
+  var s = nums.slice().sort(function(a,b){ return a - b; });
+  var mid = Math.floor(s.length / 2);
+  return s.length % 2 ? s[mid] : Math.round((s[mid-1] + s[mid]) / 2);
+}
+function _fmtClockMin(min) {
+  var norm = ((min % 1440) + 1440) % 1440;
+  var hh = Math.floor(norm / 60), mm = norm % 60;
+  return (hh < 10 ? '0' : '') + hh + ':' + (mm < 10 ? '0' : '') + mm;
+}
+// Anchored minutes for `field` over a trailing window, optionally restricted to the
+// weekday or the weekend bucket (wantWeekend === null pools both).
+function _scheduleMinsInWindow(field, isBed, forDate, windowDays, wantWeekend) {
+  var log = []; try { log = JSON.parse(localStorage.getItem('gd_sleep_log') || '[]'); } catch(e) {}
+  var cutoffStr = _shiftDateStr(forDate, -windowDays);
+  return log.filter(function(s){
+      return s.date <= forDate && s.date > cutoffStr && s[field] &&
+             (wantWeekend === null || _isWeekendDateStr(s.date) === wantWeekend);
+    })
+    .map(function(s){ return _timeToMin(s[field], isBed); })
+    .filter(function(m){ return m != null; });
+}
+// Habitual time for one field, walking a fallback ladder so a brand-new log still gets
+// an answer: matching bucket over 28d → matching bucket over 56d → both buckets pooled.
+// Returns null only when there is almost no history, letting the caller fall back to
+// last night's raw reading. `minNights` applies to the pooled tier only.
+function _typicalScheduleMin(field, isBed, forDate, wantWeekend, minNights) {
+  var bucket = wantWeekend ? 'weekend' : 'weekday';
+  var tiers = [
+    { days: SCHEDULE_WINDOW_DAYS,      weekend: wantWeekend, bucket: bucket },
+    { days: SCHEDULE_WINDOW_WIDE_DAYS, weekend: wantWeekend, bucket: bucket },
+    { days: SCHEDULE_WINDOW_WIDE_DAYS, weekend: null,        bucket: 'pooled' }
+  ];
+  var pooled = null;
+  for (var i = 0; i < tiers.length; i++) {
+    var mins = _scheduleMinsInWindow(field, isBed, forDate, tiers[i].days, tiers[i].weekend);
+    if (mins.length >= SCHEDULE_MIN_NIGHTS) {
+      return { min: _medianOf(mins), nights: mins.length, bucket: tiers[i].bucket, windowDays: tiers[i].days };
+    }
+    if (tiers[i].bucket === 'pooled') pooled = { mins: mins, tier: tiers[i] };
+  }
+  if (pooled && pooled.mins.length >= minNights) {
+    return { min: _medianOf(pooled.mins), nights: pooled.mins.length, bucket: 'pooled', windowDays: pooled.tier.days };
+  }
+  return null;
+}
+var SCHEDULE_BUCKET_LABEL_TH = { weekday: 'วันธรรมดา', weekend: 'วันหยุด', pooled: 'รวมทุกวัน' };
+// Human-readable statement of the wake time a bedtime target was solved against.
+function describeWakeAnchor(g) {
+  if (!g) return null;
+  if (!g.wakeAnchorHHMM) {
+    return 'ยังมีข้อมูลไม่พอหาเวลาตื่นประจำ จึงอิงเวลาตื่นเมื่อเช้า (' + g.wakeFallbackHHMM + ') ไปก่อน';
+  }
+  return 'อิงเวลาตื่นประจำ ' + g.wakeAnchorHHMM + ' (median ' + g.wakeAnchorNights + ' คืน, ' +
+    (SCHEDULE_BUCKET_LABEL_TH[g.wakeAnchorBucket] || g.wakeAnchorBucket) + ')' +
+    (g.wakeAnchorCapped ? ' — ปรับเข้ามาแล้วเพื่อไม่ให้ตื่นสายกว่าวันธรรมดาเกิน ' + WEEKEND_WAKE_MAX_LAG_MIN + ' นาที (กัน social jetlag)' : '');
+}
+// Habitual bedtime in anchored minutes — median, so one late night can't move it.
+// `forWeekend` picks the bucket; omit it to bucket by forDate's own morning.
+function computeTypicalBedtimeMin(forDate, forWeekend) {
+  var want = (forWeekend === undefined || forWeekend === null) ? _isWeekendDateStr(forDate) : forWeekend;
+  var r = _typicalScheduleMin('bedtime', true, forDate, want, SCHEDULE_MIN_NIGHTS);
+  return r ? r.min : null;
+}
+// Habitual WAKE time for the morning that will end tonight's sleep — the anchor the
+// whole bedtime target hangs off. Two nights is enough here: even a weak median beats
+// using a single raw reading, which is what produces the oversleep ratchet.
+function computeTypicalWakeAnchor(forDate, forWeekend) {
+  var r = _typicalScheduleMin('wakeTime', false, forDate, forWeekend, 2);
+  if (!r) return null;
+  r.capped = false;
+  if (forWeekend && r.bucket === 'weekend') {
+    var wd = _typicalScheduleMin('wakeTime', false, forDate, false, 2);
+    if (wd && r.min > wd.min + WEEKEND_WAKE_MAX_LAG_MIN) {
+      r.min = wd.min + WEEKEND_WAKE_MAX_LAG_MIN;
+      r.capped = true;
+    }
+  }
+  r.hhmm = _fmtClockMin(r.min);
+  return r;
+}
+// Gradual target bedtime.
+//
+// The wake time is a CONSTRAINT the bedtime is solved against, never an outcome to
+// chase. Deriving tonight's bedtime from THIS MORNING's single reading ratchets the
+// schedule later every time you sleep in (late wake → later target → later wake →
+// …); the sleep-debt guard below used to be the only thing interrupting it, and only
+// once debt had already reached 3h. The anchor is therefore the habitual wake time —
+// a median, bucketed weekday vs weekend — and last night's raw reading is used only
+// until there is enough history to compute one.
+//
+// Anchor rules, in order:
 // - Last night within ±60min of the habitual (median-of-7) bedtime → step from
 //   last night toward the wake-derived goal by at most BEDTIME_SHIFT_CAP_MIN
 //   (a real schedule shift must be gradual — melatonin-onset adjustment).
@@ -11620,7 +11731,13 @@ function computeGradualBedtimeTarget(wakeTime, forDate, goalHours, lastBedtime) 
   // earlier and starts paying the debt down (capped, so we never chase a wild lie-in).
   var debtForTarget = (typeof computeSleepDebt === 'function') ? computeSleepDebt(forDate) : null;
   var repayMin = (debtForTarget && debtForTarget.hours >= 2) ? (debtForTarget.hours >= 6 ? 45 : 30) : 0;
-  var desiredMin = _timeToMin(wakeTime, false) - goalH * 60 - repayMin;
+  // Tonight's sleep ends TOMORROW morning, so the wake anchor comes from tomorrow's
+  // bucket — a Sunday night is a weekday night. (Last night's bedtime, below, is judged
+  // against its OWN morning's bucket, which is a different bucket twice a week.)
+  var tonightWeekend = _isWeekendDateStr(_shiftDateStr(forDate, 1));
+  var wakeAnchor = computeTypicalWakeAnchor(forDate, tonightWeekend);
+  var anchorWakeMin = wakeAnchor ? wakeAnchor.min : _timeToMin(wakeTime, false);
+  var desiredMin = anchorWakeMin - goalH * 60 - repayMin;
   var desiredAnchored = desiredMin; if (desiredAnchored < 720) desiredAnchored += 1440;
   var fromBed = lastBedtime || null;
   if (!fromBed) {
@@ -11629,15 +11746,26 @@ function computeGradualBedtimeTarget(wakeTime, forDate, goalHours, lastBedtime) 
                      .sort(function(a,b){ return a.date < b.date ? 1 : -1; });
     if (recent.length) fromBed = recent[0].bedtime;
   }
-  var fmt = function(min){
-    var norm = ((min % 1440) + 1440) % 1440;
-    var hh = Math.floor(norm / 60), mm = norm % 60;
-    return (hh < 10 ? '0' : '') + hh + ':' + (mm < 10 ? '0' : '') + mm;
+  var fmt = _fmtClockMin;
+  // What the target was solved against, so the UI can show its working instead of
+  // printing a bare time the user has no way to sanity-check.
+  var anchorMeta = {
+    wakeAnchorHHMM: wakeAnchor ? wakeAnchor.hhmm : null,
+    wakeAnchorBucket: wakeAnchor ? wakeAnchor.bucket : null,
+    wakeAnchorNights: wakeAnchor ? wakeAnchor.nights : 0,
+    wakeAnchorCapped: wakeAnchor ? wakeAnchor.capped : false,
+    wakeFallbackHHMM: wakeAnchor ? null : fmt(_timeToMin(wakeTime, false))
   };
-  if (!fromBed) return { hhmm: fmt(desiredAnchored), shifted: false, fromBedtime: null, desiredHHMM: fmt(desiredAnchored), outlier: false, typicalHHMM: null, debtHeld: false };
+  function result(o) { for (var k in anchorMeta) o[k] = anchorMeta[k]; return o; }
+  if (!fromBed) return result({ hhmm: fmt(desiredAnchored), shifted: false, fromBedtime: null, desiredHHMM: fmt(desiredAnchored), outlier: false, typicalHHMM: null, debtHeld: false });
   var lastBedMin = _timeToMin(fromBed, true);
-  var typicalMin = computeTypicalBedtimeMin(forDate);
-  var isOutlier = typicalMin != null && Math.abs(lastBedMin - typicalMin) > BEDTIME_OUTLIER_MIN;
+  // Two different buckets, deliberately: last night is aberrant only relative to nights
+  // LIKE IT (a 02:00 Friday bedtime is normal for a Friday), while the time to return to
+  // is tonight's own habitual bedtime.
+  var lastNightTypical = computeTypicalBedtimeMin(forDate, _isWeekendDateStr(forDate));
+  var tonightTypical = computeTypicalBedtimeMin(forDate, tonightWeekend);
+  var isOutlier = lastNightTypical != null && Math.abs(lastBedMin - lastNightTypical) > BEDTIME_OUTLIER_MIN;
+  var typicalMin = tonightTypical != null ? tonightTypical : lastNightTypical;
   var anchorMin = isOutlier ? typicalMin : lastBedMin;
   var diff = desiredAnchored - anchorMin;
   var targetMin = Math.abs(diff) <= BEDTIME_SHIFT_CAP_MIN ? desiredAnchored : anchorMin + (diff > 0 ? 1 : -1) * BEDTIME_SHIFT_CAP_MIN;
@@ -11646,9 +11774,9 @@ function computeGradualBedtimeTarget(wakeTime, forDate, goalHours, lastBedtime) 
   var debt = debtForTarget;
   var debtHeld = false;
   if (debt && debt.hours >= 3 && targetMin > anchorMin) { targetMin = anchorMin; debtHeld = true; }
-  return { hhmm: fmt(targetMin), shifted: Math.abs(diff) > BEDTIME_SHIFT_CAP_MIN && !isOutlier && !debtHeld,
+  return result({ hhmm: fmt(targetMin), shifted: Math.abs(diff) > BEDTIME_SHIFT_CAP_MIN && !isOutlier && !debtHeld,
            fromBedtime: fromBed, desiredHHMM: fmt(desiredAnchored),
-           outlier: isOutlier, typicalHHMM: typicalMin != null ? fmt(typicalMin) : null, debtHeld: debtHeld };
+           outlier: isOutlier, typicalHHMM: typicalMin != null ? fmt(typicalMin) : null, debtHeld: debtHeld });
 }
 // Rolling Polar Cardio Strain/Tolerance load over the last few nights — a single
 // day's Strain > Tolerance isn't a real signal on its own; several nights in a row is.
