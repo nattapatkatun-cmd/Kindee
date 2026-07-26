@@ -11101,7 +11101,11 @@ function normalizeRecoveryResult(r, sd) {
     bedNotes.push(describeWakeAnchor(gradualBed));
     if (gradualBed.outlier) bedNotes.push('เมื่อคืนนอนหลุดตาราง (' + gradualBed.fromBedtime + ') — คืนเดียวไม่ได้เลื่อนนาฬิกาชีวภาพ คืนนี้กลับมานอนเวลาปกติของคุณ (~' + gradualBed.typicalHHMM + ') ได้เลย ไม่ต้องไต่จากเวลาที่หลุด');
     if (gradualBed.debtHeld) bedNotes.push('มี Sleep Debt สะสม จึงไม่เลื่อนเวลานอนให้ดึกลงตาม wake time ที่สายกว่าปกติ');
-    if (gradualBed.shifted) bedNotes.push('ขยับจากเมื่อคืน ' + gradualBed.fromBedtime + ' ทีละ ' + BEDTIME_SHIFT_CAP_MIN + ' นาที — เป้าหมายสุดท้าย ' + gradualBed.desiredHHMM + ', ค่อย ๆ ปรับเพื่อไม่ให้ผิดจังหวะนาฬิกาชีวภาพ');
+    if (gradualBed.returnedToSchedule) bedNotes.push('เมื่อคืนเป็นคืนวันหยุด (นอน ' + gradualBed.fromBedtime + ') คืนนี้กลับเข้าตารางวันธรรมดา — ไม่ต้องไต่ทีละ ' + BEDTIME_SHIFT_CAP_MIN + ' นาที เพราะ ' + gradualBed.anchorHHMM + ' คือตารางเดิมของคุณอยู่แล้ว ไม่ใช่ตารางใหม่ที่ต้องย้ายไป; คืนนี้อาจหลับยากกว่าปกติ ให้ยึดเวลาตื่นพรุ่งนี้เป็นหลักแล้วแรงกดดันการนอนจะกลับมาเอง');
+    // The step is measured from the anchor, which on an outlier or bucket-change night is
+    // the habitual time rather than last night's bedtime — naming the wrong one here is
+    // what made the old note read as a contradiction of the row above it.
+    if (gradualBed.shifted) bedNotes.push('ขยับจาก' + (gradualBed.anchorIsTypical ? 'เวลานอนประจำ ' : 'เมื่อคืน ') + gradualBed.anchorHHMM + ' ทีละ ' + BEDTIME_SHIFT_CAP_MIN + ' นาที — เป้าหมายสุดท้าย ' + gradualBed.desiredHHMM + ', ค่อย ๆ ปรับเพื่อไม่ให้ผิดจังหวะนาฬิกาชีวภาพ');
     r.sleep_actions.target_bedtime = gradualBed.hhmm + (bedNotes.length ? ' (' + bedNotes.join('; ') + ')' : '');
   }
   var sdDebtForActions = (typeof computeSleepDebt === 'function') ? computeSleepDebt(sdRef.date) : null;
@@ -11762,11 +11766,21 @@ function computeGradualBedtimeTarget(wakeTime, forDate, goalHours, lastBedtime) 
   // Two different buckets, deliberately: last night is aberrant only relative to nights
   // LIKE IT (a 02:00 Friday bedtime is normal for a Friday), while the time to return to
   // is tonight's own habitual bedtime.
-  var lastNightTypical = computeTypicalBedtimeMin(forDate, _isWeekendDateStr(forDate));
+  var lastNightWeekend = _isWeekendDateStr(forDate);
+  var lastNightTypical = computeTypicalBedtimeMin(forDate, lastNightWeekend);
   var tonightTypical = computeTypicalBedtimeMin(forDate, tonightWeekend);
   var isOutlier = lastNightTypical != null && Math.abs(lastBedMin - lastNightTypical) > BEDTIME_OUTLIER_MIN;
   var typicalMin = tonightTypical != null ? tonightTypical : lastNightTypical;
-  var anchorMin = isOutlier ? typicalMin : lastBedMin;
+  // Friday night and Sunday night cross buckets, and on those two nights last night's
+  // bedtime is the wrong thing to inch away from. The 20-min/night cap exists to MOVE a
+  // circadian phase to a new one; someone coming off a 02:00 Saturday already HAS a 23:15
+  // weekday phase to return to — they are not shifting their clock, they are going home
+  // to it. Crawling from 02:00 prescribes 01:40 before a 07:00 Monday (5h20 of sleep) and
+  // needs eight nights to arrive, by which point it is the weekend again: it can never
+  // converge. Same reasoning as the outlier rule above, so they share the branch.
+  var bucketChanged = lastNightWeekend !== tonightWeekend;
+  var useTypicalAnchor = (isOutlier || bucketChanged) && typicalMin != null;
+  var anchorMin = useTypicalAnchor ? typicalMin : lastBedMin;
   var diff = desiredAnchored - anchorMin;
   var targetMin = Math.abs(diff) <= BEDTIME_SHIFT_CAP_MIN ? desiredAnchored : anchorMin + (diff > 0 ? 1 : -1) * BEDTIME_SHIFT_CAP_MIN;
   // Debt may only pull the bedtime EARLIER (via repayMin above) or hold it — never
@@ -11776,7 +11790,14 @@ function computeGradualBedtimeTarget(wakeTime, forDate, goalHours, lastBedtime) 
   if (debt && debt.hours >= 3 && targetMin > anchorMin) { targetMin = anchorMin; debtHeld = true; }
   return result({ hhmm: fmt(targetMin), shifted: Math.abs(diff) > BEDTIME_SHIFT_CAP_MIN && !isOutlier && !debtHeld,
            fromBedtime: fromBed, desiredHHMM: fmt(desiredAnchored),
-           outlier: isOutlier, typicalHHMM: typicalMin != null ? fmt(typicalMin) : null, debtHeld: debtHeld });
+           outlier: isOutlier, typicalHHMM: typicalMin != null ? fmt(typicalMin) : null, debtHeld: debtHeld,
+           // The step is measured from here, which is NOT last night's bedtime on a
+           // bucket-change or outlier night — the UI note has to name the right one.
+           anchorHHMM: fmt(anchorMin), anchorIsTypical: useTypicalAnchor,
+           // Weekend → weekday only: the "going home" direction, worth calling out because
+           // the jump is large and deliberate. Friday night is a real gradual shift instead.
+           returnedToSchedule: bucketChanged && !isOutlier && !tonightWeekend && useTypicalAnchor &&
+                               Math.abs(lastBedMin - anchorMin) > BEDTIME_SHIFT_CAP_MIN });
 }
 // Rolling Polar Cardio Strain/Tolerance load over the last few nights — a single
 // day's Strain > Tolerance isn't a real signal on its own; several nights in a row is.
