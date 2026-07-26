@@ -381,3 +381,53 @@ test('bedtime outlier test buckets weekday vs weekend', () => {
   assert.strictEqual(ctx._fmtClockMin(ctx.computeTypicalBedtimeMin('2026-07-25', true)), '02:00');
   assert.strictEqual(ctx._fmtClockMin(ctx.computeTypicalBedtimeMin('2026-07-25', false)), '23:15');
 });
+
+test('a weekend night is not crawled back to the weekday schedule 20 minutes at a time', () => {
+  const ctx = loadSchedule();
+  // Weekday 23:15 → 07:00, weekend 02:00 → 09:00.
+  const pick = (date, isWeekend) => ({
+    bedtime: isWeekend ? '02:00' : '23:15',
+    wakeTime: isWeekend ? '09:00' : '07:00',
+    hours: isWeekend ? 7 : 7.75,
+  });
+  ctx.LS['gd_sleep_log'] = JSON.stringify(buildSleepLog('2026-07-26', 42, pick));
+
+  // Sunday morning: last night was Saturday night (02:00), tonight ends Monday at 07:00.
+  // Stepping 20min/night from 02:00 prescribes 01:40 before a 07:00 alarm — 5h20 of sleep —
+  // and would need eight nights to reach 23:00, by which point it is the weekend again.
+  // The 20-minute cap moves a phase to a NEW one; 23:15 is a phase this user already has.
+  const sunday = ctx.computeGradualBedtimeTarget('09:00', '2026-07-26', 8, '02:00');
+  assert.strictEqual(sunday.wakeAnchorBucket, 'weekday');
+  assert.strictEqual(sunday.desiredHHMM, '23:00');
+  assert.strictEqual(sunday.hhmm, '23:00', 'returns to the weekday bedtime in one step');
+  assert.strictEqual(sunday.anchorIsTypical, true, 'anchored on the habitual time, not last night');
+  assert.strictEqual(sunday.anchorHHMM, '23:15');
+  assert.strictEqual(sunday.returnedToSchedule, true);
+  assert.ok(
+    ctx._timeToMin(sunday.hhmm, true) + 8 * 60 <= ctx._timeToMin('07:00', false) + 1440,
+    'the target must actually leave room for the need before the weekday alarm',
+  );
+
+  // Saturday morning — still inside the weekend bucket, so nothing special happens.
+  const saturday = ctx.computeGradualBedtimeTarget('09:00', '2026-07-25', 8, '02:00');
+  assert.strictEqual(saturday.anchorIsTypical, false, 'same bucket ⇒ anchor stays on last night');
+  assert.strictEqual(saturday.returnedToSchedule, false);
+});
+
+test('the 20-minute phase-shift cap still governs shifts inside one bucket', () => {
+  const ctx = loadSchedule();
+  // Habit 00:50 → 08:20 every night. Wanting 8h against an 08:20 anchor means a 00:20
+  // bedtime — a real 30-minute phase shift, which is exactly what the cap is for.
+  ctx.LS['gd_sleep_log'] = JSON.stringify(buildSleepLog('2026-07-27', 28, () => ({
+    bedtime: '00:50', wakeTime: '08:20', hours: 7.2,
+  })));
+  const g = ctx.computeGradualBedtimeTarget('08:20', '2026-07-27', 8, '00:50');
+  assert.strictEqual(g.desiredHHMM, '00:20');
+  assert.strictEqual(g.hhmm, '00:30', 'capped to BEDTIME_SHIFT_CAP_MIN from the anchor');
+  assert.strictEqual(g.shifted, true);
+  assert.strictEqual(g.anchorIsTypical, false);
+  assert.strictEqual(
+    ctx._timeToMin('00:50', true) - ctx._timeToMin(g.hhmm, true),
+    ctx.BEDTIME_SHIFT_CAP_MIN,
+  );
+});

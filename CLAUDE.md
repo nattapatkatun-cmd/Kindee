@@ -14,7 +14,7 @@ State lives in `localStorage` under `gd_*` keys, mirrored to Firebase when signe
 ## Before you push
 
 ```bash
-npm test        # lint + 25 tests, ~3 min
+npm test        # lint + 27 tests, ~3 min
 npm run lint    # ~1 s — run this constantly while editing
 ```
 
@@ -70,6 +70,13 @@ own date is the wake morning; and tonight's sleep ends **tomorrow**, so tonight'
 comes from `forDate + 1`'s bucket — a Sunday night is a weekday night. The weekend anchor
 is clamped to `WEEKEND_WAKE_MAX_LAG_MIN` past the weekday one, or the app prescribes the
 social jetlag it warns about two rows below.
+
+**The 20-minute cap moves a phase; it does not move you back onto one you already have.**
+`BEDTIME_SHIFT_CAP_MIN` steps away from the *anchor*, and on the two bucket-crossing
+nights a week (Friday and Sunday) last night's bedtime is not that anchor — the habitual
+bedtime for **tonight's** bucket is. Crawling from a 02:00 Saturday prescribes 01:40
+before a 07:00 Monday and needs eight nights to arrive, so it never converges before the
+next weekend. Same reasoning as the outlier rule; they share a branch.
 
 **Gross vs net calories.** The calorie goal is `TDEE − deficit` where TDEE already contains
 workouts and NEAT. **Never compare `netCal` (intake − burn − NEAT) against the goal** —
