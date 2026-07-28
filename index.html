@@ -1329,6 +1329,32 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
           <option value="วันเสาร์">วันเสาร์</option>
         </select>
       </div>
+      <div class="card" id="plan-swap-row" style="margin-bottom:14px;display:none;">
+        <div class="card-title">สลับวันในแผน</div>
+        <div style="font-size:12px;color:var(--text3);margin-bottom:10px;line-height:1.5;">ย้ายวันออกกำลังกาย/วันพักสลับกัน โดยไม่ต้องสร้างแผนใหม่ — แคลและคาร์บของวันพักจะปรับตามทันที</div>
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+          <select class="input-field" id="swap-day-a" style="flex:1;min-width:120px;">
+            <option value="วันอาทิตย์">วันอาทิตย์</option>
+            <option value="วันจันทร์">วันจันทร์</option>
+            <option value="วันอังคาร">วันอังคาร</option>
+            <option value="วันพุธ">วันพุธ</option>
+            <option value="วันพฤหัสบดี">วันพฤหัสบดี</option>
+            <option value="วันศุกร์">วันศุกร์</option>
+            <option value="วันเสาร์">วันเสาร์</option>
+          </select>
+          <span style="color:var(--text3);">↔</span>
+          <select class="input-field" id="swap-day-b" style="flex:1;min-width:120px;">
+            <option value="วันอาทิตย์">วันอาทิตย์</option>
+            <option value="วันจันทร์">วันจันทร์</option>
+            <option value="วันอังคาร">วันอังคาร</option>
+            <option value="วันพุธ" selected>วันพุธ</option>
+            <option value="วันพฤหัสบดี">วันพฤหัสบดี</option>
+            <option value="วันศุกร์">วันศุกร์</option>
+            <option value="วันเสาร์">วันเสาร์</option>
+          </select>
+          <button class="btn-primary" style="flex-shrink:0;width:auto;padding:10px 16px;" onclick="swapPlanDays()">สลับ</button>
+        </div>
+      </div>
       <div id="planResult"></div>
     </div>
 
@@ -8963,8 +8989,14 @@ function generatePlan() {
     var savedPlan = {plan: plan, savedAt: new Date().toISOString(), restDays: lockedRestDays};
     localStorage.setItem('gd_workout_plan', JSON.stringify(savedPlan));
     if (window.FB_OK) window.FB.saveSetting('workoutPlan', savedPlan);
+    // New plan can change which day is a rest day — today's effective goal may shift.
+    localStorage.removeItem('gd_daily_summary');
+    localStorage.removeItem('gd_wt_ai_result');
+    localStorage.removeItem('gd_wt_analysis');
+    localStorage.removeItem('gd_wt_analysis_data');
     renderPlan(plan);
     updatePlanSavedLabel(savedPlan.savedAt);
+    updateDash();
   })
   .catch(function(e){
     document.getElementById('planBtn').disabled = false;
@@ -8983,7 +9015,46 @@ function renderPlan(plan) {
   _planFullData = plan;
   var filterRow = document.getElementById('plan-day-filter-row');
   if (filterRow) filterRow.style.display = 'block';
+  var swapRow = document.getElementById('plan-swap-row');
+  if (swapRow) swapRow.style.display = 'block';
   renderPlanFiltered();
+}
+
+// Swap the content of two weekday slots in the saved plan without calling the AI —
+// covers "I moved my training day" when the user won't re-generate the whole week.
+// Weekday labels stay fixed to their slot; only the workout content (theme/exercises)
+// moves, so isTodayRestDayByPlan()/getEffectiveGoalToday() pick up the new rest day
+// on the very next read (both go through getSavedPlanObj() -> same localStorage key).
+function swapPlanDays() {
+  var dayA = document.getElementById('swap-day-a').value;
+  var dayB = document.getElementById('swap-day-b').value;
+  if (!dayA || !dayB || dayA === dayB) { showToast('เลือกวันที่ต่างกัน 2 วัน', 'error'); return; }
+  var raw = localStorage.getItem('gd_workout_plan');
+  if (!raw) return;
+  var saved;
+  try { saved = JSON.parse(raw); } catch(e) { return; }
+  if (!saved || !saved.plan || !Array.isArray(saved.plan.days)) return;
+  var idxA = saved.plan.days.findIndex(function(d){ return d.day === dayA; });
+  var idxB = saved.plan.days.findIndex(function(d){ return d.day === dayB; });
+  if (idxA === -1 || idxB === -1) return;
+  var contentA = { theme: saved.plan.days[idxA].theme, exercises: saved.plan.days[idxA].exercises, note: saved.plan.days[idxA].note };
+  var contentB = { theme: saved.plan.days[idxB].theme, exercises: saved.plan.days[idxB].exercises, note: saved.plan.days[idxB].note };
+  saved.plan.days[idxA].theme = contentB.theme; saved.plan.days[idxA].exercises = contentB.exercises; saved.plan.days[idxA].note = contentB.note;
+  saved.plan.days[idxB].theme = contentA.theme; saved.plan.days[idxB].exercises = contentA.exercises; saved.plan.days[idxB].note = contentA.note;
+  saved.savedAt = new Date().toISOString();
+  localStorage.setItem('gd_workout_plan', JSON.stringify(saved));
+  if (window.FB_OK && window.FB) window.FB.saveSetting('workoutPlan', saved).catch(function(){});
+  // The rest-day carb cut and today's effective goal depend on which day is which —
+  // same cache-invalidation requirement as saveGoals()/handleSaveWeight() (see CLAUDE.md).
+  localStorage.removeItem('gd_daily_summary');
+  localStorage.removeItem('gd_wt_ai_result');
+  localStorage.removeItem('gd_wt_analysis');
+  localStorage.removeItem('gd_wt_analysis_data');
+  renderPlan(saved.plan);
+  renderTodayPlanCard();
+  updatePlanSavedLabel(saved.savedAt);
+  updateDash();
+  showToast('สลับ ' + dayA + ' ↔ ' + dayB + ' แล้ว', 'success');
 }
 function renderPlanFiltered() {
   var plan = _planFullData;
