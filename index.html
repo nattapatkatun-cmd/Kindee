@@ -612,10 +612,14 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
 .meal-expand-toggle{display:inline-flex;align-items:center;gap:5px;background:var(--surface2);border:1px solid var(--border-md);border-radius:20px;padding:4px 11px;font-family:inherit;font-size:11px;font-weight:700;color:var(--accent);cursor:pointer;margin-top:9px;}
 
 /* ── Weekly Report card ── */
-.wk-head{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:3px;gap:10px;}
+.wk-head{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:3px;gap:10px;cursor:pointer;}
 .wk-title-group{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
 .auto-pill{background:var(--accent-dim);border:1px solid var(--accent);border-radius:20px;padding:2px 9px;font-size:10px;font-weight:700;color:var(--accent);letter-spacing:0.2px;}
-.wk-range{font-size:11px;color:var(--text3);white-space:nowrap;}
+.wk-range{font-size:11px;color:var(--text3);white-space:nowrap;display:flex;align-items:center;gap:5px;}
+.wk-chevron{font-size:10px;color:var(--text3);transition:transform .2s;display:inline-block;}
+#weekly-report-card.wk-collapsed .wk-chevron{transform:rotate(-90deg);}
+#weekly-report-card.wk-collapsed .wk-head{margin-bottom:0;}
+#weekly-report-card.wk-collapsed .wk-collapsible-body{display:none;}
 .wk-meta-row{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:16px;flex-wrap:wrap;}
 .wk-compare-note{font-size:12px;color:var(--text2);}
 .wk-compare-note b{color:var(--text);font-weight:600;}
@@ -2570,7 +2574,13 @@ function legacyGeminiCall(key, body, timeoutMs, onProgress) {
 // State
 var S = {
   meals: [],
-  goals: {cal:1800,pro:120,crb:200,fat:60},
+  // Seeded from localStorage like favorites/sleepData below, not left at the hardcoded
+  // default: gd_goals is written on every save but was never read back, so any feature
+  // that reads S.goals during the local-first paint (before loadRemoteData's Firebase
+  // round-trip resolves) saw 1800/120/200/60 regardless of what the user actually has
+  // configured — silently wrong until Firebase caught up and something happened to
+  // re-render. The Weekly Report card made this visible because it caches its result.
+  goals: (function(){ try { return JSON.parse(localStorage.getItem('gd_goals') || 'null') || {cal:1800,pro:120,crb:200,fat:60}; } catch(e){ return {cal:1800,pro:120,crb:200,fat:60}; } })(),
   profile: null,
   // Google Sheets sync is opt-in PER USER now — no built-in default URL.
   // (The old hardcoded fallback meant every user's data would have been sent
@@ -4418,10 +4428,13 @@ var REST_DAY_CARB_CUT_PCT = 0.25;
 // Safety cap used when a BMR floor is not available (incomplete profile): a rest-day
 // cut may never remove more than this fraction of the day's own calorie target.
 var REST_DAY_MAX_CUT_FRAC = 0.15;
-function isTodayRestDayByPlan() {
+// dateStr is optional — defaults to today. The weekly plan template repeats every
+// week by weekday, so a past date's rest/training day is looked up the same way.
+function isTodayRestDayByPlan(dateStr) {
   var plan = (typeof getSavedPlanObj === 'function') ? getSavedPlanObj() : null;
   if (!plan || !Array.isArray(plan.days)) return false;
-  var todayName = PLAN_DAY_NAMES[appTodayWeekday()];
+  var weekday = dateStr ? new Date(dateStr + 'T12:00:00').getDay() : appTodayWeekday();
+  var todayName = PLAN_DAY_NAMES[weekday];
   var day = plan.days.filter(function(d){ return d.day === todayName; })[0];
   if (!day) return false;
   return !day.exercises || day.exercises.length === 0 || (day.theme && day.theme.toLowerCase().indexOf('พัก') !== -1);
@@ -4459,10 +4472,11 @@ function isRecompHoldState() {
   if (tgtW == null || isNaN(tgtW) || lastW == null || isNaN(lastW) || tgtBF == null || isNaN(tgtBF) || curBF == null || isNaN(curBF)) return false;
   return lastW <= tgtW + 0.3 && curBF > tgtBF + 0.3;
 }
-function getDayTypeAdjGoal() {
-  if (!isTodayRestDayByPlan()) return null;
-  var workoutsToday = (typeof todayWorkouts === 'function') ? todayWorkouts() : [];
-  if (workoutsToday.length) return null; // trained anyway today — treat as a training day
+// dateStr is optional — defaults to today (see isTodayRestDayByPlan above).
+function getDayTypeAdjGoal(dateStr) {
+  if (!isTodayRestDayByPlan(dateStr)) return null;
+  var workoutsToday = dateStr ? workoutsForDate(dateStr) : ((typeof todayWorkouts === 'function') ? todayWorkouts() : []);
+  if (workoutsToday.length) return null; // trained anyway that day — treat as a training day
   var base = S.goals || {};
   var baseCal = parseFloat(base.cal) || 0;
   var baseCrb = parseFloat(base.crb) || 0;
@@ -4502,6 +4516,15 @@ function getDayTypeAdjGoal() {
 // Priority: explicit Recovery-Adjusted Apply click > automatic rest-day carb cut > raw saved goal.
 function getEffectiveGoalToday() {
   return getRecoveryAdjGoals() || getDayTypeAdjGoal() || S.goals;
+}
+// Same rest-day carb-cut logic as getEffectiveGoalToday(), but for a past date — used
+// by the Weekly Report to compare each day's intake against THAT day's own goal
+// instead of one flat number. Recovery adjustments have no historical record (only
+// today's gd_recovery_adj is ever stored), so those aren't replayed for past dates —
+// the rest-day cut is the one that recurs predictably by weekday and actually explains
+// most of the week-to-week goal variation.
+function getEffectiveGoalForDate(dateStr) {
+  return getDayTypeAdjGoal(dateStr) || S.goals;
 }
 
 // ── Anomaly Detection ─────────────────────────────────────────────
@@ -4787,22 +4810,24 @@ function weeklyReportSparkBars(values) {
 // so the two views never disagree on the same numbers.
 function computeWeekStats(days) {
   var meals = S.meals || JSON.parse(localStorage.getItem('gd_meals')||'[]');
-  // FT.workouts is only hydrated once the user opens the Fitness tab (see FT.workouts=
-  // assignment near initFitness()) — at Dashboard load it exists but is still `[]`, which
-  // is truthy, so an unguarded `FT.workouts ? ... : ...` silently picks the empty array
-  // over the real data sitting in localStorage. Require .length, same as the WT.log guard
-  // two lines below.
   var workouts = (typeof FT!=='undefined'&&FT.workouts&&FT.workouts.length)?FT.workouts:JSON.parse(localStorage.getItem('gd_workouts')||'[]');
   var weights = (typeof WT!=='undefined'&&WT.log&&WT.log.length)?WT.log:JSON.parse(localStorage.getItem('gd_weight')||'[]');
-  var calGoal = S.goals.cal||1800, proGoal = S.goals.pro||120;
-  var totalCal=0,totalPro=0,daysWithMeals=0,onGoalDays=0,proHitDays=0,proPips=[];
+  // Protein doesn't change on a rest day (getDayTypeAdjGoal keeps base.pro as-is), so one
+  // flat proGoal is correct. Calories DO change (rest-day carb cut) — averaging a week that
+  // mixes rest and training days against one flat number is what made the card confusing,
+  // so each day is compared against its OWN effective goal instead.
+  var proGoal = S.goals.pro||120;
+  var totalCal=0,totalPro=0,totalCalGoal=0,daysWithMeals=0,onGoalDays=0,proHitDays=0,proPips=[],restDayCount=0;
   days.forEach(function(date){
     var dm = meals.filter(function(m){ return m.date===date; });
     var cal = dm.reduce(function(s,m){ return s+(parseFloat(m.calories)||0); },0);
     var pro = dm.reduce(function(s,m){ return s+(parseFloat(m.protein)||0); },0);
+    var dayGoal = (typeof getEffectiveGoalForDate === 'function') ? getEffectiveGoalForDate(date) : S.goals;
+    var dayCalGoal = (dayGoal && dayGoal.cal) || 1800;
+    if (dayGoal && dayGoal._dayType === 'rest') restDayCount++;
     if (dm.length) {
-      daysWithMeals++; totalCal+=cal; totalPro+=pro;
-      if (Math.abs(cal-calGoal) <= calGoal*0.1) onGoalDays++;
+      daysWithMeals++; totalCal+=cal; totalPro+=pro; totalCalGoal+=dayCalGoal;
+      if (Math.abs(cal-dayCalGoal) <= dayCalGoal*0.1) onGoalDays++;
       var proHit = pro >= proGoal*0.9;
       if (proHit) proHitDays++;
       proPips.push(proHit);
@@ -4817,14 +4842,23 @@ function computeWeekStats(days) {
     weightSlope = Math.round(slope*7*100)/100;
   }
   var weekWorkouts = workouts.filter(function(w){ return days.indexOf(w.date)>=0; });
-  var sleepDebt = (typeof computeSleepDebt==='function') ? computeSleepDebt(days[days.length-1]) : null;
+  var workoutMinutes = weekWorkouts.reduce(function(s,w){ return s+(parseFloat(w.duration_min)||0); },0);
+  var workoutDayCount = {}; weekWorkouts.forEach(function(w){ workoutDayCount[w.date]=true; });
+  // Total nightly sleep (not debt) — averaged over nights actually logged this week,
+  // so a week with a couple of missing nights doesn't get diluted toward 0.
+  var sleepLog = []; try { sleepLog = JSON.parse(localStorage.getItem('gd_sleep_log')||'[]'); } catch(e){}
+  var weekNights = sleepLog.filter(function(s){ return days.indexOf(s.date)>=0 && s.hours>0; });
+  var totalSleepHours = weekNights.reduce(function(s,n){ return s+(parseFloat(n.hours)||0); },0);
+  var needSum = 0; days.forEach(function(date){ needSum += (typeof computeSleepNeedHours==='function') ? computeSleepNeedHours(date) : 0; });
   return {
     avgCal: daysWithMeals ? Math.round(totalCal/daysWithMeals) : 0,
     avgPro: daysWithMeals ? Math.round(totalPro/daysWithMeals) : 0,
     daysWithMeals: daysWithMeals, onGoalDays: onGoalDays, proHitDays: proHitDays, proPips: proPips,
-    calGoal: calGoal, proGoal: proGoal, weightSlope: weightSlope,
-    workoutSessions: weekWorkouts.length,
-    sleepDebtHours: sleepDebt ? sleepDebt.hours : null
+    calGoal: daysWithMeals ? Math.round(totalCalGoal/daysWithMeals) : (S.goals.cal||1800),
+    proGoal: proGoal, restDayCount: restDayCount, weightSlope: weightSlope,
+    workoutSessions: weekWorkouts.length, workoutDays: Object.keys(workoutDayCount).length, workoutMinutes: Math.round(workoutMinutes),
+    avgSleepHours: weekNights.length ? Math.round(totalSleepHours/weekNights.length*10)/10 : null,
+    sleepNights: weekNights.length, avgSleepNeedHours: days.length ? Math.round(needSum/days.length*10)/10 : null
   };
 }
 // Single source of truth for the Weekly Report card: every number it shows (stat
@@ -4844,15 +4878,37 @@ function computeWeeklyReport(weekEndStr) {
   var wantLoss = (goalMode === 'fat_loss' || goalMode === 'recomp');
 
   // PRs this week — read straight from the strength log's own isPR flags, nothing recomputed.
+  var weekLog = getStrengthLog().filter(function(e){ return days.indexOf(e.date)>=0; });
+  var exDaysThisWeek = {}; // exerciseId -> distinct dates trained this week (any set, not just PR rows)
+  weekLog.forEach(function(e){
+    (exDaysThisWeek[e.exerciseId] || (exDaysThisWeek[e.exerciseId] = {}))[e.date] = true;
+  });
   var prByExercise = {};
-  getStrengthLog().filter(function(e){ return e.isPR && days.indexOf(e.date)>=0; }).forEach(function(e){
-    var prev = getExPRBefore(e.exerciseId, e.date);
-    var deltaKg = prev ? Math.round((e.e1RM - prev.e1RM)*10)/10 : null;
+  weekLog.filter(function(e){ return e.isPR; }).forEach(function(e){
+    var isBodyweight = !(parseFloat(e.weight) > 0);
+    var deltaKg = null;
+    if (!isBodyweight) {
+      var prev = getExPRBefore(e.exerciseId, e.date);
+      // e1RM is 0 for every bodyweight set (calcE1RM with weight 0), so a rep-mode PR
+      // compared against a *weighted* variation of the same exerciseId under getExPRBefore's
+      // e1RM lookup produced nonsense like "0kg (+-82.3kg)". Only diff e1RM for genuinely
+      // weighted PRs, where the comparison means something.
+      deltaKg = prev ? Math.round((e.e1RM - prev.e1RM)*10)/10 : null;
+    }
     if (!prByExercise[e.exerciseId] || e.e1RM > prByExercise[e.exerciseId].e1RM) {
-      prByExercise[e.exerciseId] = { name: e.exerciseName, weight: e.weight, e1RM: e.e1RM, deltaKg: deltaKg };
+      prByExercise[e.exerciseId] = {
+        exerciseId: e.exerciseId, name: e.exerciseName, weight: e.weight, reps: e.reps, e1RM: e.e1RM,
+        deltaKg: deltaKg, daysThisWeek: Object.keys(exDaysThisWeek[e.exerciseId]||{}).length
+      };
     }
   });
-  var prList = Object.keys(prByExercise).map(function(k){ return prByExercise[k]; });
+  var prAll = Object.keys(prByExercise).map(function(k){ return prByExercise[k]; });
+  // A PR on a move trained repeatedly this week says more than one hit on something tried
+  // once — lead with those; only fall back to the full list when nothing repeated.
+  var prRepeated = prAll.filter(function(pr){ return pr.daysThisWeek >= 2; });
+  var prPool = prRepeated.length ? prRepeated : prAll;
+  prPool.sort(function(a,b){ return (b.deltaKg||0) - (a.deltaKg||0); });
+  var prList = prPool.slice(0, 3);
 
   // Fitness Target milestone — only shown when there's no PR to lead with.
   var milestone = null;
@@ -4893,14 +4949,20 @@ function computeWeeklyReport(weekEndStr) {
     return (betterWhen === 'lower' ? diff < 0 : diff > 0) ? 'up' : 'down';
   }
   var calDiffT = Math.abs(t.avgCal - t.calGoal), calDiffP = p.daysWithMeals ? Math.abs(p.avgCal - p.calGoal) : null;
-  var wGoodT = t.weightSlope!=null ? (wantLoss ? t.weightSlope : -t.weightSlope) : null;
-  var wGoodP = p.weightSlope!=null ? (wantLoss ? p.weightSlope : -p.weightSlope) : null;
+  // "Goodness" score: higher = more progress in the direction the goal actually wants.
+  // wantLoss wants a MORE NEGATIVE slope, so goodness is the slope negated (losing 0.77
+  // kg/wk -> goodness +0.77; gaining 0.75 kg/wk -> goodness -0.75, correctly worse). This
+  // was previously left un-negated for the wantLoss branch, which meant a week that swung
+  // from gaining to losing weight numerically compared as -0.77 < 0.75 and rendered as a
+  // red "เทรนด์ช้าลง" (slowed down) — the opposite of what happened.
+  var wGoodT = t.weightSlope!=null ? (wantLoss ? -t.weightSlope : t.weightSlope) : null;
+  var wGoodP = p.weightSlope!=null ? (wantLoss ? -p.weightSlope : p.weightSlope) : null;
 
   var tiles = {
     calories: {
       value: t.avgCal, delta: trend(calDiffT, calDiffP, 'lower'),
       deltaLabel: 'เข้าเป้า ' + t.onGoalDays + '/7 วัน',
-      sub: p.daysWithMeals ? ('สัปดาห์ก่อน ' + p.avgCal + ' kcal · เข้าเป้า ' + p.onGoalDays + '/7 วัน') : 'สัปดาห์ก่อนไม่มีข้อมูล',
+      sub: 'เป้าเฉลี่ย ' + t.calGoal + ' kcal' + (t.restDayCount ? (' (มีวันพัก ' + t.restDayCount + ' วัน)') : '') + (p.daysWithMeals ? (' · สัปดาห์ก่อน ' + p.avgCal + ' kcal, เข้าเป้า ' + p.onGoalDays + '/7 วัน') : ' · สัปดาห์ก่อนไม่มีข้อมูล'),
       spark: calSpark
     },
     weight: {
@@ -4910,15 +4972,15 @@ function computeWeeklyReport(weekEndStr) {
       spark: wtSpark
     },
     sleep: {
-      value: t.sleepDebtHours, delta: trend(t.sleepDebtHours, p.sleepDebtHours, 'lower'),
-      deltaLabel: t.sleepDebtHours == null ? 'ไม่มีข้อมูล' : (p.sleepDebtHours == null ? '—' : (t.sleepDebtHours > p.sleepDebtHours ? 'เพิ่มขึ้น' : (t.sleepDebtHours < p.sleepDebtHours ? 'ลดลง' : 'เท่าเดิม'))),
-      sub: p.sleepDebtHours != null ? ('สัปดาห์ก่อน ' + p.sleepDebtHours + ' ชม.') : 'สัปดาห์ก่อนไม่มีข้อมูล',
+      value: t.avgSleepHours, delta: trend(t.avgSleepHours, p.avgSleepHours, 'higher'),
+      deltaLabel: t.avgSleepHours == null ? 'ไม่มีข้อมูล' : (p.avgSleepHours == null ? '—' : (t.avgSleepHours > p.avgSleepHours ? 'เพิ่มขึ้น' : (t.avgSleepHours < p.avgSleepHours ? 'ลดลง' : 'เท่าเดิม'))),
+      sub: (t.avgSleepNeedHours!=null ? ('ต้องการ ~' + t.avgSleepNeedHours + ' ชม./คืน · ') : '') + (p.avgSleepHours != null ? ('สัปดาห์ก่อน ' + p.avgSleepHours + ' ชม. (' + p.sleepNights + ' คืน)') : 'สัปดาห์ก่อนไม่มีข้อมูล'),
       spark: null
     },
     workouts: {
-      value: t.workoutSessions, delta: trend(t.workoutSessions, p.workoutSessions, 'higher'),
-      deltaLabel: t.workoutSessions === p.workoutSessions ? 'เท่าเดิม' : (t.workoutSessions > p.workoutSessions ? 'มากขึ้น' : 'น้อยลง'),
-      sub: 'สัปดาห์ก่อน ' + p.workoutSessions + ' ครั้ง',
+      value: t.workoutMinutes, delta: trend(t.workoutMinutes, p.workoutMinutes, 'higher'),
+      deltaLabel: t.workoutMinutes === p.workoutMinutes ? 'เท่าเดิม' : (t.workoutMinutes > p.workoutMinutes ? 'มากขึ้น' : 'น้อยลง'),
+      sub: t.workoutDays + ' วัน · สัปดาห์ก่อน ' + p.workoutMinutes + ' นาที (' + p.workoutDays + ' วัน)',
       spark: null
     }
   };
@@ -4926,6 +4988,10 @@ function computeWeeklyReport(weekEndStr) {
   return {
     weekEnd: weekEndStr, weekStart: days[0], prevWeekStart: prevDays[0], prevWeekEnd: prevEnd, days: days,
     this: t, prev: p, tiles: tiles, prList: prList, milestone: milestone, wantLoss: wantLoss,
+    // Snapshot of the goal used, so a stale-cache restore (S.goals corrected by Firebase
+    // loading after this was generated) can detect the mismatch and regenerate — see
+    // restoreOrGenerateWeeklySummary().
+    goalSnapshot: { cal: S.goals.cal, pro: S.goals.pro },
     generatedAt: Date.now()
   };
 }
@@ -4942,7 +5008,11 @@ function renderWeeklyReportCard(report, insightHTML) {
   var bannerHTML = '';
   if (report.prList.length) {
     var prText = report.prList.map(function(pr){
-      return '<b>'+escapeHTML(pr.name)+' '+pr.weight+'kg'+(pr.deltaKg!=null?' (+'+pr.deltaKg+'kg)':'')+'</b>';
+      var isBodyweight = !(parseFloat(pr.weight) > 0);
+      var stat = isBodyweight
+        ? ('Best ' + pr.reps + ' reps')
+        : (pr.weight + 'kg' + (pr.deltaKg!=null ? (' (' + (pr.deltaKg>=0?'+':'') + pr.deltaKg + 'kg)') : ''));
+      return '<b>'+escapeHTML(pr.name)+' '+stat+'</b>';
     }).join(' และ ');
     bannerHTML = '<div class="pr-banner"><span class="pr-banner-text">PR ใหม่สัปดาห์นี้ — '+prText+'</span></div>';
   } else if (report.milestone) {
@@ -4966,12 +5036,12 @@ function renderWeeklyReportCard(report, insightHTML) {
   }
   var calVal = tiles.calories.value.toLocaleString('th-TH') + ' <span>kcal/วัน</span>';
   var wtVal = tiles.weight.value == null ? '—' : ((tiles.weight.value>0?'+':(tiles.weight.value<0?'−':'')) + Math.abs(tiles.weight.value) + ' <span>kg</span>');
-  var slVal = tiles.sleep.value == null ? '—' : (tiles.sleep.value + ' <span>ชม.</span>');
-  var woVal = tiles.workouts.value + ' <span>ครั้ง</span>';
+  var slVal = tiles.sleep.value == null ? '—' : (tiles.sleep.value + ' <span>ชม./คืน</span>');
+  var woVal = tiles.workouts.value + ' <span>นาที</span>';
   var statGridHTML = '<div class="wk-stat-grid">' +
     tileHTML('var(--fire)', 'แคลอรี่', tiles.calories, calVal) +
     tileHTML('var(--accent)', 'น้ำหนัก', tiles.weight, wtVal) +
-    tileHTML('var(--blue)', 'หนี้การนอน', tiles.sleep, slVal) +
+    tileHTML('var(--blue)', 'เวลานอน', tiles.sleep, slVal) +
     tileHTML('var(--purple)', 'ออกกำลังกาย', tiles.workouts, woVal) +
   '</div>';
 
@@ -4993,13 +5063,25 @@ function renderWeeklyReportCard(report, insightHTML) {
     '<button class="wk-refresh-btn" type="button" title="สร้างใหม่" onclick="generateWeeklySummary()">↻</button>' +
   '</div>';
 
+  var collapsedPref = null; try { collapsedPref = localStorage.getItem('gd_weekly_report_collapsed'); } catch(e){}
+  var startCollapsed = collapsedPref === '1';
+
   body.innerHTML =
-    '<div class="wk-head"><div class="wk-title-group"><span class="card-title">รายงานประจำสัปดาห์</span><span class="auto-pill">อัตโนมัติ</span></div>' +
-    '<span class="wk-range">'+weeklyReportRangeLabel(report.weekStart, report.weekEnd)+'</span></div>' +
+    '<div class="wk-head" onclick="toggleWeeklyReportCard()"><div class="wk-title-group"><span class="card-title">รายงานประจำสัปดาห์</span><span class="auto-pill">อัตโนมัติ</span></div>' +
+    '<span class="wk-range">'+weeklyReportRangeLabel(report.weekStart, report.weekEnd)+'<span class="wk-chevron">▾</span></span></div>' +
+    '<div class="wk-collapsible-body">' +
     '<div class="wk-meta-row"><div class="wk-compare-note">เทียบกับสัปดาห์ก่อนหน้า (<b>'+weeklyReportRangeLabel(report.prevWeekStart, report.prevWeekEnd)+'</b>) · rolling 7 วัน</div>' + completenessHTML + '</div>' +
     bannerHTML + statGridHTML + proteinHTML +
-    '<div class="wk-insight-divider"></div>' + insightHTML + footerHTML;
+    '<div class="wk-insight-divider"></div>' + insightHTML + footerHTML +
+    '</div>';
+  card.classList.toggle('wk-collapsed', startCollapsed);
   card.style.display = 'block';
+}
+function toggleWeeklyReportCard() {
+  var card = document.getElementById('weekly-report-card');
+  if (!card) return;
+  var collapsed = card.classList.toggle('wk-collapsed');
+  try { localStorage.setItem('gd_weekly_report_collapsed', collapsed ? '1' : '0'); } catch(e){}
 }
 function weeklyNarrativeHTML(narrative) {
   if (!narrative || (!(narrative.good&&narrative.good.length) && !(narrative.watch&&narrative.watch.length))) {
@@ -5023,12 +5105,12 @@ function buildWeeklyNarrativePrompt(report) {
   lines.push('ห้ามคิดตัวเลขใหม่หรือแก้ตัวเลขที่ให้มา ใช้แค่ตัวเลขด้านล่างนี้ในการอธิบายเหตุผล/ความสัมพันธ์เท่านั้น');
   lines.push('');
   lines.push('สัปดาห์นี้ ('+report.weekStart+' ถึง '+report.weekEnd+') เทียบสัปดาห์ก่อน ('+report.prevWeekStart+' ถึง '+report.prevWeekEnd+'):');
-  lines.push('- แคลอรี่เฉลี่ย: '+t.avgCal+' kcal/วัน (เป้า '+t.calGoal+') เข้าเป้า '+t.onGoalDays+'/7 วัน | สัปดาห์ก่อน '+p.avgCal+' kcal, เข้าเป้า '+p.onGoalDays+'/7 วัน');
+  lines.push('- แคลอรี่เฉลี่ย: '+t.avgCal+' kcal/วัน (เป้าเฉลี่ยของสัปดาห์ '+t.calGoal+' kcal — ผสมวันพัก '+t.restDayCount+' วันกับวันฝึก, เป้าจะต่ำกว่าวันฝึกในวันพัก) เข้าเป้า '+t.onGoalDays+'/7 วัน | สัปดาห์ก่อน '+p.avgCal+' kcal (เป้าเฉลี่ย '+p.calGoal+'), เข้าเป้า '+p.onGoalDays+'/7 วัน');
   lines.push('- โปรตีนเฉลี่ย: '+t.avgPro+'g (เป้า '+t.proGoal+'g) ถึงเป้า '+t.proHitDays+'/7 วัน | สัปดาห์ก่อน '+p.avgPro+'g, ถึงเป้า '+p.proHitDays+'/7 วัน');
-  lines.push('- น้ำหนักเทรนด์: '+(t.weightSlope!=null?t.weightSlope+' kg/สัปดาห์':'ไม่มีข้อมูลพอ')+' | สัปดาห์ก่อน '+(p.weightSlope!=null?p.weightSlope+' kg/สัปดาห์':'ไม่มีข้อมูล')+' | เป้าหมาย: '+(report.wantLoss?'ลดน้ำหนัก':'เพิ่มน้ำหนัก/กล้ามเนื้อ'));
-  lines.push('- หนี้การนอน (rolling '+SLEEP_DEBT_WINDOW_DAYS+' คืน ณ ท้ายสัปดาห์): '+(t.sleepDebtHours!=null?t.sleepDebtHours+' ชม.':'ไม่มีข้อมูล')+' | สัปดาห์ก่อน '+(p.sleepDebtHours!=null?p.sleepDebtHours+' ชม.':'ไม่มีข้อมูล'));
-  lines.push('- ออกกำลังกาย: '+t.workoutSessions+' ครั้ง | สัปดาห์ก่อน '+p.workoutSessions+' ครั้ง');
-  if (report.prList.length) lines.push('- PR ใหม่สัปดาห์นี้: '+report.prList.map(function(pr){ return pr.name+' '+pr.weight+'kg'+(pr.deltaKg!=null?' (+'+pr.deltaKg+'kg)':''); }).join(', '));
+  lines.push('- น้ำหนักเทรนด์ (regression 7 จุด): '+(t.weightSlope!=null?t.weightSlope+' kg/สัปดาห์':'ไม่มีข้อมูลพอ')+' | สัปดาห์ก่อน '+(p.weightSlope!=null?p.weightSlope+' kg/สัปดาห์':'ไม่มีข้อมูล')+' | เป้าหมาย: '+(report.wantLoss?'ลดน้ำหนัก':'เพิ่มน้ำหนัก/กล้ามเนื้อ')+' (ลบ = ลด, บวก = เพิ่ม)');
+  lines.push('- เวลานอนเฉลี่ย: '+(t.avgSleepHours!=null?t.avgSleepHours+' ชม./คืน ('+t.sleepNights+' คืนที่มีข้อมูล)':'ไม่มีข้อมูล')+' ต้องการ ~'+t.avgSleepNeedHours+' ชม./คืน | สัปดาห์ก่อน '+(p.avgSleepHours!=null?p.avgSleepHours+' ชม./คืน':'ไม่มีข้อมูล'));
+  lines.push('- ออกกำลังกาย: '+t.workoutMinutes+' นาที รวม ('+t.workoutDays+' วัน) | สัปดาห์ก่อน '+p.workoutMinutes+' นาที ('+p.workoutDays+' วัน)');
+  if (report.prList.length) lines.push('- PR ใหม่สัปดาห์นี้ (เฉพาะท่าที่เล่นซ้ำบ่อย): '+report.prList.map(function(pr){ return pr.name+' '+(parseFloat(pr.weight)>0?pr.weight+'kg'+(pr.deltaKg!=null?' ('+(pr.deltaKg>=0?'+':'')+pr.deltaKg+'kg)':''):('best '+pr.reps+' reps')); }).join(', '));
   if (report.milestone) lines.push('- ความคืบหน้าสู่ Fitness Target: '+(report.milestone.wantLoss?'ลดมาแล้ว':'เพิ่มมาแล้ว')+' '+report.milestone.lost+' จาก '+report.milestone.needed+' กก. ('+report.milestone.pct+'%)');
   lines.push('');
   lines.push('"good" = ทำได้ดีขึ้นจากสัปดาห์ก่อน อ้างอิงตัวเลขข้างต้นตรงๆ, "watch" = จุดที่ควรปรับ พร้อมคำแนะนำสั้นๆ ที่ทำได้จริง');
@@ -5076,7 +5158,15 @@ function restoreOrGenerateWeeklySummary() {
   var mostRecent = weeklyReportWeekEnd(localDateStr());
   var saved = null; try { saved = JSON.parse(localStorage.getItem('gd_weekly_summary')||'null'); } catch(e){}
   if (saved && saved.report) renderWeeklyReportCard(saved.report, weeklyNarrativeHTML(saved.narrative));
-  if (saved && saved.weekEnd === mostRecent) return;
+  if (saved && saved.weekEnd === mostRecent) {
+    // S.goals starts at a hardcoded default and is only corrected once Firebase's
+    // loadRemoteData() resolves (async, after the first render() already ran). If this
+    // week's report was generated in that window, the goal it used is stale even though
+    // the weekEnd matches — regenerate rather than leave a wrong target on screen for the
+    // rest of the week.
+    var snap = saved.report.goalSnapshot;
+    if (snap && (snap.cal === S.goals.cal) && (snap.pro === S.goals.pro)) return;
+  }
   generateWeeklySummary();
 }
 
@@ -5928,7 +6018,10 @@ function updateGoalModeHint(goal) {
     '<br>Workout: <b style="color:var(--blue)">' + trainCfg.label + '</b> | ' + (freqEl ? freqEl.value : (p.weeklyFrequency||4)) + ' วัน/สัปดาห์ | Recovery: ' + recCfg.label;
 }
 function mealsForDate(date) { return (S.meals || []).filter(function(m){ return m.date === date; }); }
-function workoutsForDate(date) { return (typeof FT !== 'undefined' && FT.workouts ? FT.workouts : []).filter(function(w){ return w.date === date; }); }
+// FT.workouts is only hydrated once the Fitness tab has been opened — before that
+// it exists but is `[]`, which is truthy, so require .length or this silently reads
+// an empty in-memory array instead of the real data sitting in localStorage.
+function workoutsForDate(date) { return (typeof FT !== 'undefined' && FT.workouts && FT.workouts.length ? FT.workouts : JSON.parse(localStorage.getItem('gd_workouts')||'[]')).filter(function(w){ return w.date === date; }); }
 function getSessionStepsForMetrics(date) { return workoutsForDate(date).reduce(function(a,w){ return a + (+w.session_steps || 0); }, 0); }
 // Discount logged workout burn toward net-calorie / TDEE math (never toward the raw
 // number shown on the workout log itself). Two independent reasons to discount, by source:
