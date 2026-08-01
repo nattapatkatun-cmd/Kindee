@@ -611,6 +611,61 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
 .mbd-cal span{font-size:9px;color:var(--text3);font-weight:600;}
 .meal-expand-toggle{display:inline-flex;align-items:center;gap:5px;background:var(--surface2);border:1px solid var(--border-md);border-radius:20px;padding:4px 11px;font-family:inherit;font-size:11px;font-weight:700;color:var(--accent);cursor:pointer;margin-top:9px;}
 
+/* ── Weekly Report card ── */
+.wk-head{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:3px;gap:10px;}
+.wk-title-group{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
+.auto-pill{background:var(--accent-dim);border:1px solid var(--accent);border-radius:20px;padding:2px 9px;font-size:10px;font-weight:700;color:var(--accent);letter-spacing:0.2px;}
+.wk-range{font-size:11px;color:var(--text3);white-space:nowrap;}
+.wk-meta-row{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:16px;flex-wrap:wrap;}
+.wk-compare-note{font-size:12px;color:var(--text2);}
+.wk-compare-note b{color:var(--text);font-weight:600;}
+.data-pill{background:var(--green-dim);border:1px solid var(--green);border-radius:20px;padding:2px 9px;font-size:10px;font-weight:700;color:var(--green);white-space:nowrap;}
+.data-pill.partial{background:color-mix(in srgb, var(--yellow) 14%, transparent);border-color:var(--yellow);color:var(--yellow);}
+.pr-banner{display:flex;align-items:center;background:var(--fire-dim);border:1px solid var(--fire);border-radius:var(--radius-input);padding:10px 13px;margin-bottom:14px;}
+.pr-banner-text{font-size:12.5px;font-weight:600;color:var(--text);line-height:1.4;}
+.pr-banner-text b{color:var(--fire);}
+.pr-banner.milestone{background:var(--accent-dim);border-color:var(--accent);}
+.pr-banner.milestone .pr-banner-text b{color:var(--accent);}
+.wk-stat-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;}
+.wk-stat-tile{background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-input);padding:12px 13px;}
+.wk-stat-label{font-size:10.5px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:0.5px;display:flex;align-items:center;gap:5px;margin-bottom:7px;}
+.wk-stat-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0;}
+.wk-stat-value{font-size:22px;font-weight:800;letter-spacing:-0.6px;line-height:1;margin-bottom:6px;font-variant-numeric:tabular-nums;}
+.wk-stat-value span{font-size:12px;font-weight:600;color:var(--text3);}
+.wk-stat-delta{display:inline-flex;align-items:center;gap:3px;font-size:11px;font-weight:700;border-radius:20px;padding:2px 8px 2px 6px;}
+.wk-stat-delta.up{background:var(--green-dim);color:var(--green);}
+.wk-stat-delta.down{background:color-mix(in srgb, var(--red) 14%, transparent);color:var(--red);}
+.wk-stat-delta.flat{background:var(--surface3);color:var(--text2);}
+.wk-stat-sub{font-size:10.5px;color:var(--text3);margin-top:5px;line-height:1.4;}
+.wk-spark-row{display:flex;align-items:flex-end;gap:3px;height:20px;margin-top:8px;}
+.wk-spark-bar{flex:1;background:var(--surface3);border-radius:2px 2px 0 0;}
+.wk-spark-bar.now{background:var(--accent);}
+.wk-spark-caption{font-size:9px;color:var(--text3);margin-top:3px;letter-spacing:0.2px;}
+.wk-protein-tile{background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-input);padding:12px 13px;margin-bottom:14px;}
+.wk-protein-head{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:9px;}
+.wk-protein-label{font-size:10.5px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:0.5px;display:flex;gap:5px;align-items:center;}
+.wk-protein-value{font-size:13px;font-weight:700;color:var(--text);}
+.wk-protein-value span{font-size:11px;font-weight:600;color:var(--text3);}
+.wk-pip-row{display:flex;gap:5px;}
+.wk-pip{flex:1;height:8px;border-radius:4px;background:var(--surface3);}
+.wk-pip.hit{background:var(--blue);}
+.wk-pip-days{display:flex;justify-content:space-between;margin-top:5px;}
+.wk-pip-days span{font-size:9px;color:var(--text3);flex:1;text-align:center;}
+.wk-pip-note{font-size:9.5px;color:var(--text3);margin-top:8px;line-height:1.45;}
+.wk-insight-divider{height:1px;background:var(--border);margin:2px 0 14px;}
+.wk-insight-block{margin-bottom:14px;}
+.wk-insight-block:last-child{margin-bottom:0;}
+.wk-insight-head{font-size:12px;font-weight:700;display:flex;align-items:center;gap:6px;margin-bottom:8px;}
+.wk-insight-head.good{color:var(--accent);}
+.wk-insight-head.watch{color:var(--yellow);}
+.wk-insight-list{list-style:none;display:flex;flex-direction:column;gap:7px;}
+.wk-insight-list li{font-size:12.5px;color:var(--text2);line-height:1.55;padding-left:14px;position:relative;}
+.wk-insight-list li::before{content:'';position:absolute;left:0;top:7px;width:5px;height:5px;border-radius:50%;background:var(--text3);}
+.wk-insight-list b{color:var(--text);font-weight:600;}
+.wk-footer{display:flex;justify-content:space-between;align-items:center;margin-top:16px;padding-top:13px;border-top:1px solid var(--border);}
+.wk-meta{font-size:10.5px;color:var(--text3);line-height:1.5;}
+.wk-refresh-btn{background:var(--surface2);border:1px solid var(--border-md);border-radius:50%;width:30px;height:30px;color:var(--text2);font-size:13px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-family:inherit;}
+
 </style>
 </head>
 <body>
@@ -883,6 +938,11 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
         <div style="font-size:13px;color:var(--text2);font-weight:500;">กดปุ่มเพื่อให้ AI วิเคราะห์วันนี้</div>
         <div style="font-size:11px;color:var(--text3);margin-top:4px;">รับ feedback ระดับ WHOOP + แผนพรุ่งนี้</div>
       </div>
+    </div>
+
+    <!-- WEEKLY REPORT CARD (auto-generated every Sunday, rolling) -->
+    <div class="card" id="weekly-report-card" style="display:none;">
+      <div id="weekly-report-body"></div>
     </div>
 
     <!-- Insights entry point -->
@@ -2167,6 +2227,7 @@ function buildFB(db, storage) {
     loadBodyComps: function(){ return uref().collection('bodyComp').get().then(function(s){ return s.docs.map(function(d){return d.data();}).sort(function(a,b){return a.date.localeCompare(b.date)||a.id-b.id;}); }); },
     saveDailySummary: function(date, html){ return uref().collection('dailySummary').doc(date).set({ date: date, html: html, savedAt: Date.now() }); },
     loadDailySummaryByDate: function(date){ return uref().collection('dailySummary').doc(date).get().then(function(s){ return s.exists ? s.data() : null; }); },
+    saveWeeklySummary: function(weekEnd, payload){ return uref().collection('weeklySummary').doc(weekEnd).set(Object.assign({ savedAt: Date.now() }, payload)); },
     // Workouts / weight / strength / sleep — previously bolted on by
     // initFitness()/initWeightFirebase() with a hardcoded uid.
     saveWorkout: function(w){ return uref().collection('workouts').doc(String(w.id)).set(w); },
@@ -2532,6 +2593,7 @@ var APP_LOGIC_VERSION = 'v23_27_bodycomp_offline_sync_fix_2026_07_12';
 try {
   if (localStorage.getItem('gd_logic_version') !== APP_LOGIC_VERSION) {
     localStorage.removeItem('gd_daily_summary');
+    localStorage.removeItem('gd_weekly_summary');
     localStorage.removeItem('gd_wt_ai_result');
     localStorage.setItem('gd_logic_version', APP_LOGIC_VERSION);
   }
@@ -2779,7 +2841,7 @@ function mergeDateMapSetting(localKey, remote, settingKey) {
   if (behind && window.FB_OK && window.FB) window.FB.saveSetting(settingKey, merged).catch(function(){});
 }
 
-function render() { updateDash(); renderWeightCalChart(); renderLog(); renderFavorites(); updateSyncDot(); restoreDailySummary(); restoreRecoveryAdj(); detectAnomalies(); renderFitnessCharts(); }
+function render() { updateDash(); renderWeightCalChart(); renderLog(); renderFavorites(); updateSyncDot(); restoreDailySummary(); restoreOrGenerateWeeklySummary(); restoreRecoveryAdj(); detectAnomalies(); renderFitnessCharts(); }
 
 function restoreDailySummary() {
   try {
@@ -4322,6 +4384,7 @@ function applyRecoveryAdj() {
   adj.confirmed = true;
   localStorage.setItem('gd_recovery_adj', JSON.stringify(adj));
   localStorage.removeItem('gd_daily_summary'); // today's effective goal just changed
+  localStorage.removeItem('gd_weekly_summary');
   if (window.FB_OK && window.FB) window.FB.saveSetting('recoveryAdj', adj).catch(function(){});
   updateRecoveryAdjBanner(adj);
   updateDash();
@@ -4336,6 +4399,7 @@ function cancelRecoveryAdj() {
   adj.confirmed = false;
   localStorage.setItem('gd_recovery_adj', JSON.stringify(adj));
   localStorage.removeItem('gd_daily_summary'); // today's effective goal just changed
+  localStorage.removeItem('gd_weekly_summary');
   if (window.FB_OK && window.FB) window.FB.saveSetting('recoveryAdj', adj).catch(function(){});
   updateRecoveryAdjBanner(adj);
   updateDash();
@@ -4695,6 +4759,325 @@ function renderWeeklyReview() {
   var lmgWR=(typeof checkLeanMassGuard==='function')?checkLeanMassGuard():null;
   if(lmgWR)html+='<div style="padding:8px 12px;background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.25);border-radius:10px;font-size:11px;color:var(--text2);line-height:1.5;">'+lmgWR.msg+'</div>';
   el.innerHTML=html;
+}
+
+// ── Weekly Report (auto-generated every Sunday, rolling display) ──────────
+var _weeklyGenInFlight = false;
+
+// Most recent Sunday on/before dateStr (local-noon anchored — see CLAUDE.md "Dates").
+function weeklyReportWeekEnd(dateStr) {
+  var d = new Date(dateStr + 'T12:00:00');
+  var day = d.getDay(); // 0=Sun..6=Sat
+  if (day !== 0) d.setDate(d.getDate() - day);
+  return localDateStr(d);
+}
+// Monday..Sunday date strings ending on weekEndStr.
+function weeklyReportDayRange(weekEndStr) {
+  var end = new Date(weekEndStr + 'T12:00:00'), days = [];
+  for (var i = 6; i >= 0; i--) { var dd = new Date(end); dd.setDate(end.getDate() - i); days.push(localDateStr(dd)); }
+  return days;
+}
+function weeklyReportSparkBars(values) {
+  var max = 0.0001;
+  values.forEach(function(v){ if (Math.abs(v) > max) max = Math.abs(v); });
+  return values.map(function(v){ return Math.max(3, Math.round(Math.abs(v) / max * 20)); });
+}
+// Per-week aggregate — mirrors renderWeeklyReview()'s math (same meals/workouts/
+// weight sources, same 10% goal tolerance, same linear-regression weight trend)
+// so the two views never disagree on the same numbers.
+function computeWeekStats(days) {
+  var meals = S.meals || JSON.parse(localStorage.getItem('gd_meals')||'[]');
+  // FT.workouts is only hydrated once the user opens the Fitness tab (see FT.workouts=
+  // assignment near initFitness()) — at Dashboard load it exists but is still `[]`, which
+  // is truthy, so an unguarded `FT.workouts ? ... : ...` silently picks the empty array
+  // over the real data sitting in localStorage. Require .length, same as the WT.log guard
+  // two lines below.
+  var workouts = (typeof FT!=='undefined'&&FT.workouts&&FT.workouts.length)?FT.workouts:JSON.parse(localStorage.getItem('gd_workouts')||'[]');
+  var weights = (typeof WT!=='undefined'&&WT.log&&WT.log.length)?WT.log:JSON.parse(localStorage.getItem('gd_weight')||'[]');
+  var calGoal = S.goals.cal||1800, proGoal = S.goals.pro||120;
+  var totalCal=0,totalPro=0,daysWithMeals=0,onGoalDays=0,proHitDays=0,proPips=[];
+  days.forEach(function(date){
+    var dm = meals.filter(function(m){ return m.date===date; });
+    var cal = dm.reduce(function(s,m){ return s+(parseFloat(m.calories)||0); },0);
+    var pro = dm.reduce(function(s,m){ return s+(parseFloat(m.protein)||0); },0);
+    if (dm.length) {
+      daysWithMeals++; totalCal+=cal; totalPro+=pro;
+      if (Math.abs(cal-calGoal) <= calGoal*0.1) onGoalDays++;
+      var proHit = pro >= proGoal*0.9;
+      if (proHit) proHitDays++;
+      proPips.push(proHit);
+    } else { proPips.push(false); }
+  });
+  var weekWeights = weights.filter(function(w){ return days.indexOf(w.date)>=0; }).sort(function(a,b){ return a.date>b.date?1:-1; });
+  var weightSlope = null;
+  if (weekWeights.length>=2) {
+    var n=weekWeights.length,sx=0,sy=0,sxy=0,sxx=0;
+    weekWeights.forEach(function(w,i){ sx+=i;sy+=w.weight;sxy+=i*w.weight;sxx+=i*i; });
+    var slope=(n*sxy-sx*sy)/(n*sxx-sx*sx);
+    weightSlope = Math.round(slope*7*100)/100;
+  }
+  var weekWorkouts = workouts.filter(function(w){ return days.indexOf(w.date)>=0; });
+  var sleepDebt = (typeof computeSleepDebt==='function') ? computeSleepDebt(days[days.length-1]) : null;
+  return {
+    avgCal: daysWithMeals ? Math.round(totalCal/daysWithMeals) : 0,
+    avgPro: daysWithMeals ? Math.round(totalPro/daysWithMeals) : 0,
+    daysWithMeals: daysWithMeals, onGoalDays: onGoalDays, proHitDays: proHitDays, proPips: proPips,
+    calGoal: calGoal, proGoal: proGoal, weightSlope: weightSlope,
+    workoutSessions: weekWorkouts.length,
+    sleepDebtHours: sleepDebt ? sleepDebt.hours : null
+  };
+}
+// Single source of truth for the Weekly Report card: every number it shows (stat
+// tiles, PR banner, protein pips, sparklines) is computed here, deterministically.
+// The AI narrative (see generateWeeklySummary) only narrates these numbers — it
+// never computes any of them, per the app's "AI output is never trusted for
+// numbers the app can compute" rule.
+function computeWeeklyReport(weekEndStr) {
+  var days = weeklyReportDayRange(weekEndStr);
+  var prevEnd = localDateStr(new Date(new Date(weekEndStr+'T12:00:00').getTime() - 7*86400000));
+  var prevDays = weeklyReportDayRange(prevEnd);
+  var t = computeWeekStats(days);
+  if (!t.daysWithMeals) return null; // nothing logged this week — not enough to report
+  var p = computeWeekStats(prevDays);
+
+  var goalMode = (S.profile && S.profile.goalType) || 'fat_loss';
+  var wantLoss = (goalMode === 'fat_loss' || goalMode === 'recomp');
+
+  // PRs this week — read straight from the strength log's own isPR flags, nothing recomputed.
+  var prByExercise = {};
+  getStrengthLog().filter(function(e){ return e.isPR && days.indexOf(e.date)>=0; }).forEach(function(e){
+    var prev = getExPRBefore(e.exerciseId, e.date);
+    var deltaKg = prev ? Math.round((e.e1RM - prev.e1RM)*10)/10 : null;
+    if (!prByExercise[e.exerciseId] || e.e1RM > prByExercise[e.exerciseId].e1RM) {
+      prByExercise[e.exerciseId] = { name: e.exerciseName, weight: e.weight, e1RM: e.e1RM, deltaKg: deltaKg };
+    }
+  });
+  var prList = Object.keys(prByExercise).map(function(k){ return prByExercise[k]; });
+
+  // Fitness Target milestone — only shown when there's no PR to lead with.
+  var milestone = null;
+  if (!prList.length) {
+    var target = JSON.parse(localStorage.getItem('gd_ft_target')||'null');
+    if (target && target.weight && target.startWeight) {
+      var weights = (typeof WT!=='undefined'&&WT.log&&WT.log.length)?WT.log:JSON.parse(localStorage.getItem('gd_weight')||'[]');
+      var upTo = weights.filter(function(w){ return w.date<=weekEndStr; }).sort(function(a,b){ return a.date>b.date?1:-1; });
+      var latestW = upTo.length ? upTo[upTo.length-1].weight : null;
+      var totalNeeded = target.weight - target.startWeight;
+      if (latestW != null && totalNeeded !== 0) {
+        var progressed = latestW - target.startWeight;
+        var pos = (typeof getTargetProgramPosition === 'function') ? getTargetProgramPosition(target) : null;
+        milestone = {
+          lost: Math.round(Math.abs(progressed)*10)/10, needed: Math.round(Math.abs(totalNeeded)*10)/10,
+          pct: Math.max(0, Math.min(100, Math.round(progressed/totalNeeded*100))),
+          wantLoss: wantLoss, weeksRemaining: (pos && !pos.isOver) ? pos.weeksRemaining : null
+        };
+      }
+    }
+  }
+
+  // Up to 4 completed weeks (this one + up to 3 prior) with any logged data, for sparklines.
+  var sparkWeeks = [];
+  for (var i=3;i>=0;i--) {
+    var wEnd = localDateStr(new Date(new Date(weekEndStr+'T12:00:00').getTime() - i*7*86400000));
+    var stats = computeWeekStats(weeklyReportDayRange(wEnd));
+    if (stats.daysWithMeals) sparkWeeks.push(stats);
+  }
+  var showSpark = sparkWeeks.length >= 2; // a single week has nothing to compare against — hide rather than show a flat/meaningless bar
+  var calSpark = showSpark ? weeklyReportSparkBars(sparkWeeks.map(function(w){ return w.avgCal - w.calGoal; })) : null;
+  var wtSpark  = showSpark ? weeklyReportSparkBars(sparkWeeks.map(function(w){ return w.weightSlope || 0; })) : null;
+
+  function trend(curr, prev, betterWhen) {
+    if (curr == null || prev == null) return 'flat';
+    var diff = curr - prev;
+    if (Math.abs(diff) < 1e-9) return 'flat';
+    return (betterWhen === 'lower' ? diff < 0 : diff > 0) ? 'up' : 'down';
+  }
+  var calDiffT = Math.abs(t.avgCal - t.calGoal), calDiffP = p.daysWithMeals ? Math.abs(p.avgCal - p.calGoal) : null;
+  var wGoodT = t.weightSlope!=null ? (wantLoss ? t.weightSlope : -t.weightSlope) : null;
+  var wGoodP = p.weightSlope!=null ? (wantLoss ? p.weightSlope : -p.weightSlope) : null;
+
+  var tiles = {
+    calories: {
+      value: t.avgCal, delta: trend(calDiffT, calDiffP, 'lower'),
+      deltaLabel: 'เข้าเป้า ' + t.onGoalDays + '/7 วัน',
+      sub: p.daysWithMeals ? ('สัปดาห์ก่อน ' + p.avgCal + ' kcal · เข้าเป้า ' + p.onGoalDays + '/7 วัน') : 'สัปดาห์ก่อนไม่มีข้อมูล',
+      spark: calSpark
+    },
+    weight: {
+      value: t.weightSlope, delta: trend(wGoodT, wGoodP, 'higher'),
+      deltaLabel: t.weightSlope == null ? 'ข้อมูลไม่พอ' : (p.weightSlope==null ? '—' : (wGoodT > wGoodP ? 'เทรนด์เร่งขึ้น' : (wGoodT < wGoodP ? 'เทรนด์ช้าลง' : 'เท่าเดิม'))),
+      sub: p.weightSlope != null ? ('สัปดาห์ก่อน ' + p.weightSlope + ' kg') : 'สัปดาห์ก่อนไม่มีข้อมูล',
+      spark: wtSpark
+    },
+    sleep: {
+      value: t.sleepDebtHours, delta: trend(t.sleepDebtHours, p.sleepDebtHours, 'lower'),
+      deltaLabel: t.sleepDebtHours == null ? 'ไม่มีข้อมูล' : (p.sleepDebtHours == null ? '—' : (t.sleepDebtHours > p.sleepDebtHours ? 'เพิ่มขึ้น' : (t.sleepDebtHours < p.sleepDebtHours ? 'ลดลง' : 'เท่าเดิม'))),
+      sub: p.sleepDebtHours != null ? ('สัปดาห์ก่อน ' + p.sleepDebtHours + ' ชม.') : 'สัปดาห์ก่อนไม่มีข้อมูล',
+      spark: null
+    },
+    workouts: {
+      value: t.workoutSessions, delta: trend(t.workoutSessions, p.workoutSessions, 'higher'),
+      deltaLabel: t.workoutSessions === p.workoutSessions ? 'เท่าเดิม' : (t.workoutSessions > p.workoutSessions ? 'มากขึ้น' : 'น้อยลง'),
+      sub: 'สัปดาห์ก่อน ' + p.workoutSessions + ' ครั้ง',
+      spark: null
+    }
+  };
+
+  return {
+    weekEnd: weekEndStr, weekStart: days[0], prevWeekStart: prevDays[0], prevWeekEnd: prevEnd, days: days,
+    this: t, prev: p, tiles: tiles, prList: prList, milestone: milestone, wantLoss: wantLoss,
+    generatedAt: Date.now()
+  };
+}
+function weeklyReportRangeLabel(startStr, endStr) {
+  var ds=new Date(startStr+'T12:00:00'), de=new Date(endStr+'T12:00:00');
+  return ds.toLocaleDateString('th-TH',{day:'numeric'})+'–'+de.toLocaleDateString('th-TH',{day:'numeric',month:'short'});
+}
+function renderWeeklyReportCard(report, insightHTML) {
+  var card = document.getElementById('weekly-report-card');
+  var body = document.getElementById('weekly-report-body');
+  if (!card || !body || !report) return;
+  var t = report.this, tiles = report.tiles;
+
+  var bannerHTML = '';
+  if (report.prList.length) {
+    var prText = report.prList.map(function(pr){
+      return '<b>'+escapeHTML(pr.name)+' '+pr.weight+'kg'+(pr.deltaKg!=null?' (+'+pr.deltaKg+'kg)':'')+'</b>';
+    }).join(' และ ');
+    bannerHTML = '<div class="pr-banner"><span class="pr-banner-text">PR ใหม่สัปดาห์นี้ — '+prText+'</span></div>';
+  } else if (report.milestone) {
+    var m = report.milestone, verb = m.wantLoss ? 'ลดมาแล้ว' : 'เพิ่มมาแล้ว';
+    bannerHTML = '<div class="pr-banner milestone"><span class="pr-banner-text">ระหว่างทางสู่เป้าหมาย — '+verb+' <b>'+m.lost+'</b> จาก '+m.needed+' กก. (<b>'+m.pct+'%</b>)'+(m.weeksRemaining!=null?' · เหลืออีก '+m.weeksRemaining+' สัปดาห์ตามแผน':'')+'</span></div>';
+  }
+
+  function tileHTML(dotColor, label, tile, valDisplay) {
+    var sparkHTML = '';
+    if (tile.spark) {
+      sparkHTML = '<div class="wk-spark-row">' + tile.spark.map(function(h,i){
+        return '<div class="wk-spark-bar'+(i===tile.spark.length-1?' now':'')+'" style="height:'+h+'px"></div>';
+      }).join('') + '</div><div class="wk-spark-caption">'+tile.spark.length+' สัปดาห์ล่าสุด</div>';
+    }
+    return '<div class="wk-stat-tile">' +
+      '<div class="wk-stat-label" style="color:'+dotColor+'"><span class="wk-stat-dot" style="background:'+dotColor+'"></span> '+label+'</div>' +
+      '<div class="wk-stat-value">'+valDisplay+'</div>' +
+      '<span class="wk-stat-delta '+tile.delta+'">'+(tile.delta==='up'?'▲ ':tile.delta==='down'?'▼ ':'')+tile.deltaLabel+'</span>' +
+      '<div class="wk-stat-sub">'+tile.sub+'</div>' + sparkHTML +
+    '</div>';
+  }
+  var calVal = tiles.calories.value.toLocaleString('th-TH') + ' <span>kcal/วัน</span>';
+  var wtVal = tiles.weight.value == null ? '—' : ((tiles.weight.value>0?'+':(tiles.weight.value<0?'−':'')) + Math.abs(tiles.weight.value) + ' <span>kg</span>');
+  var slVal = tiles.sleep.value == null ? '—' : (tiles.sleep.value + ' <span>ชม.</span>');
+  var woVal = tiles.workouts.value + ' <span>ครั้ง</span>';
+  var statGridHTML = '<div class="wk-stat-grid">' +
+    tileHTML('var(--fire)', 'แคลอรี่', tiles.calories, calVal) +
+    tileHTML('var(--accent)', 'น้ำหนัก', tiles.weight, wtVal) +
+    tileHTML('var(--blue)', 'หนี้การนอน', tiles.sleep, slVal) +
+    tileHTML('var(--purple)', 'ออกกำลังกาย', tiles.workouts, woVal) +
+  '</div>';
+
+  var thaiDays = ['จ','อ','พ','พฤ','ศ','ส','อา'];
+  var proteinHTML = '<div class="wk-protein-tile">' +
+    '<div class="wk-protein-head"><span class="wk-protein-label"><span class="wk-stat-dot" style="background:var(--blue)"></span> โปรตีน</span>' +
+    '<span class="wk-protein-value">เฉลี่ย '+t.avgPro+'g <span>/ เป้า '+t.proGoal+'g</span></span></div>' +
+    '<div class="wk-pip-row">' + t.proPips.map(function(hit){ return '<div class="wk-pip'+(hit?' hit':'')+'"></div>'; }).join('') + '</div>' +
+    '<div class="wk-pip-days">' + thaiDays.map(function(d){ return '<span>'+d+'</span>'; }).join('') + '</div>' +
+    '<div class="wk-pip-note">ช่องสีฟ้า = วันที่ได้โปรตีน ≥90% ของเป้าหมายวันนั้น</div>' +
+  '</div>';
+
+  var completenessPartial = t.daysWithMeals <= 5;
+  var completenessHTML = '<span class="data-pill'+(completenessPartial?' partial':'')+'">ค่าเฉลี่ยจากข้อมูล '+t.daysWithMeals+'/7 วัน</span>';
+
+  var gen = new Date(report.generatedAt || Date.now());
+  var footerHTML = '<div class="wk-footer">' +
+    '<div class="wk-meta">สร้างอัตโนมัติ ' + gen.toLocaleDateString('th-TH',{weekday:'short',day:'numeric',month:'short'}) + ' ' + gen.toLocaleTimeString('th-TH',{hour:'2-digit',minute:'2-digit'}) + ' น.<br>รายงานถัดไป: อาทิตย์หน้า</div>' +
+    '<button class="wk-refresh-btn" type="button" title="สร้างใหม่" onclick="generateWeeklySummary()">↻</button>' +
+  '</div>';
+
+  body.innerHTML =
+    '<div class="wk-head"><div class="wk-title-group"><span class="card-title">รายงานประจำสัปดาห์</span><span class="auto-pill">อัตโนมัติ</span></div>' +
+    '<span class="wk-range">'+weeklyReportRangeLabel(report.weekStart, report.weekEnd)+'</span></div>' +
+    '<div class="wk-meta-row"><div class="wk-compare-note">เทียบกับสัปดาห์ก่อนหน้า (<b>'+weeklyReportRangeLabel(report.prevWeekStart, report.prevWeekEnd)+'</b>) · rolling 7 วัน</div>' + completenessHTML + '</div>' +
+    bannerHTML + statGridHTML + proteinHTML +
+    '<div class="wk-insight-divider"></div>' + insightHTML + footerHTML;
+  card.style.display = 'block';
+}
+function weeklyNarrativeHTML(narrative) {
+  if (!narrative || (!(narrative.good&&narrative.good.length) && !(narrative.watch&&narrative.watch.length))) {
+    return '<div class="wk-meta" style="text-align:center;padding:4px 0;">ไม่สามารถสร้างบทวิเคราะห์ได้ในตอนนี้ — ตัวเลขด้านบนยังถูกต้อง</div>';
+  }
+  var html = '';
+  if (narrative.good && narrative.good.length) {
+    html += '<div class="wk-insight-block"><div class="wk-insight-head good">ดีขึ้นจากสัปดาห์ก่อน</div><ul class="wk-insight-list">' +
+      narrative.good.map(function(x){ return '<li>'+sanitizeHTML(String(x||''))+'</li>'; }).join('') + '</ul></div>';
+  }
+  if (narrative.watch && narrative.watch.length) {
+    html += '<div class="wk-insight-block"><div class="wk-insight-head watch">ควรปรับ</div><ul class="wk-insight-list">' +
+      narrative.watch.map(function(x){ return '<li>'+sanitizeHTML(String(x||''))+'</li>'; }).join('') + '</ul></div>';
+  }
+  return html;
+}
+function buildWeeklyNarrativePrompt(report) {
+  var t = report.this, p = report.prev, lines = [];
+  lines.push('คุณเป็น personal trainer วิเคราะห์สรุปผลประจำสัปดาห์ของผู้ใช้แอปติดตามแคลอรี่ "กินดี"');
+  lines.push('ตอบเป็น JSON เท่านั้น รูปแบบ: {"good": ["...", "..."], "watch": ["...", "..."]} ภาษาไทย 2-3 ข้อต่อหมวด');
+  lines.push('ห้ามคิดตัวเลขใหม่หรือแก้ตัวเลขที่ให้มา ใช้แค่ตัวเลขด้านล่างนี้ในการอธิบายเหตุผล/ความสัมพันธ์เท่านั้น');
+  lines.push('');
+  lines.push('สัปดาห์นี้ ('+report.weekStart+' ถึง '+report.weekEnd+') เทียบสัปดาห์ก่อน ('+report.prevWeekStart+' ถึง '+report.prevWeekEnd+'):');
+  lines.push('- แคลอรี่เฉลี่ย: '+t.avgCal+' kcal/วัน (เป้า '+t.calGoal+') เข้าเป้า '+t.onGoalDays+'/7 วัน | สัปดาห์ก่อน '+p.avgCal+' kcal, เข้าเป้า '+p.onGoalDays+'/7 วัน');
+  lines.push('- โปรตีนเฉลี่ย: '+t.avgPro+'g (เป้า '+t.proGoal+'g) ถึงเป้า '+t.proHitDays+'/7 วัน | สัปดาห์ก่อน '+p.avgPro+'g, ถึงเป้า '+p.proHitDays+'/7 วัน');
+  lines.push('- น้ำหนักเทรนด์: '+(t.weightSlope!=null?t.weightSlope+' kg/สัปดาห์':'ไม่มีข้อมูลพอ')+' | สัปดาห์ก่อน '+(p.weightSlope!=null?p.weightSlope+' kg/สัปดาห์':'ไม่มีข้อมูล')+' | เป้าหมาย: '+(report.wantLoss?'ลดน้ำหนัก':'เพิ่มน้ำหนัก/กล้ามเนื้อ'));
+  lines.push('- หนี้การนอน (rolling '+SLEEP_DEBT_WINDOW_DAYS+' คืน ณ ท้ายสัปดาห์): '+(t.sleepDebtHours!=null?t.sleepDebtHours+' ชม.':'ไม่มีข้อมูล')+' | สัปดาห์ก่อน '+(p.sleepDebtHours!=null?p.sleepDebtHours+' ชม.':'ไม่มีข้อมูล'));
+  lines.push('- ออกกำลังกาย: '+t.workoutSessions+' ครั้ง | สัปดาห์ก่อน '+p.workoutSessions+' ครั้ง');
+  if (report.prList.length) lines.push('- PR ใหม่สัปดาห์นี้: '+report.prList.map(function(pr){ return pr.name+' '+pr.weight+'kg'+(pr.deltaKg!=null?' (+'+pr.deltaKg+'kg)':''); }).join(', '));
+  if (report.milestone) lines.push('- ความคืบหน้าสู่ Fitness Target: '+(report.milestone.wantLoss?'ลดมาแล้ว':'เพิ่มมาแล้ว')+' '+report.milestone.lost+' จาก '+report.milestone.needed+' กก. ('+report.milestone.pct+'%)');
+  lines.push('');
+  lines.push('"good" = ทำได้ดีขึ้นจากสัปดาห์ก่อน อ้างอิงตัวเลขข้างต้นตรงๆ, "watch" = จุดที่ควรปรับ พร้อมคำแนะนำสั้นๆ ที่ทำได้จริง');
+  return lines.join('\n');
+}
+function finishWeeklySummary(report, narrative) {
+  _weeklyGenInFlight = false;
+  renderWeeklyReportCard(report, weeklyNarrativeHTML(narrative));
+  var stored = { weekEnd: report.weekEnd, report: report, narrative: narrative };
+  try { localStorage.setItem('gd_weekly_summary', JSON.stringify(stored)); } catch(e){}
+  if (window.FB_OK && window.FB && window.FB.saveWeeklySummary) {
+    window.FB.saveWeeklySummary(report.weekEnd, stored).catch(function(e){ console.warn('Weekly summary Firebase save failed:', e); });
+  }
+}
+// Kicks off (or re-runs, via the card's refresh button) a Weekly Report for the
+// most recently completed week. Guarded by _weeklyGenInFlight so the repeated
+// render() calls that fire after every save don't queue duplicate AI requests.
+function generateWeeklySummary() {
+  if (_weeklyGenInFlight) return;
+  var weekEnd = weeklyReportWeekEnd(localDateStr());
+  var report = computeWeeklyReport(weekEnd);
+  if (!report) return; // nothing logged this week yet — leave whatever is already on screen as-is
+  renderWeeklyReportCard(report, '<div class="wk-meta" style="text-align:center;padding:6px 0;">กำลังวิเคราะห์...</div>');
+  if (!aiAvailable()) { finishWeeklySummary(report, null); return; }
+  _weeklyGenInFlight = true;
+  var key = S.apiKeys[S.currentKeyIndex] || S.apiKeys[0] || "";
+  geminiCall(key, {
+    contents: [{ parts: [{ text: buildWeeklyNarrativePrompt(report) }] }],
+    generationConfig: { temperature: 0.5, responseMimeType: 'application/json' }
+  }, 40000)
+  .then(function(data){
+    var candidates = data.candidates;
+    var parts = candidates && candidates[0] && candidates[0].content && candidates[0].content.parts;
+    var text = parts && parts[0] ? parts[0].text : '';
+    var clean = String(text||'').replace(/```json|```/g,'').trim();
+    finishWeeklySummary(report, clean ? JSON.parse(clean) : null);
+  })
+  .catch(function(e){ console.warn('Weekly summary AI failed:', e); finishWeeklySummary(report, null); });
+}
+// Called from render(): shows whatever report is cached (rolling — persists all
+// week), then regenerates in the background if the cache isn't for the most
+// recently completed week yet (first open on/after Sunday, or a cache that was
+// invalidated by an edit to historical data).
+function restoreOrGenerateWeeklySummary() {
+  var mostRecent = weeklyReportWeekEnd(localDateStr());
+  var saved = null; try { saved = JSON.parse(localStorage.getItem('gd_weekly_summary')||'null'); } catch(e){}
+  if (saved && saved.report) renderWeeklyReportCard(saved.report, weeklyNarrativeHTML(saved.narrative));
+  if (saved && saved.weekEnd === mostRecent) return;
+  generateWeeklySummary();
 }
 
 // ── Cross-Metric Correlations ─────────────────────────────────────
@@ -5478,6 +5861,7 @@ function applyGoalValues(goal, persist) {
     S.goals = { cal:+goal.cal, pro:+goal.pro, crb:+goal.crb, fat:+goal.fat };
     localStorage.setItem('gd_goals', JSON.stringify(S.goals));
     localStorage.removeItem('gd_daily_summary');
+    localStorage.removeItem('gd_weekly_summary');
     localStorage.removeItem('gd_wt_ai_result');
     // The weight-analysis card is keyed by date only, and its cached _wtAnalysisData
     // carries userGoalCal / requiredDeficit / forecast computed against the goal that
@@ -5506,6 +5890,7 @@ function saveAnalyzerCalorieContext(d) {
   }));
   if (window.FB_OK && window.FB) window.FB.saveSetting('calorieContext', safeJSON('gd_calorie_context', null)).catch(function(){});
   localStorage.removeItem('gd_daily_summary');
+  localStorage.removeItem('gd_weekly_summary');
   localStorage.removeItem('gd_wt_ai_result');
 }
 function updateGoalModeHint(goal) {
@@ -5678,6 +6063,7 @@ function saveGoals() {
     if(window.FB_OK) window.FB.saveSetting('profile',S.profile);
   }
   localStorage.removeItem('gd_daily_summary'); localStorage.removeItem('gd_wt_ai_result');
+  localStorage.removeItem('gd_weekly_summary');
   localStorage.removeItem('gd_wt_analysis'); localStorage.removeItem('gd_wt_analysis_data');
   if(window.FB_OK) window.FB.saveSetting('goals',S.goals);
   updateGoalModeHint({cal:cal,pro:pro,crb:crb,fat:fat,tdee:getOfficialCalorieContext().officialTDEE});
@@ -8072,6 +8458,7 @@ function saveFitnessTarget() {
   // and refreshing kept showing the analysis built against the previous target.
   localStorage.removeItem('gd_wt_analysis'); localStorage.removeItem('gd_wt_analysis_data');
   localStorage.removeItem('gd_daily_summary'); localStorage.removeItem('gd_wt_ai_result');
+  localStorage.removeItem('gd_weekly_summary');
   window._fitnessTarget = target; // expose for weight log module
   if (window.FB_OK) window.FB.saveSetting('fitnessTarget', target);
   if (S.webhook) { fetch('https://kindee.ojo0308.workers.dev/',{method:'POST',headers:{'Content-Type':'application/json','x-target-url':S.webhook},body:JSON.stringify({action:'saveFitnessTarget',data:target})}).catch(function(){}); }
@@ -8101,6 +8488,7 @@ function resetTargetStartDate() {
   // invalidation as saveFitnessTarget, or the analysis keeps quoting the old round.
   localStorage.removeItem('gd_wt_analysis'); localStorage.removeItem('gd_wt_analysis_data');
   localStorage.removeItem('gd_daily_summary'); localStorage.removeItem('gd_wt_ai_result');
+  localStorage.removeItem('gd_weekly_summary');
   window._fitnessTarget = t;
   if (window.FB_OK) window.FB.saveSetting('fitnessTarget', t);
   renderTargetDashboard();
@@ -8991,6 +9379,7 @@ function generatePlan() {
     if (window.FB_OK) window.FB.saveSetting('workoutPlan', savedPlan);
     // New plan can change which day is a rest day — today's effective goal may shift.
     localStorage.removeItem('gd_daily_summary');
+    localStorage.removeItem('gd_weekly_summary');
     localStorage.removeItem('gd_wt_ai_result');
     localStorage.removeItem('gd_wt_analysis');
     localStorage.removeItem('gd_wt_analysis_data');
@@ -9047,6 +9436,7 @@ function swapPlanDays() {
   // The rest-day carb cut and today's effective goal depend on which day is which —
   // same cache-invalidation requirement as saveGoals()/handleSaveWeight() (see CLAUDE.md).
   localStorage.removeItem('gd_daily_summary');
+  localStorage.removeItem('gd_weekly_summary');
   localStorage.removeItem('gd_wt_ai_result');
   localStorage.removeItem('gd_wt_analysis');
   localStorage.removeItem('gd_wt_analysis_data');
@@ -9648,6 +10038,7 @@ function handleSaveWeight() {
   // New data point -> the cached same-day analysis (trend, Adaptive TDEE, forecast) is stale.
   localStorage.removeItem('gd_wt_analysis'); localStorage.removeItem('gd_wt_analysis_data');
   localStorage.removeItem('gd_daily_summary');
+  localStorage.removeItem('gd_weekly_summary');
   if (window.FB_OK && window.FB.saveWeight) window.FB.saveWeight(entry); else queueFBWrite('weight','save',entry);
   if (S.webhook) autoSyncWeight(entry);
 
@@ -9874,6 +10265,7 @@ function deleteBodyCompLogEntry(id){
   if (typeof renderBodyCompOutlierBanner === 'function') renderBodyCompOutlierBanner();
   if (typeof renderTargetTrendChart === 'function') renderTargetTrendChart();
   localStorage.removeItem('gd_wt_analysis'); localStorage.removeItem('gd_daily_summary');
+  localStorage.removeItem('gd_weekly_summary');
   showUndoToast('ลบ Body Composition log แล้ว', function(){
     setBodyCompLogs(backup);
     if (window.FB_OK && window.FB.saveBodyComp && deleted) window.FB.saveBodyComp(deleted); else if(deleted) queueFBWrite('bodycomp','save',deleted);
@@ -9966,6 +10358,7 @@ function saveBodyCompLogFromCheckin(entry, showEmptyToast){
   renderBodyCompSummary();
   if (typeof renderBodyCompOutlierBanner === 'function') renderBodyCompOutlierBanner();
   localStorage.removeItem('gd_wt_analysis'); localStorage.removeItem('gd_daily_summary');
+  localStorage.removeItem('gd_weekly_summary');
 
   // Sync body composition to Fitness Target ONLY when measured by InBody.
   // Eufy/manual = daily trend only; keep last InBody values in Fitness Target untouched.
@@ -10036,6 +10429,7 @@ function updateBodyCompLogSource(id, newSource){
   setBodyCompLogs(logs);
   if (window.FB_OK) window.FB.saveBodyComp(row); else queueFBWrite('bodycomp','save',row);
   localStorage.removeItem('gd_wt_analysis'); localStorage.removeItem('gd_daily_summary');
+  localStorage.removeItem('gd_weekly_summary');
   if (typeof loadFitnessTarget === 'function') loadFitnessTarget(); // re-pull latest InBody now that tags changed
   if (typeof renderTargetDashboard === 'function') renderTargetDashboard();
   if (typeof renderTargetTrendChart === 'function') renderTargetTrendChart();
@@ -10176,6 +10570,7 @@ function saveProgressPhotoLog(){
     var p=document.getElementById('vp-preview'); if(p){p.src='';p.style.display='none';}
     var ar=document.getElementById('vp-ai-result'); if(ar){ar.style.display='none';ar.innerHTML='';}
     renderProgressPhotoSummary(); localStorage.removeItem('gd_wt_analysis'); localStorage.removeItem('gd_daily_summary');
+    localStorage.removeItem('gd_weekly_summary');
     showToast('บันทึกรูป Progress แล้ว ✅','success');
   }
 
@@ -11027,6 +11422,7 @@ function syncRecommendedCalToGoal(cal) {
   goal.cal = Math.max(goal.cal, goal.pro*4 + goal.crb*4 + goal.fat*9);
   applyGoalValues(goal, true);
   localStorage.removeItem('gd_daily_summary');
+  localStorage.removeItem('gd_weekly_summary');
   localStorage.removeItem('gd_wt_analysis'); localStorage.removeItem('gd_wt_analysis_data');
   showToast('✅ ตั้งเป้า '+goal.cal+' kcal และ macro ตาม '+goal.modeLabel+' แล้ว','success');
 }
