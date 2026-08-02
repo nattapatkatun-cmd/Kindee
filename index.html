@@ -6097,8 +6097,12 @@ function calcGoal() {
   if(window.FB_OK) window.FB.saveSetting('profile',S.profile);
   var ctx = getOfficialCalorieContext();
   var goal = buildGoalFromMode(goalType, S.profile, ctx.officialTDEE || calcFormulaTDEE(S.profile));
-  applyGoalValues(goal, true);
-  showToast('คำนวณ '+goal.modeLabel+': TDEE '+goal.tdee+' → '+goal.cal+' kcal ✅','success');
+  // Preview only — fill the input boxes but don't persist. calcGoal() is the "คำนวณ"
+  // button; saveGoals() is the separate "บันทึก" button. Persisting here meant the goal
+  // (and its cache invalidation / dashboard refresh) changed the instant you clicked
+  // Calculate, before you ever pressed Save.
+  applyGoalValues(goal, false);
+  showToast('คำนวณ '+goal.modeLabel+': TDEE '+goal.tdee+' → '+goal.cal+' kcal — กด "บันทึกเป้าหมาย" เพื่อยืนยัน','success');
 }
 
 function loadProfile() {
