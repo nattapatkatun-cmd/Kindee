@@ -6097,8 +6097,12 @@ function calcGoal() {
   if(window.FB_OK) window.FB.saveSetting('profile',S.profile);
   var ctx = getOfficialCalorieContext();
   var goal = buildGoalFromMode(goalType, S.profile, ctx.officialTDEE || calcFormulaTDEE(S.profile));
-  applyGoalValues(goal, true);
-  showToast('คำนวณ '+goal.modeLabel+': TDEE '+goal.tdee+' → '+goal.cal+' kcal ✅','success');
+  // Preview only — fill the input boxes but don't persist. calcGoal() is the "คำนวณ"
+  // button; saveGoals() is the separate "บันทึก" button. Persisting here meant the goal
+  // (and its cache invalidation / dashboard refresh) changed the instant you clicked
+  // Calculate, before you ever pressed Save.
+  applyGoalValues(goal, false);
+  showToast('คำนวณ '+goal.modeLabel+': TDEE '+goal.tdee+' → '+goal.cal+' kcal — กด "บันทึกเป้าหมาย" เพื่อยืนยัน','success');
 }
 
 function loadProfile() {
@@ -8494,11 +8498,17 @@ function feasibilityBannerHTML(f) {
 function updateFeasibilityPreview() {
   var el = document.getElementById('ft-feasibility-banner');
   if (!el) return;
+  // duration typed in the form is the ORIGINAL program length. Without the saved
+  // startDate, calcTargetFeasibility can't subtract elapsed weeks, so this preview
+  // always understated the deficit vs. Settings' calcGoal() — which reads the saved
+  // gd_ft_target (startDate included) and correctly plans off weeks REMAINING.
+  var existingTarget = safeJSON('gd_ft_target', null);
   var draft = {
     currBF:  parseFloat(document.getElementById('ft-curr-bf').value) || null,
     bf:      parseFloat(document.getElementById('ft-target-bf').value) || null,
     weight:  parseFloat(document.getElementById('ft-target-weight').value) || null,
-    duration:parseInt(document.getElementById('ft-target-duration').value) || 8
+    duration:parseInt(document.getElementById('ft-target-duration').value) || 8,
+    startDate: existingTarget ? existingTarget.startDate : null
   };
   if (!draft.currBF && !draft.bf) { el.style.display = 'none'; return; }
   var b = feasibilityBannerHTML(calcTargetFeasibility(draft, profileSafe()));
