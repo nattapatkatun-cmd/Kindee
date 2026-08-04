@@ -2698,7 +2698,8 @@ function loadRemoteData() {
     window.FB.loadSleepDoc().catch(function(){ return null; }),
     window.FB.loadSetting('recoveryAdj', null).catch(function(){ return null; }),
     window.FB.loadSetting('calorieContext', null).catch(function(){ return null; }),
-    window.FB.loadSetting('summaryLog', null).catch(function(){ return null; })
+    window.FB.loadSetting('summaryLog', null).catch(function(){ return null; }),
+    window.FB.loadSetting('goalsHistory', null).catch(function(){ return null; })
   ]).then(function(r){
     S.meals = r[0] || [];
     S.goals = r[1] || S.goals;
@@ -2826,6 +2827,19 @@ function loadRemoteData() {
       var mergedSum = Object.keys(bySumDate).sort().reverse().slice(0, 4).map(function(d){ return bySumDate[d]; });
       localStorage.setItem('gd_summary_log', JSON.stringify(mergedSum));
       if (mergedSum.length !== (r[21] || []).length) window.FB.saveSetting('summaryLog', mergedSum).catch(function(){});
+    }
+    // Goal history (point-in-time calorie/macro targets): merge by date, local wins
+    // per date (a just-saved local edit), then push the merge back if Firestore
+    // was missing or behind on any date. Keeps getGoalForDate() accurate on every
+    // device instead of only the one where the goal was actually changed.
+    var localGoalHist = safeJSON('gd_goals_history', []);
+    if ((r[22] && r[22].length) || localGoalHist.length) {
+      var byGoalDate = {};
+      (r[22] || []).forEach(function(e){ if (e && e.date) byGoalDate[e.date] = e; });
+      localGoalHist.forEach(function(e){ if (e && e.date) byGoalDate[e.date] = e; });
+      var mergedGoalHist = Object.keys(byGoalDate).sort().map(function(d){ return byGoalDate[d]; });
+      localStorage.setItem('gd_goals_history', JSON.stringify(mergedGoalHist));
+      if (mergedGoalHist.length !== (r[22] || []).length) window.FB.saveSetting('goalsHistory', mergedGoalHist).catch(function(){});
     }
     if(S.profile) loadProfile();
     loadGoalInputs(); syncProfileWeightFromLatestCheckin(); render();
@@ -4477,7 +4491,7 @@ function getDayTypeAdjGoal(dateStr) {
   if (!isTodayRestDayByPlan(dateStr)) return null;
   var workoutsToday = dateStr ? workoutsForDate(dateStr) : ((typeof todayWorkouts === 'function') ? todayWorkouts() : []);
   if (workoutsToday.length) return null; // trained anyway that day — treat as a training day
-  var base = S.goals || {};
+  var base = (dateStr ? getGoalForDate(dateStr) : S.goals) || {};
   var baseCal = parseFloat(base.cal) || 0;
   var baseCrb = parseFloat(base.crb) || 0;
 
@@ -4510,6 +4524,39 @@ function getDayTypeAdjGoal(dateStr) {
   var cal = Math.round(baseCal - carbCutKcal);
   return { cal: cal, pro: base.pro, crb: crb, fat: base.fat, _dayType: 'rest', _carbCutKcal: carbCutKcal, _carbCutPct: cutPct, _recompMild: restMild };
 }
+// ── Goal History (point-in-time calorie/macro targets) ──────────────
+// S.goals is a single flat object that gets overwritten on every save, with
+// no memory of what it used to be. Every reader that used S.goals directly
+// for a PAST date (dashboard, fitness tab, trend charts) was silently
+// re-applying today's goal to that day — editing the goal retroactively
+// changed whether old days read as "over" or "under" goal. This log records
+// the goal that took effect on each date it changed, so getGoalForDate() can
+// look up what was actually in force on any given day.
+function getGoalHistory() {
+  try { return JSON.parse(localStorage.getItem('gd_goals_history') || '[]'); } catch(e) { return []; }
+}
+function recordGoalHistory(goals) {
+  var today = localDateStr();
+  var hist = getGoalHistory();
+  var entry = { date: today, cal: goals.cal, pro: goals.pro, crb: goals.crb, fat: goals.fat };
+  if (hist.length && hist[hist.length - 1].date === today) hist[hist.length - 1] = entry; // same-day re-edit overwrites, doesn't stack
+  else hist.push(entry);
+  try { localStorage.setItem('gd_goals_history', JSON.stringify(hist)); } catch(e){}
+  if (window.FB_OK && window.FB) window.FB.saveSetting('goalsHistory', hist).catch(function(){});
+}
+// The goal actually in force on dateStr — the last recorded change on or
+// before that date. Falls back to the earliest known entry for dates before
+// any history exists (nothing further back was ever recorded), then to the
+// live S.goals if there's no history at all yet.
+function getGoalForDate(dateStr) {
+  var hist = getGoalHistory();
+  if (!hist.length) return S.goals;
+  var candidate = null;
+  for (var i = 0; i < hist.length; i++) {
+    if (hist[i].date <= dateStr) candidate = hist[i]; else break;
+  }
+  return candidate || hist[0];
+}
 // Single source of truth for "today's" live target — dashboard ring, over-goal
 // alert, AI Daily Coach, and AI chat must all compare intake against this same
 // number so a rest day reads as a rest day everywhere, not just on one screen.
@@ -4518,13 +4565,13 @@ function getEffectiveGoalToday() {
   return getRecoveryAdjGoals() || getDayTypeAdjGoal() || S.goals;
 }
 // Same rest-day carb-cut logic as getEffectiveGoalToday(), but for a past date — used
-// by the Weekly Report to compare each day's intake against THAT day's own goal
-// instead of one flat number. Recovery adjustments have no historical record (only
-// today's gd_recovery_adj is ever stored), so those aren't replayed for past dates —
-// the rest-day cut is the one that recurs predictably by weekday and actually explains
-// most of the week-to-week goal variation.
+// by the Weekly Report, dashboard, fitness tab and trend charts to compare each day's
+// intake against THAT day's own goal instead of today's. Recovery adjustments have no
+// historical record (only today's gd_recovery_adj is ever stored), so those aren't
+// replayed for past dates — the rest-day cut is the one that recurs predictably by
+// weekday and actually explains most of the week-to-week goal variation.
 function getEffectiveGoalForDate(dateStr) {
-  return getDayTypeAdjGoal(dateStr) || S.goals;
+  return getDayTypeAdjGoal(dateStr) || getGoalForDate(dateStr);
 }
 
 // ── Anomaly Detection ─────────────────────────────────────────────
@@ -5261,7 +5308,7 @@ function updateDash() {
   var meals = S.meals.filter(function(m){return m.date===viewDate;});
   try { renderSetupHub(viewDate, isToday); } catch(e){ console.error('renderSetupHub failed:', e); }
   var t = meals.reduce(function(a,m){return{cal:a.cal+m.calories,pro:a.pro+m.protein,crb:a.crb+m.carbs,fat:a.fat+m.fat};},{cal:0,pro:0,crb:0,fat:0});
-  var g = getEffectiveGoalToday();
+  var g = isToday ? getEffectiveGoalToday() : getEffectiveGoalForDate(viewDate);
   var dtNoteEl = document.getElementById('dash-daytype-note');
   if (dtNoteEl) {
     if (g._dayType === 'rest') {
@@ -5950,6 +5997,7 @@ function applyGoalValues(goal, persist) {
   if (persist) {
     S.goals = { cal:+goal.cal, pro:+goal.pro, crb:+goal.crb, fat:+goal.fat };
     localStorage.setItem('gd_goals', JSON.stringify(S.goals));
+    recordGoalHistory(S.goals);
     localStorage.removeItem('gd_daily_summary');
     localStorage.removeItem('gd_weekly_summary');
     localStorage.removeItem('gd_wt_ai_result');
@@ -6151,6 +6199,7 @@ function saveGoals() {
   if(!cal||!pro||!crb||!fat){showToast('กรุณากรอกค่าให้ครบ','error');return;}
   S.goals={cal:cal,pro:pro,crb:crb,fat:fat};
   localStorage.setItem('gd_goals',JSON.stringify(S.goals));
+  recordGoalHistory(S.goals);
   if(S.profile){
     S.profile.goalType=normalizeGoalMode(document.getElementById('s-goal-type').value);
     S.profile.trainingFocus=document.getElementById('s-training-focus')?document.getElementById('s-training-focus').value:'hybrid';
@@ -7964,7 +8013,7 @@ function updateFitnessUI() {
   document.getElementById('ft-eaten').textContent = eaten;
   document.getElementById('ft-burned').textContent = totalBurn;
   document.getElementById('ft-step-cal').textContent = Math.round(neatCal);
-  var ftGoalCal = isToday ? getEffectiveGoalToday().cal : S.goals.cal;
+  var ftGoalCal = isToday ? getEffectiveGoalToday().cal : getEffectiveGoalForDate(listDate).cal;
   document.getElementById('ft-goal-disp').textContent = ftGoalCal;
   var grossRemain = ftGoalCal - eaten;
   var netEl = document.getElementById('ft-net-val');
@@ -8116,7 +8165,10 @@ function renderFitnessCharts() {
     return eaten - burned - neatCal;
   });
 
-  var goalCal = S.goals.cal || 1800;
+  // Per-day, not a flat number — if the calorie goal changed mid-week, each day
+  // compares against the goal that was actually in force on that day, not today's.
+  var goalCalByDay = days.map(function(d) { return getEffectiveGoalForDate(d).cal || 1800; });
+  var goalCal = goalCalByDay[goalCalByDay.length - 1]; // today's/most recent value, for display text only
 
   // Shared scale options
   var scaleBase = {
@@ -8234,16 +8286,16 @@ function renderFitnessCharts() {
     var netColors  = netData.map(function() { return 'rgba(148,163,184,0.55)'; });
     var netBorders = netData.map(function() { return '#94a3b8'; });
 
-    var intakeColors = intakeData.map(function(v) {
+    var intakeColors = intakeData.map(function(v, i) {
       if (v === null) return 'transparent';
-      return v <= goalCal ? 'rgba(59,130,246,0.75)' : 'rgba(249,115,22,0.8)';
+      return v <= goalCalByDay[i] ? 'rgba(59,130,246,0.75)' : 'rgba(249,115,22,0.8)';
     });
-    var intakeBorders = intakeData.map(function(v) {
+    var intakeBorders = intakeData.map(function(v, i) {
       if (v === null) return 'transparent';
-      return v <= goalCal ? '#3b82f6' : '#f97316';
+      return v <= goalCalByDay[i] ? '#3b82f6' : '#f97316';
     });
 
-    var maxNet = Math.max.apply(null, netData.concat(intakeData.filter(Boolean)).concat([goalCal, 0]));
+    var maxNet = Math.max.apply(null, netData.concat(intakeData.filter(Boolean)).concat(goalCalByDay).concat([0]));
     var minNet = Math.min.apply(null, netData.concat([0]));
     var yMaxNet = Math.ceil((maxNet * 1.18) / 100) * 100;
     var yMinNet = minNet < 0 ? Math.floor((minNet * 1.15) / 100) * 100 : 0;
@@ -8275,7 +8327,7 @@ function renderFitnessCharts() {
           {
             type: 'line',
             label: 'เป้าหมาย ' + goalCal + ' kcal',
-            data: days.map(function() { return goalCal; }),
+            data: goalCalByDay,
             borderColor:     'rgba(249,115,22,0.85)',
             borderWidth: 2,
             borderDash: [6, 4],
@@ -8304,7 +8356,7 @@ function renderFitnessCharts() {
               label: function(ctx) {
                 if (ctx.dataset.label === 'Intake') {
                   if (ctx.raw === null) return null;
-                  var diff = ctx.raw - goalCal;
+                  var diff = ctx.raw - goalCalByDay[ctx.dataIndex];
                   var sign = diff > 0 ? '+' : '';
                   return ' Intake: ' + ctx.raw + ' kcal (' + sign + diff + ' จากเป้า)';
                 }
@@ -8312,7 +8364,7 @@ function renderFitnessCharts() {
                   // No "จากเป้า" here on purpose — see the netColors comment above.
                   return ' Net Cal: ' + ctx.parsed.y + ' kcal (หลังหักกิจกรรม · ไม่ใช่ตัวเทียบเป้า)';
                 }
-                return ' เป้าหมาย ' + goalCal + ' kcal';
+                return ' เป้าหมาย ' + goalCalByDay[ctx.dataIndex] + ' kcal';
               }
             }
           }
@@ -9984,7 +10036,9 @@ function renderWeightCalChart() {
     return eaten - burned - neatCal;
   });
 
-  var goalCal = S.goals ? (S.goals.cal || 1800) : 1800;
+  // Per-day, not a flat number — if the calorie goal changed mid-week, each day
+  // compares against the goal that was actually in force on that day, not today's.
+  var goalCalByDay = days.map(function(d) { return getEffectiveGoalForDate(d).cal || 1800; });
 
   // Intake per day (null if no meals logged)
   var intakeData = days.map(function(d) {
@@ -10000,13 +10054,13 @@ function renderWeightCalChart() {
   var barBorders = netData.map(function() { return '#94a3b8'; });
 
   // Intake colors: blue=under goal, orange=over goal (different palette from Net Cal green/red)
-  var intakeColors = intakeData.map(function(v) {
+  var intakeColors = intakeData.map(function(v, i) {
     if (v === null) return 'transparent';
-    return v <= goalCal ? 'rgba(59,130,246,0.7)' : 'rgba(249,115,22,0.8)';
+    return v <= goalCalByDay[i] ? 'rgba(59,130,246,0.7)' : 'rgba(249,115,22,0.8)';
   });
-  var intakeBorders = intakeData.map(function(v) {
+  var intakeBorders = intakeData.map(function(v, i) {
     if (v === null) return 'transparent';
-    return v <= goalCal ? '#3b82f6' : '#f97316';
+    return v <= goalCalByDay[i] ? '#3b82f6' : '#f97316';
   });
 
   WT._calChartInstance = new Chart(ctx.getContext('2d'), {
@@ -10056,7 +10110,7 @@ function renderWeightCalChart() {
               if (ctx.raw === null || ctx.raw === undefined) return null;
               if (ctx.dataset.yAxisID === 'yW') return ' น้ำหนัก: ' + ctx.raw + ' กก.';
               if (ctx.dataset.label && ctx.dataset.label.indexOf('Intake') >= 0) {
-                var diff = Math.round(ctx.raw) - goalCal;
+                var diff = Math.round(ctx.raw) - goalCalByDay[ctx.dataIndex];
                 var sign = diff > 0 ? '+' : '';
                 return ' Intake: ' + Math.round(ctx.raw) + ' kcal (' + sign + diff + ' จากเป้า)';
               }

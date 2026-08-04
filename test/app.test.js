@@ -13,7 +13,7 @@
 const test = require('node:test');
 const assert = require('node:assert');
 const { launch, openApp, errorsFor, openWeightAnalysis } = require('./helpers/browser');
-const { buildSeed } = require('./fixtures/seed');
+const { buildSeed, dateBack } = require('./fixtures/seed');
 
 let browser;
 test.before(async () => { browser = await launch(); });
@@ -165,6 +165,40 @@ test('changing the calorie goal invalidates the cached analysis', async () => {
   assert.strictEqual(await goalInAnalysis(), 2100, 'a goal change must not be masked by the same-day cache');
 
   await noErrors(page, 'changing the calorie goal');
+  await page.close();
+});
+
+test('viewing a past date shows that date\'s own calorie goal, not today\'s', async () => {
+  // Reported symptom: changing the calorie target retroactively repainted every past
+  // day's goal with the new number, flipping old "under goal" days to "over goal" (or
+  // vice versa) after the fact. gd_goals_history records the goal that was actually in
+  // force on each date it changed; the dashboard for a past date must read through it
+  // instead of S.goals directly.
+  const oldDate = dateBack(10);
+  const seed = buildSeed();
+  seed.gd_goals_history = [{ date: oldDate, cal: 1800, pro: 150, crb: 180, fat: 62 }];
+  const page = await openApp(browser, seed);
+
+  await page.evaluate(() => {
+    applyGoalValues({ cal: 2200, pro: 170, crb: 220, fat: 70 }, true);
+  });
+  await page.waitForTimeout(300);
+
+  const result = await page.evaluate((d) => {
+    showPage('dashboard');
+    DASH_DATE = d;
+    updateDash();
+    const past = document.getElementById('d-g').textContent;
+    DASH_DATE = null;
+    updateDash();
+    const today = document.getElementById('d-g').textContent;
+    return { past, today };
+  }, oldDate);
+
+  assert.strictEqual(result.past, '1800', 'the past date keeps the goal that was in force back then');
+  assert.strictEqual(result.today, '2200', 'today reflects the newly saved goal');
+
+  await noErrors(page, 'viewing a past date after changing the calorie goal');
   await page.close();
 });
 
