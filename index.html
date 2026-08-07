@@ -11140,6 +11140,12 @@ function buildAnalysisHTML(recent) {
   var recommendedIntake = userGoalCal != null ? userGoalCal : engineRecommendedIntake;
   if (userGoalCal != null && trueTDEE != null) {
     requiredDeficit = Math.round(trueTDEE - userGoalCal); // deficit implied by the user's own goal
+    // Keep the sync button's suggestion aligned with the number CAUSE/ACTION just
+    // quoted — same self-consistency rule the recompHold branch below follows.
+    // Without this, buildGoalFromMode's independently-derived cal (e.g. a stale
+    // mode-preset fallback) could contradict the committed-goal-based deficit
+    // shown two lines above it.
+    engineRecommendedIntake = recommendedIntake;
   }
 
   // Issue 3: weight target already met but %BF still above goal → recomposition.
