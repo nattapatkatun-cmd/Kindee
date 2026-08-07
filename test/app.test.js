@@ -168,6 +168,45 @@ test('changing the calorie goal invalidates the cached analysis', async () => {
   await page.close();
 });
 
+test('a stale calorie goal cannot push the required deficit past the 25%-of-TDEE safety cap', async () => {
+  // Regression: requiredDeficit is derived from the user's committed Settings goal, but
+  // that goal can go stale as Adaptive TDEE drifts upward after it was set. The
+  // 25%-of-TDEE safety cap that buildGoalFromMode enforces on its own fresh calc was
+  // never applied to this goal-anchored path, so an old, now-too-low goal could silently
+  // demand an unbounded deficit with no safety warning, and the sync button would then
+  // offer a different, uncapped-vs-capped mismatched number.
+  const page = await openApp(browser, buildSeed());
+
+  const data = await page.evaluate(() => {
+    S.goals = { cal: 1000, pro: 150, crb: 180, fat: 62 };
+    localStorage.setItem('gd_goals', JSON.stringify(S.goals));
+    applyGoalValues({ cal: 1000, pro: 150, crb: 180, fat: 62 }, true);
+    showPage('weight');
+    if (typeof initWeightTab === 'function') initWeightTab();
+    runWeightAnalysis();
+    return window._wtAnalysisData;
+  });
+
+  assert.ok(data.trueTDEE, 'fixture must produce an Adaptive TDEE for this check to mean anything');
+  const safeCap = Math.round(data.trueTDEE * 0.25);
+  assert.ok(
+    data.requiredDeficit <= safeCap + 1,
+    `requiredDeficit (${data.requiredDeficit}) must not exceed the 25%-of-TDEE safety cap (${safeCap})`
+  );
+  assert.strictEqual(
+    data.recommendedIntake, data.engineRecommendedIntake,
+    'the sync button must offer the same number the analysis text just recommended'
+  );
+
+  const resultText = await page.evaluate(
+    () => (document.getElementById('wt-analysis-result').textContent || '').replace(/\s+/g, ' ')
+  );
+  assert.match(resultText, /เกินเกณฑ์ปลอดภัย/, 'the safety-cap warning must be visible when the goal-anchored deficit gets capped');
+
+  await noErrors(page, 'a stale calorie goal exceeding the safety cap');
+  await page.close();
+});
+
 test('viewing a past date shows that date\'s own calorie goal, not today\'s', async () => {
   // Reported symptom: changing the calorie target retroactively repainted every past
   // day's goal with the new number, flipping old "under goal" days to "over goal" (or
