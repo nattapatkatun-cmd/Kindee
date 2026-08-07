@@ -10864,7 +10864,7 @@ function analyzeProgressPhotoAI(){
 function runWeightAnalysis() {
   var resultEl = document.getElementById('wt-analysis-result');
   var today = localDateStr();
-  var CACHE_VER = 'v21_usergoal_recomp'; // recommendedIntake now follows the user-set goal + recomp-hold framing when weight target met — bump forces recompute of any same-day cache from before the fix
+  var CACHE_VER = 'v22_goal_deficit_safety_cap'; // requiredDeficit/recommendedIntake/engineRecommendedIntake now stay in sync and respect the 25%-of-TDEE cap — bump forces recompute of any same-day cache from before the fix
 
   // Restore from cache only if same day AND same version
   var cached = JSON.parse(localStorage.getItem('gd_wt_analysis') || 'null');
