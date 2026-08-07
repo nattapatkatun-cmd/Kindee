@@ -207,6 +207,50 @@ test('a stale calorie goal cannot push the required deficit past the 25%-of-TDEE
   await page.close();
 });
 
+test('a same-day cache written under an older CACHE_VER is recomputed, not served stale', async () => {
+  // Regression: runWeightAnalysis() gates its localStorage HTML cache on today's date AND
+  // a hardcoded CACHE_VER string that must be bumped whenever the calc logic inside
+  // buildAnalysisHTML changes — that's the whole point of the string, per its own comment.
+  // The 25%-of-TDEE safety cap above changed that calc logic, but shipped once without
+  // the version bump: the app kept serving every user's same-day pre-fix HTML snapshot
+  // straight from cache, so the fix was live in the code but invisible in the running app
+  // until the calendar day rolled over. This pins the version-gate actually doing its job:
+  // a cache entry tagged with the last known-stale version must never be restored.
+  const page = await openApp(browser, buildSeed());
+
+  const fresh = await page.evaluate(() => {
+    showPage('weight');
+    if (typeof initWeightTab === 'function') initWeightTab();
+    runWeightAnalysis();
+    return (window._wtAnalysisData || {}).requiredDeficit;
+  });
+
+  const afterStaleCache = await page.evaluate((realDeficit) => {
+    const today = localDateStr();
+    // A same-day cache as it would have been written by the pre-fix build: tagged with
+    // the version string that predates the safety-cap fix, carrying an obviously-wrong
+    // uncapped number no current code path would ever produce.
+    const staleData = Object.assign({}, window._wtAnalysisData, { requiredDeficit: realDeficit + 99999 });
+    localStorage.setItem('gd_wt_analysis', JSON.stringify({ html: '<div>STALE PRE-FIX CACHE</div>', date: today, ver: 'v21_usergoal_recomp' }));
+    localStorage.setItem('gd_wt_analysis_data', JSON.stringify({ date: today, data: staleData }));
+    runWeightAnalysis();
+    return (window._wtAnalysisData || {}).requiredDeficit;
+  }, fresh);
+
+  assert.strictEqual(
+    afterStaleCache, fresh,
+    'a same-day cache tagged with an older CACHE_VER must be recomputed, not restored verbatim'
+  );
+
+  const resultText = await page.evaluate(
+    () => (document.getElementById('wt-analysis-result').textContent || '').replace(/\s+/g, ' ')
+  );
+  assert.doesNotMatch(resultText, /STALE PRE-FIX CACHE/, 'the stale cached HTML must not be what renders');
+
+  await noErrors(page, 'recomputing past a stale-version same-day cache');
+  await page.close();
+});
+
 test('viewing a past date shows that date\'s own calorie goal, not today\'s', async () => {
   // Reported symptom: changing the calorie target retroactively repainted every past
   // day's goal with the new number, flipping old "under goal" days to "over goal" (or
