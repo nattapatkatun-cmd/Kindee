@@ -11138,8 +11138,19 @@ function buildAnalysisHTML(recent) {
   var userGoalCal = (S.goals && S.goals.cal) ? Math.round(S.goals.cal) : null;
   var requiredDeficit = Math.round((centralGoalForAnalysis && centralGoalForAnalysis.deficit != null ? centralGoalForAnalysis.deficit : goalCfg.deficit) || 0); // positive=cut, 0=maintain, negative=lean gain
   var recommendedIntake = userGoalCal != null ? userGoalCal : engineRecommendedIntake;
+  var goalDeficitCapped = false;
   if (userGoalCal != null && trueTDEE != null) {
     requiredDeficit = Math.round(trueTDEE - userGoalCal); // deficit implied by the user's own goal
+    // The committed Settings goal can go stale as Adaptive TDEE drifts upward after
+    // it was set — nothing else caps the deficit that implies, so a fixed old goal
+    // cal can silently blow past the same 25%-of-TDEE safety line buildGoalFromMode
+    // enforces on its own fresh calc. Apply the same cap here.
+    var safeCapGoal = Math.round(trueTDEE * 0.25);
+    if (requiredDeficit > safeCapGoal) {
+      requiredDeficit = safeCapGoal;
+      recommendedIntake = trueTDEE - safeCapGoal;
+      goalDeficitCapped = true;
+    }
     // Keep the sync button's suggestion aligned with the number CAUSE/ACTION just
     // quoted — same self-consistency rule the recompHold branch below follows.
     // Without this, buildGoalFromMode's independently-derived cal (e.g. a stale
@@ -11470,7 +11481,7 @@ function buildAnalysisHTML(recent) {
     }
   } else if(requiredDeficit!==null){
     var deficitFeasNote='';
-    if(centralGoalForAnalysis && (centralGoalForAnalysis.deficitFeasibility==='aggressive' || centralGoalForAnalysis.deficitFeasibility==='unrealistic')){
+    if(goalDeficitCapped || (centralGoalForAnalysis && (centralGoalForAnalysis.deficitFeasibility==='aggressive' || centralGoalForAnalysis.deficitFeasibility==='unrealistic'))){
       deficitFeasNote=' <span style="color:#eab308;">(ปรับลดจาก target-timeline เพราะเกินเกณฑ์ปลอดภัย 25% ของ TDEE)</span>';
     }
     html+='• Deficit ที่ต้องการ (จากเป้าที่ตั้ง): <strong>'+requiredDeficit+' kcal/วัน</strong>'+deficitFeasNote;
