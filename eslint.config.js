@@ -27,6 +27,8 @@ module.exports = [
         // Loaded from CDN <script> tags, so they are never declared in our own source.
         Chart: 'readonly',
         firebase: 'readonly',
+        // Lazily injected via <script> only when a HEIC file is uploaded (see ensureHeic2any).
+        heic2any: 'readonly',
         // Populated by the Firebase bootstrap block at runtime.
         FB: 'writable',
         FB_OK: 'writable',
