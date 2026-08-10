@@ -2699,7 +2699,8 @@ function loadRemoteData() {
     window.FB.loadSetting('recoveryAdj', null).catch(function(){ return null; }),
     window.FB.loadSetting('calorieContext', null).catch(function(){ return null; }),
     window.FB.loadSetting('summaryLog', null).catch(function(){ return null; }),
-    window.FB.loadSetting('goalsHistory', null).catch(function(){ return null; })
+    window.FB.loadSetting('goalsHistory', null).catch(function(){ return null; }),
+    window.FB.loadSetting('workoutPlan', null).catch(function(){ return null; })
   ]).then(function(r){
     S.meals = r[0] || [];
     S.goals = r[1] || S.goals;
@@ -2818,6 +2819,22 @@ function loadRemoteData() {
       localStorage.setItem('gd_calorie_context', JSON.stringify(r[20]));
     } else if (localCtx && !r[20]) {
       window.FB.saveSetting('calorieContext', localCtx).catch(function(){});
+    }
+    // Workout plan: newest savedAt wins — a plan generated/swapped on another
+    // device must replace whatever this device cached, same convention as
+    // calorieContext just above. Losing the rest-day layout invalidates the
+    // same caches generatePlan()/swapPlanDays() clear (see CLAUDE.md).
+    var localPlan = safeJSON('gd_workout_plan', null);
+    if (r[23] && r[23].savedAt && (!localPlan || !localPlan.savedAt || r[23].savedAt > localPlan.savedAt)) {
+      localStorage.setItem('gd_workout_plan', JSON.stringify(r[23]));
+      localStorage.removeItem('gd_daily_summary');
+      localStorage.removeItem('gd_weekly_summary');
+      localStorage.removeItem('gd_wt_ai_result');
+      localStorage.removeItem('gd_wt_analysis');
+      localStorage.removeItem('gd_wt_analysis_data');
+      if (typeof renderTodayPlanCard === 'function') renderTodayPlanCard();
+    } else if (localPlan && localPlan.savedAt && (!r[23] || !r[23].savedAt || localPlan.savedAt > r[23].savedAt)) {
+      window.FB.saveSetting('workoutPlan', localPlan).catch(function(){});
     }
     // AI-memory snapshots: merge by date, keep the 4 newest.
     var localSum = safeJSON('gd_summary_log', []);
@@ -9370,26 +9387,37 @@ function updatePlanSavedLabel(isoDate) {
 
 function loadSavedPlan() {
   var raw = localStorage.getItem('gd_workout_plan');
-  if (!raw) {
-    // Try Firebase
-    if (window.FB_OK) {
-      window.FB.loadSetting('workoutPlan', null).then(function(saved) {
-        if (saved && saved.plan) {
-          localStorage.setItem('gd_workout_plan', JSON.stringify(saved));
-          renderPlan(saved.plan);
-          updatePlanSavedLabel(saved.savedAt);
-        }
-      }).catch(function(){});
-    }
-    return;
+  var local = null;
+  try { local = raw ? JSON.parse(raw) : null; } catch(e) { local = null; }
+  if (local && local.plan) {
+    renderPlan(local.plan);
+    updatePlanSavedLabel(local.savedAt);
   }
-  try {
-    var saved = JSON.parse(raw);
-    if (saved && saved.plan) {
-      renderPlan(saved.plan);
-      updatePlanSavedLabel(saved.savedAt);
-    }
-  } catch(e) {}
+  // Always reconcile with Firebase, even when this device already has a cached
+  // plan — otherwise a plan generated/swapped on another device never reaches
+  // this one, and each browser stays stuck showing whatever week it last saw.
+  if (window.FB_OK) {
+    window.FB.loadSetting('workoutPlan', null).then(function(remote) {
+      if (!remote || !remote.plan) return;
+      if (!local || !local.savedAt || (remote.savedAt && remote.savedAt > local.savedAt)) {
+        localStorage.setItem('gd_workout_plan', JSON.stringify(remote));
+        renderPlan(remote.plan);
+        updatePlanSavedLabel(remote.savedAt);
+        // Newer plan can change which day is a rest day — today's effective
+        // goal may shift (same cache-invalidation rule as generatePlan()).
+        localStorage.removeItem('gd_daily_summary');
+        localStorage.removeItem('gd_weekly_summary');
+        localStorage.removeItem('gd_wt_ai_result');
+        localStorage.removeItem('gd_wt_analysis');
+        localStorage.removeItem('gd_wt_analysis_data');
+        if (typeof renderTodayPlanCard === 'function') renderTodayPlanCard();
+        if (typeof updateDash === 'function') updateDash();
+      } else if (local && local.savedAt && (!remote.savedAt || local.savedAt > remote.savedAt)) {
+        // This device generated/swapped a plan while offline — push it up.
+        window.FB.saveSetting('workoutPlan', local).catch(function(){});
+      }
+    }).catch(function(){});
+  }
 }
 
 
