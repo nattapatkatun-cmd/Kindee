@@ -234,6 +234,13 @@ body{font-family:'Sarabun',sans-serif;background:var(--bg);color:var(--text);min
 .btn-primary:disabled{opacity:0.45;cursor:not-allowed;transform:none;}
 .btn-secondary{width:100%;padding:12px;background:var(--surface2);border:1px solid var(--border-md);border-radius:var(--radius-input);color:var(--text2);font-family:inherit;font-size:13px;font-weight:600;cursor:pointer;margin-top:8px;transition:all 0.18s;}
 .btn-secondary:hover{background:var(--surface3);color:var(--text);}
+.text-scale-row{display:flex;align-items:center;gap:10px;}
+.text-scale-btn{background:var(--surface2);border:1px solid var(--border-md);border-radius:var(--radius-input);width:44px;height:44px;flex-shrink:0;color:var(--text);font-family:inherit;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all 0.15s;}
+.text-scale-btn:first-child{font-size:13px;}
+.text-scale-btn:last-child{font-size:19px;}
+.text-scale-btn:active{background:var(--surface3);}
+.text-scale-btn:disabled{opacity:0.4;cursor:not-allowed;}
+.text-scale-label{flex:1;text-align:center;font-size:14px;font-weight:700;color:var(--text2);}
 
 /* ── Inputs ── */
 .input-group{margin-bottom:11px;}
@@ -1717,6 +1724,15 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
       <div class="card-title">บัญชีผู้ใช้</div>
       <div id="account-info"><div style="font-size:12px;color:var(--text3);">ยังไม่ได้เข้าสู่ระบบ</div></div>
     </div>
+    <div class="card fold-full">
+      <div class="card-title">การแสดงผล</div>
+      <div class="input-label">ขนาดตัวอักษร</div>
+      <div class="text-scale-row">
+        <button class="text-scale-btn" id="text-scale-dec" onclick="changeTextScale(-1)" aria-label="ลดขนาดตัวอักษร">ก−</button>
+        <div class="text-scale-label" id="text-scale-label">100%</div>
+        <button class="text-scale-btn" id="text-scale-inc" onclick="changeTextScale(1)" aria-label="เพิ่มขนาดตัวอักษร">ก+</button>
+      </div>
+    </div>
     <div class="card">
       <div class="card-title">ข้อมูลร่างกาย</div>
       <div class="input-row">
@@ -2190,7 +2206,7 @@ function checkUserAllowed(user, db) {
 
 function clearLocalDataForAccountSwitch(newUid) {
   try {
-    var keep = { gd_theme: localStorage.getItem('gd_theme') };
+    var keep = { gd_theme: localStorage.getItem('gd_theme'), gd_text_scale: localStorage.getItem('gd_text_scale') };
     var toRemove = [];
     for (var i = 0; i < localStorage.length; i++) {
       var k = localStorage.key(i);
@@ -2198,6 +2214,7 @@ function clearLocalDataForAccountSwitch(newUid) {
     }
     toRemove.forEach(function(k){ localStorage.removeItem(k); });
     if (keep.gd_theme) localStorage.setItem('gd_theme', keep.gd_theme);
+    if (keep.gd_text_scale) localStorage.setItem('gd_text_scale', keep.gd_text_scale);
     localStorage.setItem('gd_active_uid', newUid);
   } catch(e){}
   window.location.reload();
@@ -2635,6 +2652,42 @@ function toggleTheme(){
   applyThemeUI(next);
 }
 initTheme();
+
+// ===== Text size control =====
+var TEXT_SCALE_LEVELS = [85,90,100,110,120,130,140];
+function applyTextScaleUI(pct){
+  try{
+    var label=document.getElementById('text-scale-label');
+    if(label) label.textContent = pct + '%';
+    var idx=TEXT_SCALE_LEVELS.indexOf(pct);
+    var dec=document.getElementById('text-scale-dec');
+    var inc=document.getElementById('text-scale-inc');
+    if(dec) dec.disabled = (idx<=0);
+    if(inc) inc.disabled = (idx===-1 || idx>=TEXT_SCALE_LEVELS.length-1);
+  }catch(e){}
+}
+function initTextScale(){
+  var pct=100;
+  try{
+    var saved=parseInt(localStorage.getItem('gd_text_scale'), 10);
+    if(saved) pct=saved;
+  }catch(e){}
+  if(TEXT_SCALE_LEVELS.indexOf(pct)===-1) pct=100;
+  document.documentElement.style.zoom = pct + '%';
+  applyTextScaleUI(pct);
+}
+function changeTextScale(dir){
+  var cur=100;
+  try{ cur=parseInt(localStorage.getItem('gd_text_scale'), 10) || 100; }catch(e){}
+  var idx=TEXT_SCALE_LEVELS.indexOf(cur);
+  if(idx===-1) idx=TEXT_SCALE_LEVELS.indexOf(100);
+  idx=Math.max(0, Math.min(TEXT_SCALE_LEVELS.length-1, idx+dir));
+  var next=TEXT_SCALE_LEVELS[idx];
+  document.documentElement.style.zoom = next + '%';
+  try{ localStorage.setItem('gd_text_scale', next); }catch(e){}
+  applyTextScaleUI(next);
+}
+initTextScale();
 
 function init() {
   var now = new Date();
