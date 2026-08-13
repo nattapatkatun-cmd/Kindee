@@ -1724,15 +1724,6 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
       <div class="card-title">บัญชีผู้ใช้</div>
       <div id="account-info"><div style="font-size:12px;color:var(--text3);">ยังไม่ได้เข้าสู่ระบบ</div></div>
     </div>
-    <div class="card fold-full">
-      <div class="card-title">การแสดงผล</div>
-      <div class="input-label">ขนาดตัวอักษร</div>
-      <div class="text-scale-row">
-        <button class="text-scale-btn" id="text-scale-dec" onclick="changeTextScale(-1)" aria-label="ลดขนาดตัวอักษร">ก−</button>
-        <div class="text-scale-label" id="text-scale-label">100%</div>
-        <button class="text-scale-btn" id="text-scale-inc" onclick="changeTextScale(1)" aria-label="เพิ่มขนาดตัวอักษร">ก+</button>
-      </div>
-    </div>
     <div class="card">
       <div class="card-title">ข้อมูลร่างกาย</div>
       <div class="input-row">
@@ -1879,6 +1870,15 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
       </div>
       <div id="ft-feasibility-banner" style="display:none;font-size:12px;line-height:1.7;margin-bottom:10px;padding:10px 12px;border-radius:10px;"></div>
       <button class="btn-primary" onclick="saveFitnessTarget()">บันทึก Fitness Target</button>
+    </div>
+    <div class="card fold-full">
+      <div class="card-title">การแสดงผล</div>
+      <div class="input-label">ขนาดตัวอักษร</div>
+      <div class="text-scale-row">
+        <button class="text-scale-btn" id="text-scale-dec" onclick="changeTextScale(-1)" aria-label="ลดขนาดตัวอักษร">ก−</button>
+        <div class="text-scale-label" id="text-scale-label">100%</div>
+        <button class="text-scale-btn" id="text-scale-inc" onclick="changeTextScale(1)" aria-label="เพิ่มขนาดตัวอักษร">ก+</button>
+      </div>
     </div>
     <details class="fold-full" style="margin-bottom:16px;">
       <summary style="background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:13px 16px;font-size:14px;font-weight:700;cursor:pointer;list-style-position:inside;color:var(--text);">⚙️ ขั้นสูง <span style="font-weight:400;color:var(--text2);font-size:12px;">(Google Sheets Sync, Gemini API Key สำรอง — ผู้ใช้ทั่วไปข้ามได้)</span></summary>
