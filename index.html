@@ -272,7 +272,7 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
 
 /* ── Result card ── */
 .result-card{background:var(--surface2);border:1px solid var(--border-md);border-radius:16px;padding:16px;margin-top:12px;display:none;}
-.result-macros{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin:12px 0;}
+.result-macros{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px;margin:12px 0;}
 .result-macros>.result-macro{min-width:0;}
 .result-macro-val{font-size:16px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 @media(max-width:430px){.result-macros{gap:6px;}.result-macro{padding:11px 5px;}.result-macro-val{font-size:14px;}}
@@ -853,6 +853,7 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
           <div class="goal-bar-wrap"><div class="goal-bar-header"><span class="goal-bar-name">โปรตีน</span><span class="goal-bar-vals" id="gb-p">0/0g</span></div><div class="goal-bar-track"><div class="goal-bar-fill" id="gbf-p" style="background:var(--blue);width:0%"></div></div></div>
           <div class="goal-bar-wrap"><div class="goal-bar-header"><span class="goal-bar-name">🍚 คาร์บ</span><span class="goal-bar-vals" id="gb-c">0/0g</span></div><div class="goal-bar-track"><div class="goal-bar-fill" id="gbf-c" style="background:var(--green);width:0%"></div></div></div>
           <div class="goal-bar-wrap"><div class="goal-bar-header"><span class="goal-bar-name">ไขมัน</span><span class="goal-bar-vals" id="gb-f">0/0g</span></div><div class="goal-bar-track"><div class="goal-bar-fill" id="gbf-f" style="background:var(--purple);width:0%"></div></div></div>
+          <div class="goal-bar-wrap"><div class="goal-bar-header"><span class="goal-bar-name">🌾 ใยอาหาร</span><span class="goal-bar-vals" id="gb-fib">0/0g</span></div><div class="goal-bar-track"><div class="goal-bar-fill" id="gbf-fib" style="background:#a3763b;width:0%"></div></div></div>
         </div>
       </details>
     </div>
@@ -1022,7 +1023,7 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
           <label style="font-size:12px;color:var(--text2);display:block;margin-bottom:4px;">รายละเอียด <span style="color:var(--text3);">(ไม่บังคับ)</span></label>
           <input id="manualDesc" class="input-field" type="text" placeholder="เช่น 1 จาน, 100g, จากแอปอื่น" style="font-size:16px;"/>
         </div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:4px;">
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:4px;">
           <div>
             <label style="font-size:12px;color:var(--text2);display:block;margin-bottom:4px;">แคลอรี่ (kcal) <span style="color:var(--accent);">*</span></label>
             <input id="manualCal" class="input-field" type="number" min="0" placeholder="0" style="font-size:16px;font-weight:700;color:var(--accent);"/>
@@ -1038,6 +1039,10 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
           <div>
             <label style="font-size:12px;color:var(--text2);display:block;margin-bottom:4px;">ไขมัน (g) <span style="color:var(--accent);">*</span></label>
             <input id="manualFat" class="input-field" type="number" min="0" step="0.1" placeholder="0" style="font-size:16px;color:var(--purple);"/>
+          </div>
+          <div>
+            <label style="font-size:12px;color:var(--text2);display:block;margin-bottom:4px;">ใยอาหาร (g) <span style="color:var(--text3);">(ไม่บังคับ)</span></label>
+            <input id="manualFib" class="input-field" type="number" min="0" step="0.1" placeholder="0" style="font-size:16px;color:#a3763b;"/>
           </div>
         </div>
         <div id="manualCalcHint" style="font-size:11px;color:var(--text3);text-align:right;margin-top:2px;"></div>
@@ -1062,6 +1067,7 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
         <div class="result-macro"><div class="result-macro-val" id="resPro" style="color:var(--blue)">0g</div><div class="result-macro-name">โปรตีน</div></div>
         <div class="result-macro"><div class="result-macro-val" id="resCrb" style="color:var(--green)">0g</div><div class="result-macro-name">คาร์บ</div></div>
         <div class="result-macro"><div class="result-macro-val" id="resFat" style="color:var(--purple)">0g</div><div class="result-macro-name">ไขมัน</div></div>
+        <div class="result-macro"><div class="result-macro-val" id="resFib" style="color:#a3763b">0g</div><div class="result-macro-name">ใยอาหาร</div></div>
       </div>
       <div style="font-size:11px;color:var(--text3);text-align:center;padding:6px;" id="resDisclaimer"></div>
       <div class="input-group" style="margin-bottom:10px;">
@@ -2007,11 +2013,12 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
   <div style="background:var(--surface);border:1px solid var(--border);border-radius:20px;padding:22px;width:100%;max-width:360px;">
     <div style="font-size:16px;font-weight:700;margin-bottom:4px;" id="favUseTitle">บันทึกเป็นมื้ออาหาร</div>
     <div style="font-size:13px;color:var(--accent);font-weight:600;margin-bottom:14px;" id="favUseName"></div>
-    <div style="background:var(--surface2);border-radius:12px;padding:12px;margin-bottom:8px;display:grid;grid-template-columns:repeat(2,1fr);gap:8px;text-align:center;">
+    <div style="background:var(--surface2);border-radius:12px;padding:12px;margin-bottom:8px;display:grid;grid-template-columns:repeat(3,1fr);gap:8px;text-align:center;">
       <div><div style="font-size:11px;color:var(--text3);margin-bottom:4px;">kcal</div><input id="favUseCal" type="number" min="0" step="1" oninput="onFavMacroInput('cal')" style="width:100%;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:6px 2px;text-align:center;font-size:16px;font-weight:700;color:var(--accent);font-family:inherit;"/></div>
       <div><div style="font-size:11px;color:var(--text3);margin-bottom:4px;">โปรตีน (g)</div><input id="favUsePro" type="number" min="0" step="0.1" oninput="onFavMacroInput('macro')" style="width:100%;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:6px 2px;text-align:center;font-size:16px;font-weight:700;color:var(--blue);font-family:inherit;"/></div>
       <div><div style="font-size:11px;color:var(--text3);margin-bottom:4px;">คาร์บ (g)</div><input id="favUseCrb" type="number" min="0" step="0.1" oninput="onFavMacroInput('macro')" style="width:100%;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:6px 2px;text-align:center;font-size:16px;font-weight:700;color:var(--green);font-family:inherit;"/></div>
       <div><div style="font-size:11px;color:var(--text3);margin-bottom:4px;">ไขมัน (g)</div><input id="favUseFat" type="number" min="0" step="0.1" oninput="onFavMacroInput('macro')" style="width:100%;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:6px 2px;text-align:center;font-size:16px;font-weight:700;color:var(--purple);font-family:inherit;"/></div>
+      <div><div style="font-size:11px;color:var(--text3);margin-bottom:4px;">ใยอาหาร (g)</div><input id="favUseFib" type="number" min="0" step="0.1" oninput="onFavMacroInput('macro')" style="width:100%;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:6px 2px;text-align:center;font-size:16px;font-weight:700;color:#a3763b;font-family:inherit;"/></div>
     </div>
     <div style="font-size:11px;color:var(--text3);text-align:right;margin-bottom:12px;">คำนวณจาก macro: <span id="favUseCalcRef" style="color:var(--text2);font-weight:600;">—</span> kcal</div>
     <div style="display:flex;align-items:center;justify-content:space-between;background:var(--surface2);border-radius:12px;padding:10px 12px;margin-bottom:14px;">
@@ -3164,7 +3171,7 @@ function analyzePhoto(extra) {
   document.getElementById('loadingDiv').style.display = 'block';
   document.getElementById('resultCard').style.display = 'none';
   document.getElementById('clarifyBox').style.display = 'none';
-  var sys = 'คุณคือผู้เชี่ยวชาญด้านโภชนาการที่เชี่ยวชาญอาหารไทย ญี่ปุ่น เกาหลี และ Fusion\nตอบด้วย JSON เท่านั้น รูปแบบ: {"needClarify":false,"clarifyQuestion":"","foodName":"","description":"","calories":0,"protein":0,"carbs":0,"fat":0,"sodiumFlag":"low|medium|high","carbLoadFlag":"low|normal|high","mealContext":"normal|buffet|fried|soup|processed|sweet|alcohol|other","retentionRisk":0,"analysisConfidence":0,"disclaimer":""}\nให้ประเมิน sodiumFlag/carbLoadFlag/retentionRisk จากชนิดอาหาร วิธีปรุง น้ำซุป/ซอส ปริมาณคาร์บ และอาหารแปรรูป; ถ้าไม่แน่ใจให้ใช้ medium/normal และ confidence ต่ำลง\nถ้ารูปไม่ชัดให้ needClarify=true และถามใน clarifyQuestion' + NUTRITION_ESTIMATE_GUIDE;
+  var sys = 'คุณคือผู้เชี่ยวชาญด้านโภชนาการที่เชี่ยวชาญอาหารไทย ญี่ปุ่น เกาหลี และ Fusion\nตอบด้วย JSON เท่านั้น รูปแบบ: {"needClarify":false,"clarifyQuestion":"","foodName":"","description":"","calories":0,"protein":0,"carbs":0,"fat":0,"fiber":0,"sodiumFlag":"low|medium|high","carbLoadFlag":"low|normal|high","mealContext":"normal|buffet|fried|soup|processed|sweet|alcohol|other","retentionRisk":0,"analysisConfidence":0,"disclaimer":""}\nfiber คือใยอาหาร (กรัม) ซึ่งเป็นส่วนหนึ่งของ carbs (ไม่บวกเพิ่มเป็น kcal ต่างหาก) — ประเมินจากผัก/ผลไม้/ธัญพืชในเมนู ถ้าไม่มีเลยให้ใส่ 0\nให้ประเมิน sodiumFlag/carbLoadFlag/retentionRisk จากชนิดอาหาร วิธีปรุง น้ำซุป/ซอส ปริมาณคาร์บ และอาหารแปรรูป; ถ้าไม่แน่ใจให้ใช้ medium/normal และ confidence ต่ำลง\nถ้ารูปไม่ชัดให้ needClarify=true และถามใน clarifyQuestion' + NUTRITION_ESTIMATE_GUIDE;
   var userText = extra ? 'วิเคราะห์อาหารในรูป ข้อมูลเพิ่มเติม: '+extra : 'วิเคราะห์อาหารในรูปนี้';
   // Detect image type
   var mimeType = curImgType || 'image/jpeg';
@@ -3216,11 +3223,11 @@ function analyzeText(extra) {
   document.getElementById('clarifyBox').style.display = 'none';
   var isMulti = valid.length > 1;
   var fmt = isMulti ?
-    '{"needClarify":false,"clarifyQuestion":"","items":[{"foodName":"","calories":0,"protein":0,"carbs":0,"fat":0,"sodiumFlag":"low|medium|high","carbLoadFlag":"low|normal|high","mealContext":"normal|buffet|fried|soup|processed|sweet|alcohol|other","retentionRisk":0}],"foodName":"รวมทุกเมนู","description":"","calories":0,"protein":0,"carbs":0,"fat":0,"sodiumFlag":"low|medium|high","carbLoadFlag":"low|normal|high","mealContext":"normal|buffet|fried|soup|processed|sweet|alcohol|other","retentionRisk":0,"analysisConfidence":0,"disclaimer":""}' :
-    '{"needClarify":false,"clarifyQuestion":"","foodName":"","description":"","calories":0,"protein":0,"carbs":0,"fat":0,"sodiumFlag":"low|medium|high","carbLoadFlag":"low|normal|high","mealContext":"normal|buffet|fried|soup|processed|sweet|alcohol|other","retentionRisk":0,"analysisConfidence":0,"disclaimer":""}';
-  var sysBase = 'คุณคือผู้เชี่ยวชาญด้านโภชนาการที่เชี่ยวชาญอาหารไทย ญี่ปุ่น เกาหลี และ Fusion\nตอบด้วย JSON เท่านั้น รูปแบบ: '+fmt;
+    '{"needClarify":false,"clarifyQuestion":"","items":[{"foodName":"","calories":0,"protein":0,"carbs":0,"fat":0,"fiber":0,"sodiumFlag":"low|medium|high","carbLoadFlag":"low|normal|high","mealContext":"normal|buffet|fried|soup|processed|sweet|alcohol|other","retentionRisk":0}],"foodName":"รวมทุกเมนู","description":"","calories":0,"protein":0,"carbs":0,"fat":0,"fiber":0,"sodiumFlag":"low|medium|high","carbLoadFlag":"low|normal|high","mealContext":"normal|buffet|fried|soup|processed|sweet|alcohol|other","retentionRisk":0,"analysisConfidence":0,"disclaimer":""}' :
+    '{"needClarify":false,"clarifyQuestion":"","foodName":"","description":"","calories":0,"protein":0,"carbs":0,"fat":0,"fiber":0,"sodiumFlag":"low|medium|high","carbLoadFlag":"low|normal|high","mealContext":"normal|buffet|fried|soup|processed|sweet|alcohol|other","retentionRisk":0,"analysisConfidence":0,"disclaimer":""}';
+  var sysBase = 'คุณคือผู้เชี่ยวชาญด้านโภชนาการที่เชี่ยวชาญอาหารไทย ญี่ปุ่น เกาหลี และ Fusion\nตอบด้วย JSON เท่านั้น รูปแบบ: '+fmt+'\nfiber คือใยอาหาร (กรัม) เป็นส่วนหนึ่งของ carbs (ไม่บวกเพิ่มเป็น kcal ต่างหาก) — ถ้าไม่มีเลยให้ใส่ 0';
   var sys = (isMulti
-    ? sysBase + '\nสำคัญมาก: calories/protein/carbs/fat ระดับบนสุดต้องเป็นผลรวม (SUM) ของทุก items เสมอ และ sodiumFlag/carbLoadFlag/retentionRisk ระดับบนสุดต้องสะท้อนความเสี่ยงสูงสุด/รวมของทั้งมื้อ'
+    ? sysBase + '\nสำคัญมาก: calories/protein/carbs/fat/fiber ระดับบนสุดต้องเป็นผลรวม (SUM) ของทุก items เสมอ และ sodiumFlag/carbLoadFlag/retentionRisk ระดับบนสุดต้องสะท้อนความเสี่ยงสูงสุด/รวมของทั้งมื้อ'
     : sysBase) + NUTRITION_ESTIMATE_GUIDE + '\nถ้าผู้ใช้ระบุปริมาณ/ขนาดมา ให้ยึดตามที่ระบุเป็นหลัก';
   var menuText = valid.map(function(m,i){ return (i+1)+'. '+m.name.trim()+(m.portion.trim()?' ('+m.portion.trim()+')':''); }).join('\n');
   var userText = sys+'\n\nวิเคราะห์โภชนาการของ:\n'+menuText+(extra?'\nข้อมูลเพิ่มเติม: '+extra:'');
@@ -3311,6 +3318,7 @@ function reconcileMealMacros(r) {
   r.protein = num(r.protein);
   r.carbs   = num(r.carbs);
   r.fat     = num(r.fat);
+  r.fiber   = num(r.fiber); // subset of carbs, informational — not part of the 4/4/9 calorie check below
   var cal = num(r.calories);
   var macroCal = r.protein * 4 + r.carbs * 4 + r.fat * 9;
   delete r._calAdjustedFrom;
@@ -3326,6 +3334,7 @@ function reconcileMealMacros(r) {
   r.protein  = Math.round(r.protein * 100) / 100;
   r.carbs    = Math.round(r.carbs   * 100) / 100;
   r.fat      = Math.round(r.fat     * 100) / 100;
+  r.fiber    = Math.round(r.fiber   * 100) / 100;
   return r;
 }
 
@@ -3341,6 +3350,7 @@ function showResult(r) {
     var sumPro = r.items.reduce(function(a,i){return a+(+i.protein||0);},0);
     var sumCrb = r.items.reduce(function(a,i){return a+(+i.carbs||0);},0);
     var sumFat = r.items.reduce(function(a,i){return a+(+i.fat||0);},0);
+    var sumFib = r.items.reduce(function(a,i){return a+(+i.fiber||0);},0);
     // Use the AI total if it looks right (within 10% of the item sum), else use the sum.
     // The macros get the SAME tolerance check — they used to be taken with a bare
     // `|| sum` fallback, so an AI total of 40g protein survived next to items summing
@@ -3353,6 +3363,7 @@ function showResult(r) {
     r.protein  = withinTol(r.protein,  sumPro);
     r.carbs    = withinTol(r.carbs,    sumCrb);
     r.fat      = withinTol(r.fat,      sumFat);
+    r.fiber    = sumFib; // small values make the 10% tolerance check noisy — always trust the item sum
   }
   // Final gate: calories must agree with 4/4/9 regardless of which path produced them.
   r = reconcileMealMacros(r);
@@ -3363,6 +3374,7 @@ function showResult(r) {
   document.getElementById('resPro').textContent = r.protein+'g';
   document.getElementById('resCrb').textContent = r.carbs+'g';
   document.getElementById('resFat').textContent = r.fat+'g';
+  document.getElementById('resFib').textContent = (r.fiber||0)+'g';
 
   var contextHtml = '<div class="context-chip-row" style="justify-content:center;">' +
     '<span class="context-chip '+(r.sodiumFlag==='high'?'high':r.sodiumFlag==='medium'?'med':'low')+'">🧂 '+flagLabel(r.sodiumFlag,'sodium')+'</span>' +
@@ -3379,7 +3391,7 @@ function showResult(r) {
     r.items.forEach(function(item){
       html += '<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--border);font-size:12px;">'+
         '<span style="flex:1;padding-right:8px;">'+escapeHTML(item.foodName)+'</span>'+
-        '<span style="color:var(--text3);font-size:11px;margin-right:8px;">P '+(item.protein||0)+'g C '+(item.carbs||0)+'g F '+(item.fat||0)+'g · 🧂 '+(item.sodiumFlag||'-')+' · 🍚 '+(item.carbLoadFlag||'-')+'</span>'+
+        '<span style="color:var(--text3);font-size:11px;margin-right:8px;">P '+(item.protein||0)+'g C '+(item.carbs||0)+'g F '+(item.fat||0)+'g Fi '+(item.fiber||0)+'g · 🧂 '+(item.sodiumFlag||'-')+' · 🍚 '+(item.carbLoadFlag||'-')+'</span>'+
         '<span style="color:var(--accent);font-weight:700;white-space:nowrap;">'+item.calories+' kcal</span></div>';
     });
     // Total row
@@ -3404,7 +3416,8 @@ function sanitizeMealItems(items) {
       calories: Math.round((+it.calories || 0) * 100) / 100,
       protein:  Math.round((+it.protein  || 0) * 100) / 100,
       carbs:    Math.round((+it.carbs    || 0) * 100) / 100,
-      fat:      Math.round((+it.fat      || 0) * 100) / 100
+      fat:      Math.round((+it.fat      || 0) * 100) / 100,
+      fiber:    Math.round((+it.fiber    || 0) * 100) / 100
     };
   });
 }
@@ -3424,6 +3437,7 @@ function saveMeal() {
     protein: Math.round(curResult.protein * 100) / 100,
     carbs: Math.round(curResult.carbs * 100) / 100,
     fat: Math.round(curResult.fat * 100) / 100,
+    fiber: Math.round((curResult.fiber||0) * 100) / 100,
     sodiumFlag: curResult.sodiumFlag || 'medium',
     carbLoadFlag: curResult.carbLoadFlag || 'normal',
     mealContext: curResult.mealContext || 'normal',
@@ -3453,7 +3467,7 @@ function resetAnalyze() {
   document.getElementById('fileInput').value = '';
   document.getElementById('photoDesc').value = '';
   // clear manual fields
-  ['manualName','manualDesc','manualCal','manualPro','manualCrb','manualFat'].forEach(function(id){
+  ['manualName','manualDesc','manualCal','manualPro','manualCrb','manualFat','manualFib'].forEach(function(id){
     var el=document.getElementById(id); if(el) el.value='';
   });
   var hint=document.getElementById('manualCalcHint'); if(hint) hint.textContent='';
@@ -3472,6 +3486,7 @@ function confirmManual() {
   var pro  = parseFloat(document.getElementById('manualPro').value) || 0;
   var crb  = parseFloat(document.getElementById('manualCrb').value) || 0;
   var fat  = parseFloat(document.getElementById('manualFat').value) || 0;
+  var fib  = parseFloat(document.getElementById('manualFib').value) || 0;
   if(!name){ showToast('กรุณาใส่ชื่อเมนู','error'); document.getElementById('manualName').focus(); return; }
   if(cal<=0){ showToast('กรุณาใส่แคลอรี่','error'); document.getElementById('manualCal').focus(); return; }
   // Build result object matching AI output shape
@@ -3482,6 +3497,7 @@ function confirmManual() {
     protein:  pro,
     carbs:    crb,
     fat:      fat,
+    fiber:    fib,
     sodiumFlag: 'medium',
     carbLoadFlag: 'normal',
     mealContext: 'manual',
@@ -3534,8 +3550,8 @@ function setFavUseModeReuse() {
 }
 
 // เก็บ macro ต้นฉบับ (qty=1) แล้วเซ็ตค่าเริ่มต้นในฟอร์ม ใช้ร่วมกันทั้งจากเมนูโปรดและใช้ซ้ำจากประวัติ
-function setFavUseBase(cal, pro, crb, fat) {
-  _favUseBase = { cal: cal||0, pro: pro||0, crb: crb||0, fat: fat||0 };
+function setFavUseBase(cal, pro, crb, fat, fib) {
+  _favUseBase = { cal: cal||0, pro: pro||0, crb: crb||0, fat: fat||0, fib: fib||0 };
   _favUseQty = 1;
   document.getElementById('favUseQtyVal').value = _favUseQty;
   applyFavQty();
@@ -3571,6 +3587,7 @@ function applyFavQty() {
   document.getElementById('favUsePro').value = Math.round(_favUseBase.pro * _favUseQty * 100) / 100;
   document.getElementById('favUseCrb').value = Math.round(_favUseBase.crb * _favUseQty * 100) / 100;
   document.getElementById('favUseFat').value = Math.round(_favUseBase.fat * _favUseQty * 100) / 100;
+  document.getElementById('favUseFib').value = Math.round((_favUseBase.fib||0) * _favUseQty * 100) / 100;
   onFavMacroInput('qty');
 }
 
@@ -3579,7 +3596,7 @@ function openSaveFavoriteModal() {
   _favSaveData = curResult;
   document.getElementById('favSaveName').value = curResult.foodName || '';
   document.getElementById('favSaveMenuName').textContent =
-    (curResult.calories||0)+' kcal  |  P '+(curResult.protein||0)+'g  C '+(curResult.carbs||0)+'g  F '+(curResult.fat||0)+'g';
+    (curResult.calories||0)+' kcal  |  P '+(curResult.protein||0)+'g  C '+(curResult.carbs||0)+'g  F '+(curResult.fat||0)+'g  Fi '+(curResult.fiber||0)+'g';
   document.getElementById('favSaveModal').style.display = 'flex';
 }
 function closeFavSaveModal() {
@@ -3598,6 +3615,7 @@ function saveFavorite() {
     protein:  Math.round((_favSaveData.protein||0)  * 100) / 100,
     carbs:    Math.round((_favSaveData.carbs||0)    * 100) / 100,
     fat:      Math.round((_favSaveData.fat||0)      * 100) / 100,
+    fiber:    Math.round((_favSaveData.fiber||0)    * 100) / 100,
     sodiumFlag: _favSaveData.sodiumFlag || 'medium',
     carbLoadFlag: _favSaveData.carbLoadFlag || 'normal',
     mealContext: _favSaveData.mealContext || 'normal',
@@ -3623,7 +3641,7 @@ function openUseFavoriteModal(id) {
   _favUseData = fav;
   _favUseLabel = '';
   document.getElementById('favUseName').textContent = fav.foodName;
-  setFavUseBase(fav.calories, fav.protein, fav.carbs, fav.fat);
+  setFavUseBase(fav.calories, fav.protein, fav.carbs, fav.fat, fav.fiber);
   // auto-select label by time
   var h = new Date().getHours();
   var auto = h<11?'มื้อเช้า':h<15?'มื้อกลางวัน':h<21?'มื้อเย็น':'ของว่าง';
@@ -3650,7 +3668,7 @@ function onFavMacroInput(src) {
   var p = parseFloat(document.getElementById('favUsePro').value) || 0;
   var c = parseFloat(document.getElementById('favUseCrb').value) || 0;
   var f = parseFloat(document.getElementById('favUseFat').value) || 0;
-  var calc = Math.round(p * 4 + c * 4 + f * 9);
+  var calc = Math.round(p * 4 + c * 4 + f * 9); // fiber is a subset of carbs, not counted separately
   document.getElementById('favUseCalcRef').textContent = calc;
   // ถ้า user แก้ macro → auto-fill kcal เป็น calc value
   if (src === 'macro') document.getElementById('favUseCal').value = calc;
@@ -3661,6 +3679,7 @@ function confirmUseFavorite() {
   var pro = parseFloat(document.getElementById('favUsePro').value) || 0;
   var crb = parseFloat(document.getElementById('favUseCrb').value) || 0;
   var fat = parseFloat(document.getElementById('favUseFat').value) || 0;
+  var fib = parseFloat(document.getElementById('favUseFib').value) || 0;
   if (cal <= 0) { showToast('กรุณาใส่แคลอรี่', 'error'); return; }
 
   // โหมดแก้ไข — อัปเดตมื้อเดิม (id เดิม) แทนการสร้างมื้อใหม่
@@ -3674,6 +3693,7 @@ function confirmUseFavorite() {
     orig.protein = pro;
     orig.carbs = crb;
     orig.fat = fat;
+    orig.fiber = fib;
     localStorage.setItem('gd_meals', JSON.stringify(S.meals));
     if(window.FB_OK) window.FB.saveMeal(orig); else queueFBWrite('meal','save',orig);
     if(S.webhook) autoSync(orig);
@@ -3697,6 +3717,7 @@ function confirmUseFavorite() {
     protein: pro,
     carbs: crb,
     fat: fat,
+    fiber: fib,
     sodiumFlag: _favUseData.sodiumFlag || 'medium',
     carbLoadFlag: _favUseData.carbLoadFlag || 'normal',
     mealContext: _favUseData.mealContext || 'normal',
@@ -3750,6 +3771,7 @@ function renderFavorites() {
         '<div><div style="font-size:15px;font-weight:700;color:var(--blue);">'+f.protein+'g</div><div style="font-size:11px;color:var(--text3);">โปรตีน</div></div>'+
         '<div><div style="font-size:15px;font-weight:700;color:var(--green);">'+f.carbs+'g</div><div style="font-size:11px;color:var(--text3);">คาร์บ</div></div>'+
         '<div><div style="font-size:15px;font-weight:700;color:var(--purple);">'+f.fat+'g</div><div style="font-size:11px;color:var(--text3);">ไขมัน</div></div>'+
+        (f.fiber ? '<div><div style="font-size:15px;font-weight:700;color:#a3763b;">'+f.fiber+'g</div><div style="font-size:11px;color:var(--text3);">ใยอาหาร</div></div>' : '')+
       '</div>'+
       '<button onclick="openUseFavoriteModal('+f.id+')" style="width:100%;padding:10px;background:var(--accent);border:none;border-radius:10px;color:white;font-family:inherit;font-size:13px;font-weight:700;cursor:pointer;">🍽️ บันทึกเป็นมื้อนี้</button>'+
     '</div>';
@@ -4000,14 +4022,17 @@ function generateDailySummary() {
 
   // Aggregate nutrition
   var nut = meals.reduce(function(a, m) {
-    return { cal: a.cal + m.calories, pro: a.pro + m.protein, crb: a.crb + m.carbs, fat: a.fat + m.fat };
-  }, { cal: 0, pro: 0, crb: 0, fat: 0 });
+    return { cal: a.cal + m.calories, pro: a.pro + m.protein, crb: a.crb + m.carbs, fat: a.fat + m.fat, fib: a.fib + (+m.fiber || 0) };
+  }, { cal: 0, pro: 0, crb: 0, fat: 0, fib: 0 });
   var netCal = nut.cal - creditedBurn - neatCal;
 
   // Gaps
   var proGap = nut.pro - goals.pro;
   var crbGap = nut.crb - goals.crb;
   var fatGap = nut.fat - goals.fat;
+  // No user-set fiber goal (unlike P/C/F) — same 14g/1000kcal guideline the dashboard uses.
+  var fiberGoal = Math.max(1, Math.round(goals.cal / 1000 * 14));
+  var fiberGap = nut.fib - fiberGoal;
 
   // Central Goal context — same source as Settings / Analyzer / Workout Plan
   var calCtx = getOfficialCalorieContext();
@@ -4023,7 +4048,7 @@ function generateDailySummary() {
 
   // Meal list string
   var mealStr = meals.length
-    ? meals.map(function(m) { return '• ' + m.label + ': ' + m.foodName + ' (' + m.calories + ' kcal | P:' + m.protein + 'g C:' + m.carbs + 'g F:' + m.fat + 'g)'; }).join('\n')
+    ? meals.map(function(m) { return '• ' + m.label + ': ' + m.foodName + ' (' + m.calories + ' kcal | P:' + m.protein + 'g C:' + m.carbs + 'g F:' + m.fat + 'g Fi:' + (m.fiber||0) + 'g)'; }).join('\n')
     : '• ยังไม่มีข้อมูลมื้ออาหาร';
 
   // Workout list string — each line tagged with modality (STRENGTH vs CARDIO)
@@ -4073,7 +4098,7 @@ function generateDailySummary() {
     var sorted = favs.slice().sort(function(a,b){ return (b.protein||0)-(a.protein||0); });
     var top = sorted.slice(0, 15);
     return top.map(function(f,i){
-      return (i+1)+'. '+f.foodName+' ('+f.calories+'kcal | P:'+f.protein+'g C:'+f.carbs+'g F:'+f.fat+'g)';
+      return (i+1)+'. '+f.foodName+' ('+f.calories+'kcal | P:'+f.protein+'g C:'+f.carbs+'g F:'+f.fat+'g Fi:'+(f.fiber||0)+'g)';
     }).join('\n');
   })();
 
@@ -4090,8 +4115,8 @@ function generateDailySummary() {
     days.forEach(function(day) {
       var dayMeals = allMeals.filter(function(m){ return m.date === day; });
       if (!dayMeals.length) return;
-      var nut = dayMeals.reduce(function(a,m){ return {cal:a.cal+(m.calories||0),pro:a.pro+(m.protein||0),crb:a.crb+(m.carbs||0),fat:a.fat+(m.fat||0)}; }, {cal:0,pro:0,crb:0,fat:0});
-      lines.push(day+': '+Math.round(nut.cal)+'kcal | P:'+Math.round(nut.pro)+'g C:'+Math.round(nut.crb)+'g F:'+Math.round(nut.fat)+'g ('+dayMeals.length+' มื้อ: '+dayMeals.map(function(m){return m.foodName;}).join(', ')+')');
+      var nut = dayMeals.reduce(function(a,m){ return {cal:a.cal+(m.calories||0),pro:a.pro+(m.protein||0),crb:a.crb+(m.carbs||0),fat:a.fat+(m.fat||0),fib:a.fib+(m.fiber||0)}; }, {cal:0,pro:0,crb:0,fat:0,fib:0});
+      lines.push(day+': '+Math.round(nut.cal)+'kcal | P:'+Math.round(nut.pro)+'g C:'+Math.round(nut.crb)+'g F:'+Math.round(nut.fat)+'g Fi:'+Math.round(nut.fib)+'g ('+dayMeals.length+' มื้อ: '+dayMeals.map(function(m){return m.foodName;}).join(', ')+')');
     });
     return lines.length ? lines.join('\n') : 'ไม่มีข้อมูลมื้ออาหารย้อนหลัง';
   })();
@@ -4104,6 +4129,7 @@ function generateDailySummary() {
     '- Every recommendation must be directly justified by the numbers\n' +
     '- Identify the 1 most important thing to fix or maintain — don\'t dilute with too many points\n' +
     '- Use Retention Context to explain possible water/glycogen fluctuation; do not call fat gain from one high sodium/high carb day.\n' +
+    '- Mention fiber intake vs the guideline only when it is notably low (e.g. under half the guideline) or the user asks — do not pad every response with a fiber comment when it is adequate.\n' +
     '- For the "strain" verdict: judge STRENGTH/resistance sessions by Total Volume Load (tonnage) vs the user\'s own rolling average and e1RM trend (up/plateau/down) — never by avg HR/%HRR zone. Inter-set rest suppresses mean HR during lifting regardless of true effort, so a low HR zone on a strength session does NOT mean low intensity; a long duration alone also does not automatically mean higher intensity. Only use %HRR zone to judge CARDIO sessions (running, cycling, swimming, HIIT, walking). If a day mixes both, assess each modality on its own terms in the detail text.\n' +
     '- e1RM trend is the PRIMARY progression signal for strength; Volume Load is secondary context. If an exercise shows e1RM↑ or a NEW PR while its volume is down, that is intensity-driven progression (heavier weight, fewer reps) — report it as progress and NEVER as "insufficient stimulus". Only flag low volume as a problem when e1RM is ALSO flat or declining for that exercise. Never contradict a PR: if any exercise hit a new e1RM PR today, the strain/progress text must acknowledge it positively.\n' +
     '- Compare volume ONLY like-for-like: each exercise vs its OWN rolling average (provided per line). Do NOT compare today\'s Total Volume Load against a past day\'s total from RECENT HISTORY — different days train different muscle groups and exercise counts, so day totals are not comparable and such a comparison must not appear in your output.\n' +
@@ -4114,6 +4140,7 @@ function generateDailySummary() {
     'Official Goal Mode: ' + (calCtx.goalModeLabel || '-') + '\n' +
     'Training Focus: ' + centralGoal.trainingFocusLabel + ' | Weekly Frequency: ' + centralGoal.weeklyFrequency + ' days/week | Recovery Priority: ' + centralGoal.recoveryPriorityLabel + '\n' +
     'User Manual Goal: ' + manualGoal.cal + ' kcal | P:' + manualGoal.pro + 'g C:' + manualGoal.crb + 'g F:' + manualGoal.fat + 'g (this is the goal the user set themselves — compare intake against THIS)\n' +
+    'Fiber Guideline: ~' + fiberGoal + 'g/day (14g per 1000 kcal of the calorie goal — standard USDA/IOM reference, not a user-set target)\n' +
     (dayTypeNote ? dayTypeNote + '\n' : '') +
     'Goal Engine Recommendation: ' + centralGoal.goal.cal + ' kcal | P:' + centralGoal.goal.pro + 'g C:' + centralGoal.goal.crb + 'g F:' + centralGoal.goal.fat + 'g (calculated from TDEE + goal mode — for context only, user may not have applied this)\n' +
     targetStr + '\n' +
@@ -4139,7 +4166,7 @@ function generateDailySummary() {
     'RECENT MEAL HISTORY (last 3 days — detect patterns: chronic low carb, chronic high fat, repeated meals causing imbalance):\n' + recentMealHistory + '\n\n' +
     'TODAY\'S DATA:\n' +
     'Meals:\n' + mealStr + '\n' +
-    'Total Intake (gross, before activity deduction): ' + nut.cal + ' kcal | P:' + nut.pro + 'g C:' + nut.crb + 'g F:' + nut.fat + 'g\n' +
+    'Total Intake (gross, before activity deduction): ' + nut.cal + ' kcal | P:' + nut.pro + 'g C:' + nut.crb + 'g F:' + nut.fat + 'g Fiber:' + nut.fib + 'g\n' +
     'Workouts:\n' + workoutStr + '\n' +
     (strengthVolumeSummary ? '\nStrength Volume Load (today, from strength log — the correct intensity signal for STRENGTH sessions, NOT avg HR):\n' + strengthVolumeSummary + '\n' : '') +
     (function(){ var dl = (typeof checkDeloadNeed === 'function') ? checkDeloadNeed() : null; return dl ? 'Deload Check: DUE — ' + dl.signals.join('; ') + ' (แนะนำ deload week: ลด volume ~40-50% คง intensity — สะท้อนเรื่องนี้ใน strain/playbook ได้)\n' : ''; })() +
@@ -4147,7 +4174,7 @@ function generateDailySummary() {
     (typeof getTodayWaterMl === 'function' ? 'Water Intake: ' + getTodayWaterMl() + ' / ' + getWaterGoalMl() + ' ml (ใช้เป็น context เสริมสำหรับ retention/performance เท่านั้น ไม่ใช่ macro)\n' : '') +
     'Net Calories (intake minus activity — for information only, NOT the primary comparison): ' + Math.round(netCal) + ' kcal\n' +
     'User Calorie Goal (compare intake against THIS): ' + manualGoal.cal + ' kcal | Intake vs Goal: ' + (nut.cal > manualGoal.cal ? '+' : '') + (nut.cal - manualGoal.cal) + ' kcal\n' +
-    'Macro Gaps vs Manual Goal — Protein: ' + (proGap >= 0 ? '+' : '') + Math.round(proGap) + 'g | Carbs: ' + (crbGap >= 0 ? '+' : '') + Math.round(crbGap) + 'g | Fat: ' + (fatGap >= 0 ? '+' : '') + Math.round(fatGap) + 'g\n\n' +
+    'Macro Gaps vs Manual Goal — Protein: ' + (proGap >= 0 ? '+' : '') + Math.round(proGap) + 'g | Carbs: ' + (crbGap >= 0 ? '+' : '') + Math.round(crbGap) + 'g | Fat: ' + (fatGap >= 0 ? '+' : '') + Math.round(fatGap) + 'g | Fiber: ' + (fiberGap >= 0 ? '+' : '') + Math.round(fiberGap) + 'g vs ' + fiberGoal + 'g guideline\n\n' +
     (function() {
       var sd = S.sleepData;
       var todaySd = localDateStr();
@@ -4175,7 +4202,7 @@ function generateDailySummary() {
     'Respond ONLY with a valid JSON object — no markdown, no backticks, no preamble.\n' +
     'JSON format:\n' +
     '{\n' +
-    '  "nutrition": { "headline": "one-line assessment", "detail": "2-3 sentences with specific macro insight, explain the WHY behind each gap physiologically" },\n' +
+    '  "nutrition": { "headline": "one-line assessment", "detail": "2-3 sentences with specific macro insight, explain the WHY behind each gap physiologically. Note fiber only if notably low vs the guideline." },\n' +
     '  "strain": { "level": "Light"|"Moderate"|"High"|"Rest", "headline": "one-line", "detail": "2-3 sentences on training load vs capacity" },\n' +
     // No "score" field here on purpose — the app computes the recovery verdict
     // deterministically (calculateSleepScoreFromData) and renders that. Letting the model
@@ -5420,7 +5447,7 @@ function updateDash() {
 
   var meals = S.meals.filter(function(m){return m.date===viewDate;});
   try { renderSetupHub(viewDate, isToday); } catch(e){ console.error('renderSetupHub failed:', e); }
-  var t = meals.reduce(function(a,m){return{cal:a.cal+m.calories,pro:a.pro+m.protein,crb:a.crb+m.carbs,fat:a.fat+m.fat};},{cal:0,pro:0,crb:0,fat:0});
+  var t = meals.reduce(function(a,m){return{cal:a.cal+m.calories,pro:a.pro+m.protein,crb:a.crb+m.carbs,fat:a.fat+m.fat,fib:a.fib+(+m.fiber||0)};},{cal:0,pro:0,crb:0,fat:0,fib:0});
   var g = isToday ? getEffectiveGoalToday() : getEffectiveGoalForDate(viewDate);
   var dtNoteEl = document.getElementById('dash-daytype-note');
   if (dtNoteEl) {
@@ -5477,6 +5504,14 @@ function updateDash() {
   document.getElementById('gb-c').textContent = dispCrb+'/'+g.crb+'g';
   document.getElementById('gb-f').textContent = dispFat+'/'+g.fat+'g';
   setW('gbf-cal',t.cal,g.cal); setW('gbf-p',t.pro,g.pro); setW('gbf-c',t.crb,g.crb); setW('gbf-f',t.fat,g.fat);
+
+  // Fiber has no user-set goal like the other macros — derive a recommended target from
+  // today's calorie goal using the standard USDA/IOM 14g-per-1000-kcal guideline instead
+  // of adding a new editable Settings field for a nutrient this app doesn't otherwise gate.
+  var dispFib = parseFloat(t.fib.toFixed(2));
+  var fiberGoal = Math.max(1, Math.round(g.cal / 1000 * 14));
+  document.getElementById('gb-fib').textContent = dispFib+'/'+fiberGoal+'g';
+  setW('gbf-fib', t.fib, fiberGoal);
 
   var dm = document.getElementById('dash-meals');
   if(meals.length===0){ dm.innerHTML='<div class="empty-state"><div class="empty-icon">🍽️</div><div class="empty-text">ยังไม่มีข้อมูลมื้ออาหาร</div><div class="empty-sub">ถ่ายรูปหรือพิมพ์ชื่อเพื่อเริ่มต้น</div><button onclick="showPage(\'analyze\')" style="margin-top:12px;padding:8px 20px;background:rgba(143,168,124,0.12);border:1px solid rgba(143,168,124,0.4);border-radius:20px;color:var(--accent);font-family:inherit;font-size:13px;font-weight:600;cursor:pointer;">วิเคราะห์อาหารแรก</button></div>'; }
@@ -5576,7 +5611,7 @@ function renderMealBreakdown(m) {
   var rows = items.map(function(it){
     return '<div class="mbd-item">' +
       '<div style="min-width:0;"><div class="mbd-name">'+escapeHTML(it.foodName||'รายการ')+'</div>' +
-      '<div class="mbd-macros">P '+(it.protein||0)+'g · C '+(it.carbs||0)+'g · F '+(it.fat||0)+'g</div></div>' +
+      '<div class="mbd-macros">P '+(it.protein||0)+'g · C '+(it.carbs||0)+'g · F '+(it.fat||0)+'g · Fi '+(it.fiber||0)+'g</div></div>' +
       '<div class="mbd-cal">'+(it.calories||0)+' <span>kcal</span></div>' +
     '</div>';
   }).join('');
@@ -5602,7 +5637,7 @@ function openMealSheet(id) {
   _mealSheetId = id;
   document.getElementById('mealSheetName').textContent = m.foodName;
   document.getElementById('mealSheetMacro').textContent =
-    (m.calories||0)+' kcal  •  P '+(m.protein||0)+'g  C '+(m.carbs||0)+'g  F '+(m.fat||0)+'g';
+    (m.calories||0)+' kcal  •  P '+(m.protein||0)+'g  C '+(m.carbs||0)+'g  F '+(m.fat||0)+'g  Fi '+(m.fiber||0)+'g';
   renderMealBreakdown(m);
   var ov = document.getElementById('meal-sheet-overlay');
   ov.style.display = 'flex';
@@ -5626,7 +5661,7 @@ function reuseMeal(id) {
   _favUseData = m;
   _favUseLabel = '';
   document.getElementById('favUseName').textContent = m.foodName;
-  setFavUseBase(m.calories, m.protein, m.carbs, m.fat);
+  setFavUseBase(m.calories, m.protein, m.carbs, m.fat, m.fiber);
   var h = new Date().getHours();
   var auto = h<11?'มื้อเช้า':h<15?'มื้อกลางวัน':h<21?'มื้อเย็น':'ของว่าง';
   document.querySelectorAll('#favUseLabelRow .label-btn').forEach(function(b){
@@ -5646,7 +5681,7 @@ function editMeal(id) {
   _favUseData = m;
   _favUseLabel = m.label || '';
   document.getElementById('favUseName').textContent = m.foodName;
-  setFavUseBase(m.calories, m.protein, m.carbs, m.fat);
+  setFavUseBase(m.calories, m.protein, m.carbs, m.fat, m.fiber);
   // เลือกปุ่มมื้อให้ตรงกับของเดิม
   document.querySelectorAll('#favUseLabelRow .label-btn').forEach(function(b){
     b.classList.remove('active');
@@ -5668,7 +5703,7 @@ function favFromMeal(id) {
   _favSaveData = m;
   document.getElementById('favSaveName').value = m.foodName || '';
   document.getElementById('favSaveMenuName').textContent =
-    (m.calories||0)+' kcal  |  P '+(m.protein||0)+'g  C '+(m.carbs||0)+'g  F '+(m.fat||0)+'g';
+    (m.calories||0)+' kcal  |  P '+(m.protein||0)+'g  C '+(m.carbs||0)+'g  F '+(m.fat||0)+'g  Fi '+(m.fiber||0)+'g';
   document.getElementById('favSaveModal').style.display = 'flex';
 }
 function mealHTML(m, showDel) {
@@ -5683,7 +5718,7 @@ function mealHTML(m, showDel) {
   var comboTag = itemCount ? ' <span style="font-size:10px;font-weight:700;color:var(--accent);background:var(--accent-dim);border-radius:6px;padding:1px 6px;vertical-align:middle;">รวม '+itemCount+' เมนู</span>' : '';
   return '<div class="meal-item" onclick="openMealSheet('+m.id+')"><div class="meal-thumb-ph">🍽️</div>'+
     '<div class="meal-info"><div class="meal-name">'+escapeHTML(m.foodName)+qtyTag+comboTag+'</div><div class="meal-time">'+escapeHTML(m.label)+' • '+escapeHTML(m.time)+'</div>'+
-    '<div class="meal-macros"><span class="meal-tag" style="color:var(--blue)">P '+m.protein+'g</span><span class="meal-tag" style="color:var(--green)">C '+m.carbs+'g</span><span class="meal-tag" style="color:var(--purple)">F '+m.fat+'g</span></div>'+chips+'</div>'+
+    '<div class="meal-macros"><span class="meal-tag" style="color:var(--blue)">P '+m.protein+'g</span><span class="meal-tag" style="color:var(--green)">C '+m.carbs+'g</span><span class="meal-tag" style="color:var(--purple)">F '+m.fat+'g</span>'+(m.fiber?'<span class="meal-tag" style="color:#a3763b">Fi '+m.fiber+'g</span>':'')+'</div>'+chips+'</div>'+
     '<div style="display:flex;flex-direction:column;align-items:flex-end;gap:5px;"><div class="meal-cal">'+m.calories+'<br><span style="font-size:11px;color:var(--text3)">kcal</span></div><div class="meal-chevron">›</div></div></div>';
 }
 
@@ -5703,10 +5738,10 @@ function getRecentDistinctMeals(limit) {
   }
   return out;
 }
-function _quickLogRowHTML(name, kcal, pro, crb, fat, onclickExpr) {
+function _quickLogRowHTML(name, kcal, pro, crb, fat, onclickExpr, fib) {
   return '<div class="meal-item" onclick="'+onclickExpr+'"><div class="meal-thumb-ph">🍽️</div>'+
     '<div class="meal-info"><div class="meal-name">'+escapeHTML(name)+'</div>'+
-    '<div class="meal-macros"><span class="meal-tag" style="color:var(--blue)">P '+(pro||0)+'g</span><span class="meal-tag" style="color:var(--green)">C '+(crb||0)+'g</span><span class="meal-tag" style="color:var(--purple)">F '+(fat||0)+'g</span></div></div>'+
+    '<div class="meal-macros"><span class="meal-tag" style="color:var(--blue)">P '+(pro||0)+'g</span><span class="meal-tag" style="color:var(--green)">C '+(crb||0)+'g</span><span class="meal-tag" style="color:var(--purple)">F '+(fat||0)+'g</span>'+(fib?'<span class="meal-tag" style="color:#a3763b">Fi '+fib+'g</span>':'')+'</div></div>'+
     '<div style="display:flex;flex-direction:column;align-items:flex-end;gap:5px;"><div class="meal-cal">'+(kcal||0)+'<br><span style="font-size:11px;color:var(--text3)">kcal</span></div><div class="meal-chevron">›</div></div></div>';
 }
 function openQuickLogSheet() {
@@ -5718,10 +5753,10 @@ function openQuickLogSheet() {
   var favs = (S.favorites||[]).slice(0, 8);
   var recents = getRecentDistinctMeals(8);
   if (favEl) favEl.innerHTML = favs.map(function(f){
-    return _quickLogRowHTML(f.foodName, f.calories, f.protein, f.carbs, f.fat, 'quickLogUseFavorite('+f.id+')');
+    return _quickLogRowHTML(f.foodName, f.calories, f.protein, f.carbs, f.fat, 'quickLogUseFavorite('+f.id+')', f.fiber);
   }).join('');
   if (recentEl) recentEl.innerHTML = recents.map(function(m){
-    return _quickLogRowHTML(m.foodName, m.calories, m.protein, m.carbs, m.fat, 'quickLogReuseMeal('+m.id+')');
+    return _quickLogRowHTML(m.foodName, m.calories, m.protein, m.carbs, m.fat, 'quickLogReuseMeal('+m.id+')', m.fiber);
   }).join('');
   if (favSection) favSection.style.display = favs.length ? 'block' : 'none';
   if (recentSection) recentSection.style.display = recents.length ? 'block' : 'none';
@@ -6207,6 +6242,7 @@ function getDailyMetrics(date) {
   var protein = meals.reduce(function(a,m){ return a + (+m.protein || 0); }, 0);
   var carbs = meals.reduce(function(a,m){ return a + (+m.carbs || 0); }, 0);
   var fat = meals.reduce(function(a,m){ return a + (+m.fat || 0); }, 0);
+  var fiber = meals.reduce(function(a,m){ return a + (+m.fiber || 0); }, 0);
   var workoutBurn = workouts.reduce(function(a,w){ return a + (+w.calories_burned || 0); }, 0);
   var stepData = safeJSON('gd_steps', {});
   var steps = stepData[date] || 0;
@@ -6215,7 +6251,7 @@ function getDailyMetrics(date) {
   var neatCal = (typeof calcStepCalories === 'function') ? calcStepCalories(Math.max(steps - sessionSteps, 0)) : 0;
   var creditedWorkoutBurn = creditedBurnSum(workouts);
   var retention = (typeof getDailyRetentionContext === 'function') ? getDailyRetentionContext(date) : {score:0};
-  return { date:date, meals:meals, workouts:workouts, intake:intake, protein:protein, carbs:carbs, fat:fat, workoutBurn:workoutBurn, creditedWorkoutBurn:creditedWorkoutBurn, steps:steps, sessionSteps:sessionSteps, neatCal:neatCal, totalBurn:workoutBurn+neatCal, netCal:intake-creditedWorkoutBurn-neatCal, retentionScore:retention.score, retention:retention };
+  return { date:date, meals:meals, workouts:workouts, intake:intake, protein:protein, carbs:carbs, fat:fat, fiber:fiber, workoutBurn:workoutBurn, creditedWorkoutBurn:creditedWorkoutBurn, steps:steps, sessionSteps:sessionSteps, neatCal:neatCal, totalBurn:workoutBurn+neatCal, netCal:intake-creditedWorkoutBurn-neatCal, retentionScore:retention.score, retention:retention };
 }
 function getDateRangeMetrics(startDate, endDate) {
   var out = []; var cur = startDate;
@@ -13528,10 +13564,11 @@ function buildChatContext(){
   var neatCal = (typeof getNeatCalForDate === 'function') ? getNeatCalForDate(today) : 0;
   var workoutBurn = workouts.reduce(function(a,w){ return a + (w.calories_burned||0); }, 0);
   var creditedBurn = creditedBurnSum(workouts);
-  var nut = meals.reduce(function(a,m){ return {cal:a.cal+(m.calories||0),pro:a.pro+(m.protein||0),crb:a.crb+(m.carbs||0),fat:a.fat+(m.fat||0)}; }, {cal:0,pro:0,crb:0,fat:0});
+  var nut = meals.reduce(function(a,m){ return {cal:a.cal+(m.calories||0),pro:a.pro+(m.protein||0),crb:a.crb+(m.carbs||0),fat:a.fat+(m.fat||0),fib:a.fib+(m.fiber||0)}; }, {cal:0,pro:0,crb:0,fat:0,fib:0});
   var netCal = nut.cal - creditedBurn - neatCal;
 
   var goals = getEffectiveGoalToday(); // same rest-day/recovery-adjusted target as the dashboard & generateDailySummary
+  var fiberGoal = Math.max(1, Math.round(goals.cal / 1000 * 14)); // same 14g/1000kcal guideline as dashboard/daily summary
 
   // Body composition: latest entry
   var bcLogs = (typeof getBodyCompLogs === 'function') ? getBodyCompLogs() : safeJSON('gd_body_comp_logs', []);
@@ -13562,8 +13599,8 @@ function buildChatContext(){
   c += 'เป้าหมายวันนี้: ' + goals.cal + ' kcal | โปรตีน ' + goals.pro + 'g | คาร์บ ' + goals.crb + 'g | ไขมัน ' + goals.fat + 'g' +
     (goals._dayType === 'rest' ? ' (วันพักตามแผน — ลดคาร์บ/แคลจากปกติแล้ว)' : (goals._adj ? ' (ปรับตาม Recovery แล้ว)' : '')) + '\n';
   c += 'มื้ออาหารวันนี้:\n';
-  c += meals.length ? meals.map(function(m){ return '  • ' + m.label + ': ' + m.foodName + ' (' + m.calories + ' kcal | P:' + m.protein + ' C:' + m.carbs + ' F:' + m.fat + ')'; }).join('\n') + '\n' : '  • ยังไม่มีมื้ออาหาร\n';
-  c += 'รวมที่กิน: ' + nut.cal + ' kcal | P:' + Math.round(nut.pro) + 'g C:' + Math.round(nut.crb) + 'g F:' + Math.round(nut.fat) + 'g\n';
+  c += meals.length ? meals.map(function(m){ return '  • ' + m.label + ': ' + m.foodName + ' (' + m.calories + ' kcal | P:' + m.protein + ' C:' + m.carbs + ' F:' + m.fat + ' Fi:' + (m.fiber||0) + ')'; }).join('\n') + '\n' : '  • ยังไม่มีมื้ออาหาร\n';
+  c += 'รวมที่กิน: ' + nut.cal + ' kcal | P:' + Math.round(nut.pro) + 'g C:' + Math.round(nut.crb) + 'g F:' + Math.round(nut.fat) + 'g Fiber:' + Math.round(nut.fib) + 'g (แนะนำ ~' + fiberGoal + 'g/วัน)\n';
   c += 'เหลือกินได้: ' + Math.max(0, Math.round(goals.cal - nut.cal)) + ' kcal | โปรตีนเหลือ: ' + Math.max(0, Math.round(goals.pro - nut.pro)) + 'g\n';
   c += 'ออกกำลังกาย: ' + (workouts.length ? workouts.map(function(w){ var s = w.name + ' ' + w.duration_min + 'นาที (~' + w.calories_burned + ' kcal)'; if(w.avg_hr && +w.avg_hr>0){ var z=hrrToZone(calcHRR(w.avg_hr)); if(z) s+=' [Zone '+z.zone+' '+z.label+']'; } return s; }).join(', ') : 'ยังไม่มี') + '\n';
   c += 'เผาผลาญจากออกกำลังกาย: ' + workoutBurn + ' kcal | ก้าว: ' + steps + ' | NEAT: ' + Math.round(neatCal) + ' kcal\n';
@@ -13627,6 +13664,7 @@ var CHAT_LOG_MEAL_TOOL = {
         protein: { type: 'NUMBER', description: 'โปรตีนโดยประมาณ (กรัม)' },
         carbs: { type: 'NUMBER', description: 'คาร์โบไฮเดรตโดยประมาณ (กรัม)' },
         fat: { type: 'NUMBER', description: 'ไขมันโดยประมาณ (กรัม)' },
+        fiber: { type: 'NUMBER', description: 'ใยอาหารโดยประมาณ (กรัม) เป็นส่วนหนึ่งของคาร์โบไฮเดรต — ถ้าประเมินไม่ได้ปล่อยว่าง' },
         label: { type: 'STRING', description: 'มื้อไหน หนึ่งใน: มื้อเช้า, มื้อกลางวัน, มื้อเย็น, ของว่าง — ถ้าผู้ใช้ไม่ได้ระบุ ปล่อยว่าง' }
       },
       required: ['foodName', 'calories', 'protein', 'carbs', 'fat']
@@ -13655,6 +13693,7 @@ function buildChatMealObject(args) {
     protein: +args.protein || 0,
     carbs: +args.carbs || 0,
     fat: +args.fat || 0,
+    fiber: +args.fiber || 0,
     sodiumFlag: 'medium',
     carbLoadFlag: 'normal',
     mealContext: 'normal',
@@ -13678,6 +13717,7 @@ function _appendChatMealConfirmCard(args) {
       '<span>P <b style="color:var(--blue);">' + meal.protein + 'g</b></span>' +
       '<span>C <b style="color:var(--green);">' + meal.carbs + 'g</b></span>' +
       '<span>F <b style="color:var(--purple);">' + meal.fat + 'g</b></span>' +
+      (meal.fiber ? '<span>Fi <b style="color:#a3763b;">' + meal.fiber + 'g</b></span>' : '') +
     '</div>' +
     '<div style="font-size:11px;color:var(--text3);margin-bottom:8px;">บันทึกเป็น: ' + escapeHTML(meal.label) + '</div>' +
     '<div class="chat-meal-card-actions">' +

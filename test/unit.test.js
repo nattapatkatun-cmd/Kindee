@@ -170,6 +170,13 @@ test('reconcileMealMacros keeps calories and macros consistent', () => {
     [300, 0, 0, 0],
     'with no macros the calorie figure stands'
   );
+  assert.strictEqual(noMacros.fiber, 0, 'missing fiber defaults to 0, never NaN/undefined');
+
+  // Fiber is a subset of carbs, not a fifth term in the 4/4/9 calorie check — it must
+  // survive reconciliation unchanged and never trigger a _calAdjustedFrom correction.
+  const withFiber = reconcileMealMacros({ calories: 520, protein: 40, carbs: 60, fat: 12, fiber: 8.456 });
+  assert.strictEqual(withFiber.fiber, 8.46, 'fiber is sanitized/rounded like the other macros');
+  assert.strictEqual(withFiber._calAdjustedFrom, undefined, 'fiber does not factor into the calorie reconciliation');
 });
 
 // ── Fitness target ────────────────────────────────────────────────────────────
