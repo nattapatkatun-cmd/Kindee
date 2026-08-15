@@ -438,3 +438,60 @@ test('the 20-minute phase-shift cap still governs shifts inside one bucket', () 
     ctx.BEDTIME_SHIFT_CAP_MIN,
   );
 });
+
+// ── Energy Availability (EA) ────────────────────────────────────────────────────
+test('calcEnergyAvailability matches (intake − exercise) / fat-free mass', () => {
+  const ctx = load(['calcEnergyAvailability'], { consts: ['EA_DANGER', 'EA_OPTIMAL'] });
+
+  // Reference: EA = (energy intake − exercise energy expenditure) / lean body mass, in
+  // kcal per kg FFM per day (Loucks 2004). NEAT/steps are deliberately NOT subtracted.
+  const ref = (intake, exercise, kg, bf) => (intake - exercise) / (kg * (1 - bf / 100));
+
+  const r = ctx.calcEnergyAvailability(1596, 400, 60, 28);
+  assert.strictEqual(r.status, 'ok');
+  assert.ok(Math.abs(r.lbm - 43.2) < 1e-9, 'LBM = weight × (1 − bf/100)');
+  assert.ok(Math.abs(r.ea - ref(1596, 400, 60, 28)) < 1e-9, 'EA formula matches the reference');
+
+  // Exercise is subtracted; two days with equal intake but more training yield lower EA.
+  assert.ok(
+    ctx.calcEnergyAvailability(1600, 500, 60, 28).ea < ctx.calcEnergyAvailability(1600, 100, 60, 28).ea,
+    'more exercise ⇒ lower EA at equal intake',
+  );
+});
+
+test('EA zones are pinned to the RED-S constants (30 / 45)', () => {
+  const ctx = load(['calcEnergyAvailability'], { consts: ['EA_DANGER', 'EA_OPTIMAL'] });
+  const lbm = 50, kg = 62.5, bf = 20; // 62.5 × 0.8 = exactly 50 kg FFM
+  const atEA = (target) => ctx.calcEnergyAvailability(target * lbm, 0, kg, bf);
+
+  assert.strictEqual(atEA(ctx.EA_DANGER - 1).zone, 'danger', 'below 30 ⇒ danger');
+  assert.strictEqual(atEA(ctx.EA_DANGER + 1).zone, 'low', 'between 30 and 45 ⇒ low');
+  assert.strictEqual(atEA(ctx.EA_OPTIMAL + 1).zone, 'optimal', '45+ ⇒ optimal');
+  // Inclusive-low boundaries: exactly 30 is no longer danger, exactly 45 is optimal.
+  assert.strictEqual(atEA(ctx.EA_DANGER).zone, 'low');
+  assert.strictEqual(atEA(ctx.EA_OPTIMAL).zone, 'optimal');
+});
+
+test('EA catches the RED-S danger the raw calorie floor misses', () => {
+  const ctx = load(['calcEnergyAvailability'], { consts: ['EA_DANGER', 'EA_OPTIMAL'] });
+  // A lean woman eating 1596 kcal — comfortably ABOVE the 1200 female floor buildGoalFromMode
+  // enforces — still drops into the danger zone once a 400 kcal session is paid for. The
+  // intake floor never subtracts exercise nor scales by lean mass, so only EA sees this.
+  const floorFemale = 1200, intake = 1596;
+  assert.ok(intake > floorFemale, 'precondition: intake clears the raw floor');
+
+  const trained = ctx.calcEnergyAvailability(intake, 400, 60, 28);
+  assert.strictEqual(trained.zone, 'danger', 'yet EA is in the danger zone');
+  assert.ok(trained.ea < ctx.EA_DANGER);
+
+  // The same intake with no training is NOT in danger — it's the training load, not the
+  // intake alone, that tips her over.
+  assert.notStrictEqual(ctx.calcEnergyAvailability(intake, 0, 60, 28).zone, 'danger');
+});
+
+test('calcEnergyAvailability needs a lean-mass basis to compute', () => {
+  const ctx = load(['calcEnergyAvailability'], { consts: ['EA_DANGER', 'EA_OPTIMAL'] });
+  assert.strictEqual(ctx.calcEnergyAvailability(1800, 300, 0, 25).status, 'insufficient', 'no weight');
+  assert.strictEqual(ctx.calcEnergyAvailability(1800, 300, 60, null).status, 'insufficient', 'no %BF');
+  assert.strictEqual(ctx.calcEnergyAvailability(1800, 300, 60, 2).status, 'insufficient', 'implausible %BF rejected');
+});

@@ -846,6 +846,7 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
         <div class="mchip mchip-f"><div class="mchip-v" id="d-f" style="color:var(--purple)">0g</div><div class="mchip-n">ไขมัน</div><div class="macro-bar"><div class="macro-bar-fill" id="b-f" style="background:var(--purple);width:0%"></div></div></div>
         <div class="mchip mchip-g"><div class="mchip-v" id="d-g" style="color:var(--fire)">0</div><div class="mchip-n">เป้าแคล</div><div class="macro-bar"><div class="macro-bar-fill" id="b-g" style="background:var(--fire);width:0%"></div></div></div>
       </div>
+      <div id="dash-ea-badge" style="display:none;margin-top:10px;padding:8px 12px;border-radius:12px;"></div>
       <details class="goal-details">
         <summary>เป้าหมายสารอาหารแบบละเอียด</summary>
         <div style="margin-top:12px;">
@@ -5519,6 +5520,7 @@ function updateDash() {
 
   renderDashWeight(viewDate);
   if (typeof renderDashWater === 'function') renderDashWater(viewDate);
+  renderDashEA(viewDate, isToday);
 
   // Recovery card: only "today" reads from live S.sleepData (which init()/
   // generateMorningRecovery() also write straight into this card) — a past
@@ -5543,6 +5545,46 @@ function updateDash() {
       }
     }
   }
+}
+// Energy Availability badge on the calorie card. Colour + copy by RED-S zone. Hidden
+// entirely when there's no lean-mass basis yet (no weight) or nothing to show for a past
+// day; when weight is known but %BF isn't, it nudges the user to add body composition —
+// EA cannot be computed without it.
+var EA_ZONE_META = {
+  danger:  { bg:'rgba(239,68,68,0.08)',  bd:'rgba(239,68,68,0.3)',  fg:'var(--red)',   icon:'🚨', label:'อันตราย (RED-S)',   tip:'ต่ำกว่า 30 — เสี่ยงเสียกล้าม ฮอร์โมนตก ประจำเดือนขาด ควรกินเพิ่มหรือลดคาร์ดิโอ' },
+  low:     { bg:'rgba(245,158,11,0.08)', bd:'rgba(245,158,11,0.3)', fg:'#d97706',      icon:'⚠️', label:'ต่ำกว่าเหมาะสม',      tip:'30–45 — พอไปได้แต่ยังไม่เต็มที่ ถ้าเทรนหนักควรดันเข้าใกล้ ~45' },
+  optimal: { bg:'rgba(34,197,94,0.08)',  bd:'rgba(34,197,94,0.3)',  fg:'var(--green)', icon:'✅', label:'เหมาะสม',            tip:'≥45 — พลังงานพอทั้งซ้อมและฟื้นตัว ร่างกายพร้อมปล่อยไขมัน' }
+};
+function renderDashEA(date, isToday) {
+  var el = document.getElementById('dash-ea-badge');
+  if (!el) return;
+  var res = getDashboardEA(date, isToday);
+  if (!res || res.status === 'nodata') { el.style.display = 'none'; return; }
+  if (res.status === 'insufficient') {
+    if (res.reason === 'nobf') {
+      el.style.display = 'block';
+      el.style.background = 'var(--surface2)';
+      el.style.border = '1px solid var(--border)';
+      el.innerHTML = '<span style="font-size:11px;color:var(--text3);">⚡ <b style="color:var(--text2);">EA (พลังงานพร้อมใช้)</b> — กรอก %BF ที่แท็บ Body Composition เพื่อคำนวณ</span>';
+    } else {
+      el.style.display = 'none';
+    }
+    return;
+  }
+  var m = EA_ZONE_META[res.zone] || EA_ZONE_META.low;
+  var basisNote = res.basis === 'planned'
+    ? 'ตามเป้ากินวันนี้ ' + res.intakeKcal + ' − ออกกำลังกาย ' + res.exerciseKcal
+    : 'กินจริง ' + res.intakeKcal + ' − ออกกำลังกาย ' + res.exerciseKcal;
+  el.style.display = 'block';
+  el.style.background = m.bg;
+  el.style.border = '1px solid ' + m.bd;
+  el.innerHTML =
+    '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">' +
+      '<span style="font-size:13px;font-weight:800;color:' + m.fg + ';">' + m.icon + ' EA ' + res.ea.toFixed(1) + '</span>' +
+      '<span style="font-size:10px;font-weight:700;color:' + m.fg + ';">' + m.label + '</span>' +
+    '</div>' +
+    '<div style="font-size:10px;color:var(--text3);margin-top:3px;line-height:1.5;">พลังงานพร้อมใช้ kcal/กก. มวลไร้ไขมัน — (' + basisNote + ') ÷ LBM ' + res.lbm.toFixed(1) + ' กก.</div>' +
+    '<div style="font-size:10px;color:var(--text2);margin-top:2px;line-height:1.5;">' + m.tip + '</div>';
 }
 var DASH_RECOVERY_EMPTY_HTML = '<div style="text-align:center;padding:10px 0;color:var(--text3);font-size:12px;">ยังไม่มี Recovery Score วันนี้<br>'+
   '<button onclick="showPage(\'fitness\');showFitnessTab(\'sleep\');" style="margin-top:8px;background:none;border:1px solid var(--border);border-radius:20px;padding:4px 14px;font-size:11px;color:var(--text2);cursor:pointer;">กรอก Sleep Data</button>'+
@@ -6261,6 +6303,75 @@ function getDateRangeMetrics(startDate, endDate) {
     cur = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
   }
   return out;
+}
+
+// ── Energy Availability (EA) ──────────────────────────────────────
+// EA = (energy intake − exercise energy expenditure) / fat-free mass, in kcal/kg FFM/day.
+// The RED-S literature (Loucks 2004; Nattiv et al. 2007) puts the clinical low-EA
+// threshold at 30 kcal/kg FFM/day — below it, reproductive/metabolic/bone function is
+// suppressed — with optimal function around 45. Crucially EA subtracts ONLY purposeful
+// exercise, NOT NEAT/steps: it measures the energy left for the body's baseline
+// physiology after training is paid for. That is exactly why a lean person eating above
+// the app's raw calorie floor (1200 F / 1500 M) can still fall into the danger zone on a
+// heavy-cardio day — the floor guard never subtracts exercise or scales by lean mass.
+var EA_DANGER = 30;   // kcal/kg FFM/day — clinical low-EA threshold below which physiology is suppressed (RED-S)
+var EA_OPTIMAL = 45;  // kcal/kg FFM/day — energy availability associated with normal function
+// Best-available current body-fat %. The Fitness Target's own current %BF wins (it's what
+// the user is actively cutting against), then the latest InBody reading, then any latest
+// body-comp log. Returns null when %BF is unknown — EA is undefined without lean mass, so
+// every caller must handle the null. Mirrors the bfForPro resolution in buildGoalFromMode.
+function getCurrentBodyFatPct() {
+  var ft = safeJSON('gd_ft_target', null);
+  if (ft && ft.currBF) { var v = parseFloat(ft.currBF); if (v > 3 && v < 60) return v; }
+  if (typeof getLatestBodyCompBySource === 'function') {
+    var ib = getLatestBodyCompBySource('inbody');
+    if (ib && ib.bf) { var b = parseFloat(ib.bf); if (b > 3 && b < 60) return b; }
+    var any = getLatestBodyCompBySource(null);
+    if (any && any.bf) { var a = parseFloat(any.bf); if (a > 3 && a < 60) return a; }
+  }
+  return null;
+}
+// Pure EA computation. intakeKcal/exerciseKcal in kcal, weightKg in kg, bfPct in %.
+// Returns { status:'insufficient' } when weight or %BF is missing/out of range;
+// otherwise { status:'ok', ea, lbm, zone:'danger'|'low'|'optimal', ... }.
+function calcEnergyAvailability(intakeKcal, exerciseKcal, weightKg, bfPct) {
+  var w = parseFloat(weightKg), bf = parseFloat(bfPct);
+  if (!w || w <= 0 || !bf || bf <= 3 || bf >= 60) return { status:'insufficient' };
+  var lbm = w * (1 - bf/100);
+  if (lbm <= 0) return { status:'insufficient' };
+  var ea = (intakeKcal - exerciseKcal) / lbm;
+  var zone = ea < EA_DANGER ? 'danger' : (ea < EA_OPTIMAL ? 'low' : 'optimal');
+  return { status:'ok', ea:ea, lbm:lbm, intakeKcal:Math.round(intakeKcal), exerciseKcal:Math.round(exerciseKcal), zone:zone };
+}
+// Dashboard-facing EA for a date. For TODAY the intake basis is the effective calorie
+// goal (planned EA: a stable coaching signal that answers "is my prescribed intake safe
+// given how much I've trained today?" and updates as workouts are logged) — NOT the
+// running total, which would flash a false RED-S alarm at breakfast the way the ring
+// shows 20% mid-day. For a PAST date the day is complete, so actual logged intake is used.
+// Exercise is the CREDITED workout burn (the app's true-active-burn estimate, same figure
+// netCal uses), never NEAT — EA subtracts training only.
+function getDashboardEA(date, isToday) {
+  var weight = parseFloat(getLatestCheckinWeight() || (S.profile && S.profile.weight)) || null;
+  var bf = getCurrentBodyFatPct();
+  if (!weight) return { status:'insufficient', reason:'noweight' };
+  if (!bf) return { status:'insufficient', reason:'nobf' };
+  var workouts = (typeof workoutsForDate === 'function') ? workoutsForDate(date) : (FT.workouts || []).filter(function(w){ return w.date === date; });
+  var exercise = creditedBurnSum(workouts);
+  var actualIntake = (S.meals || []).filter(function(m){ return m.date === date; }).reduce(function(a,m){ return a + (+m.calories || 0); }, 0);
+  var intake, basis;
+  if (isToday) {
+    var g = (typeof getEffectiveGoalToday === 'function') ? getEffectiveGoalToday() : S.goals;
+    intake = (g && g.cal) ? g.cal : actualIntake;
+    basis = 'planned';
+  } else {
+    intake = actualIntake; basis = 'actual';
+  }
+  // No intake basis to speak of (no goal set and nothing logged) → don't flash a false
+  // EA-of-zero alarm; the badge simply stays hidden until there's something to measure.
+  if (intake <= 0) return { status:'nodata' };
+  var res = calcEnergyAvailability(intake, exercise, weight, bf);
+  if (res.status === 'ok') res.basis = basis;
+  return res;
 }
 
 // Settings
