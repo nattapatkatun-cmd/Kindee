@@ -495,3 +495,56 @@ test('calcEnergyAvailability needs a lean-mass basis to compute', () => {
   assert.strictEqual(ctx.calcEnergyAvailability(1800, 300, 60, null).status, 'insufficient', 'no %BF');
   assert.strictEqual(ctx.calcEnergyAvailability(1800, 300, 60, 2).status, 'insufficient', 'implausible %BF rejected');
 });
+
+// ── EA: typical training-day burn (for the forward-looking plan number) ─────────
+test('getAvgTrainingDayCreditedBurn averages TRAINING days only, within the window, excluding today', () => {
+  const ctx = load(['getAvgTrainingDayCreditedBurn'], {
+    consts: ['EA_AVG_WINDOW_DAYS', 'EA_AVG_MIN_TRAIN_DAYS'],
+    prelude: `
+      var BURN = {};
+      function creditedBurnSum(list){ return list.reduce(function(a,b){ return a + b; }, 0); }
+      function workoutsForDate(ds){ return BURN[ds] ? [BURN[ds]] : []; }
+      function localDateStr(){ return '2026-08-16'; }`,
+  });
+  const dayBefore = (n) => {
+    const d = new Date('2026-08-16T12:00:00'); d.setDate(d.getDate() - n);
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  };
+
+  // Four training days at 400 kcal; the other days are rest days (no entry at all).
+  [1, 3, 5, 7].forEach((n) => { ctx.BURN[dayBefore(n)] = 400; });
+  const r = ctx.getAvgTrainingDayCreditedBurn('2026-08-16');
+  assert.ok(r, 'enough training days ⇒ returns a result');
+  assert.strictEqual(r.days, 4, 'counts training days only, not calendar days');
+  assert.ok(Math.abs(r.burn - 400) < 1e-9, 'averages over training days (rest days must not drag it to ~114)');
+
+  // Today is what we plan FOR, so it is excluded from its own average.
+  ctx.BURN['2026-08-16'] = 9999;
+  assert.ok(Math.abs(ctx.getAvgTrainingDayCreditedBurn('2026-08-16').burn - 400) < 1e-9, "today's own session is not counted");
+});
+
+test('getAvgTrainingDayCreditedBurn needs a minimum sample and respects the window', () => {
+  const ctx = load(['getAvgTrainingDayCreditedBurn'], {
+    consts: ['EA_AVG_WINDOW_DAYS', 'EA_AVG_MIN_TRAIN_DAYS'],
+    prelude: `
+      var BURN = {};
+      function creditedBurnSum(list){ return list.reduce(function(a,b){ return a + b; }, 0); }
+      function workoutsForDate(ds){ return BURN[ds] ? [BURN[ds]] : []; }
+      function localDateStr(){ return '2026-08-16'; }`,
+  });
+  const dayBefore = (n) => {
+    const d = new Date('2026-08-16T12:00:00'); d.setDate(d.getDate() - n);
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  };
+
+  ctx.BURN[dayBefore(2)] = 300; ctx.BURN[dayBefore(4)] = 300; // only 2 < min 3
+  assert.strictEqual(ctx.getAvgTrainingDayCreditedBurn('2026-08-16'), null, 'below the minimum ⇒ null (fall back to same-day logic)');
+
+  ctx.BURN[dayBefore(6)] = 300; // now 3 within window
+  assert.ok(ctx.getAvgTrainingDayCreditedBurn('2026-08-16'), 'exactly the minimum ⇒ result');
+
+  // A session older than the window does not rescue the count.
+  delete ctx.BURN[dayBefore(6)];
+  ctx.BURN[dayBefore(40)] = 300; // outside the 28-day window
+  assert.strictEqual(ctx.getAvgTrainingDayCreditedBurn('2026-08-16'), null, 'outside the window is not counted');
+});
