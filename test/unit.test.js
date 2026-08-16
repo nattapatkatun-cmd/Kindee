@@ -548,3 +548,119 @@ test('getAvgTrainingDayCreditedBurn needs a minimum sample and respects the wind
   ctx.BURN[dayBefore(40)] = 300; // outside the 28-day window
   assert.strictEqual(ctx.getAvgTrainingDayCreditedBurn('2026-08-16'), null, 'outside the window is not counted');
 });
+
+// ── EA: training-day plan detection & day-specific expected burn ─────────────────
+test('isTrainingDayByPlan is true only for a planned training weekday', () => {
+  const ctx = load(['isTrainingDayByPlan'], {
+    prelude: `
+      var PLAN = null;
+      var PLAN_DAY_NAMES = ['วันอาทิตย์','วันจันทร์','วันอังคาร','วันพุธ','วันพฤหัสบดี','วันศุกร์','วันเสาร์'];
+      function getSavedPlanObj(){ return PLAN; }
+      function appTodayWeekday(){ return 1; }`, // Monday
+  });
+  // No plan → false. This is the whole point of the stricter check: without a plan we must
+  // NOT treat "not a rest day" as a training day, or the bump would fire every day.
+  assert.strictEqual(ctx.isTrainingDayByPlan(), false, 'no plan ⇒ false');
+
+  ctx.PLAN = { days: [{ day: 'วันจันทร์', exercises: [{}], theme: 'Upper' }] };
+  assert.strictEqual(ctx.isTrainingDayByPlan(), true, 'weekday has exercises ⇒ training day');
+
+  ctx.PLAN = { days: [{ day: 'วันจันทร์', exercises: [{}], theme: 'วันพัก' }] };
+  assert.strictEqual(ctx.isTrainingDayByPlan(), false, 'rest theme ⇒ not a training day');
+
+  ctx.PLAN = { days: [{ day: 'วันจันทร์', exercises: [], theme: 'Upper' }] };
+  assert.strictEqual(ctx.isTrainingDayByPlan(), false, 'no exercises ⇒ not a training day');
+});
+
+test('getExpectedTrainingBurnForDay prefers the same weekday, then falls back to overall', () => {
+  const ctx = load(['getExpectedTrainingBurnForDay', 'getAvgTrainingDayCreditedBurn'], {
+    consts: ['EA_AVG_WINDOW_DAYS', 'EA_AVG_MIN_TRAIN_DAYS', 'EA_WEEKDAY_MIN_SAMPLE'],
+    prelude: `
+      var BURN = {};
+      function creditedBurnSum(list){ return list.reduce(function(a,b){ return a + b; }, 0); }
+      function workoutsForDate(ds){ return BURN[ds] ? [BURN[ds]] : []; }
+      function localDateStr(){ return '2026-08-16'; }`,
+  });
+  const before = (n) => {
+    const d = new Date('2026-08-16T12:00:00'); d.setDate(d.getDate() - n);
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  };
+  // 7 and 14 days back are the SAME weekday as the reference date.
+  ctx.BURN[before(7)] = 500;
+  ctx.BURN[before(14)] = 300;
+  ctx.BURN[before(1)] = 999; // different weekday
+  ctx.BURN[before(3)] = 999; // different weekday
+  let r = ctx.getExpectedTrainingBurnForDay('2026-08-16');
+  assert.strictEqual(r.basis, 'weekday', 'enough same-weekday sessions ⇒ weekday basis');
+  assert.strictEqual(r.days, 2);
+  assert.ok(Math.abs(r.burn - 400) < 1e-9, 'weekday average uses only the same-weekday sessions');
+
+  // Drop to a single same-weekday session → below EA_WEEKDAY_MIN_SAMPLE → fall back to the
+  // overall training-day average (which now has 3 training days: 7, 1, 3 days back).
+  delete ctx.BURN[before(14)];
+  r = ctx.getExpectedTrainingBurnForDay('2026-08-16');
+  assert.strictEqual(r.basis, 'overall', 'too few same-weekday sessions ⇒ overall basis');
+  assert.ok(Math.abs(r.burn - (500 + 999 + 999) / 3) < 1e-9);
+});
+
+// ── EA: training-day calorie floor (the goal-engine adjustment) ──────────────────
+function loadEAAdj() {
+  return load(['getEATrainingDayAdjGoal'], {
+    consts: ['EA_ADJ_TARGET', 'EA_ADJ_MIN_KCAL'],
+    prelude: `
+      var MOCK = { train:true, weight:65, bf:20, expected:{burn:400,basis:'weekday'}, tdee:2200 };
+      var S = { profile:{}, goals:{ cal:1600, pro:140, crb:161, fat:44 } };
+      function isTrainingDayByPlan(){ return MOCK.train; }
+      function getLatestCheckinWeight(){ return MOCK.weight; }
+      function getCurrentBodyFatPct(){ return MOCK.bf; }
+      function getExpectedTrainingBurnForDay(){ return MOCK.expected; }
+      function creditedBurnSum(){ return 0; }
+      function workoutsForDate(){ return []; }
+      function getGoalForDate(){ return S.goals; }
+      function safeJSON(k,d){ return d; }
+      function readAnalyzerContext(){ return null; }
+      function calcFormulaTDEE(){ return MOCK.tdee; }
+      function localDateStr(){ return '2026-08-16'; }`,
+  });
+}
+
+test('EA training-day bump raises intake to the floor and keeps macros reconciled', () => {
+  const ctx = loadEAAdj();
+  // LBM = 65 × 0.8 = 52. eaBefore = (1600 − 400)/52 = 23.1 < 30 → must bump.
+  const g = ctx.getEATrainingDayAdjGoal();
+  assert.ok(g, 'a deep-deficit training day is adjusted');
+  assert.strictEqual(g._dayType, 'training_ea');
+  assert.ok(Math.abs(g._eaAfter - 30) < 0.2, `EA restored to ~30, got ${g._eaAfter.toFixed(2)}`);
+  assert.strictEqual(g.pro, 140, 'protein unchanged');
+  assert.strictEqual(g.fat, 44, 'fat unchanged');
+  assert.ok(g.crb > 161, 'the raise is funded with carbs');
+  // Macros must still reconcile to the shown calories (CLAUDE.md invariant).
+  assert.ok(Math.abs((g.pro * 4 + g.crb * 4 + g.fat * 9) - g.cal) <= g.cal * 0.1, 'P×4+C×4+F×9 ≈ kcal');
+});
+
+test('EA training-day bump leaves an already-safe day on the full deficit', () => {
+  const ctx = loadEAAdj();
+  ctx.S.goals = { cal: 2000, pro: 140, crb: 261, fat: 44 }; // eaBefore = (2000−400)/52 = 30.8 ≥ 30
+  assert.strictEqual(ctx.getEATrainingDayAdjGoal(), null, 'no bump when EA is already ≥ 30');
+});
+
+test('EA training-day bump only fires on a planned training day with a lean-mass basis', () => {
+  const ctx = loadEAAdj();
+  ctx.MOCK.train = false;
+  assert.strictEqual(ctx.getEATrainingDayAdjGoal(), null, 'rest day / no plan ⇒ null');
+  ctx.MOCK.train = true;
+  ctx.MOCK.bf = null;
+  assert.strictEqual(ctx.getEATrainingDayAdjGoal(), null, 'no %BF ⇒ null');
+});
+
+test('EA training-day bump never pushes a cutting day into surplus (caps at maintenance)', () => {
+  const ctx = loadEAAdj();
+  ctx.MOCK.weight = 75; ctx.MOCK.bf = 20;              // LBM = 60
+  ctx.MOCK.expected = { burn: 600, basis: 'weekday' };
+  ctx.MOCK.tdee = 1900;
+  ctx.S.goals = { cal: 1400, pro: 150, crb: 111, fat: 44 }; // eaBefore = (1400−600)/60 = 13.3
+  const g = ctx.getEATrainingDayAdjGoal();
+  assert.ok(g, 'still adjusts');
+  assert.ok(g.cal <= 1900 + 4, 'capped at maintenance TDEE, not the full EA-30 requirement');
+  assert.ok(g._eaAfter < 30, 'when the base deficit is too deep the cap leaves EA below floor (a real signal, not a surplus)');
+});
