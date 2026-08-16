@@ -4594,6 +4594,19 @@ function isTodayRestDayByPlan(dateStr) {
   if (!day) return false;
   return !day.exercises || day.exercises.length === 0 || (day.theme && day.theme.toLowerCase().indexOf('พัก') !== -1);
 }
+// Training day BY PLAN — the plan exists, this weekday's slot has exercises, and it isn't a
+// rest theme. Deliberately stricter than !isTodayRestDayByPlan: with NO plan saved the
+// latter is false (so "not rest" would read as training), but here we return false, because
+// the EA calorie bump must only fire when the plan actually says today is a training day.
+function isTrainingDayByPlan(dateStr) {
+  var plan = (typeof getSavedPlanObj === 'function') ? getSavedPlanObj() : null;
+  if (!plan || !Array.isArray(plan.days)) return false;
+  var weekday = dateStr ? new Date(dateStr + 'T12:00:00').getDay() : appTodayWeekday();
+  var day = plan.days.filter(function(d){ return d.day === PLAN_DAY_NAMES[weekday]; })[0];
+  if (!day) return false;
+  var restTheme = !!(day.theme && day.theme.toLowerCase().indexOf('พัก') !== -1);
+  return !!(day.exercises && day.exercises.length > 0) && !restTheme;
+}
 // Average gross workout burn over the training days in the recent window (rest days and
 // untrained days are excluded). Returns null when there is no training history to learn
 // from, so callers can fall back gracefully. Used to size the rest-day cut to how much
@@ -4665,6 +4678,52 @@ function getDayTypeAdjGoal(dateStr) {
   var cal = Math.round(baseCal - carbCutKcal);
   return { cal: cal, pro: base.pro, crb: crb, fat: base.fat, _dayType: 'rest', _carbCutKcal: carbCutKcal, _carbCutPct: cutPct, _recompMild: restMild };
 }
+// ── Training-day EA floor (opposite of the rest-day cut) ──────────────
+// On a day the PLAN says is a training day, eating the normal deficit goal can push
+// Energy Availability below the RED-S floor (30 kcal/kg FFM) once the session's burn is
+// paid for. Because the burn is planned from history — not waited for — the calorie target
+// is raised in the MORNING, so an evening trainer can actually eat the extra in time
+// instead of finding out after under-eating all day. The raise is the minimum that lands
+// EA back at the floor, funded with carbs (training fuel), and capped at maintenance so a
+// training day never becomes a surplus while cutting. Rest days, days with no plan, and
+// days where EA is already safe are left on the full deficit → returns null.
+var EA_ADJ_TARGET = 30;    // EA (kcal/kg FFM) the training-day bump restores intake to
+var EA_ADJ_MIN_KCAL = 25;  // don't bother adjusting for a raise smaller than this
+function getEATrainingDayAdjGoal(dateStr) {
+  if (!isTrainingDayByPlan(dateStr)) return null;
+  var weight = parseFloat(getLatestCheckinWeight() || (S.profile && S.profile.weight)) || null;
+  var bf = getCurrentBodyFatPct();
+  if (!weight || !bf) return null;
+  var lbm = weight * (1 - bf/100);
+  if (lbm <= 0) return null;
+  var expected = getExpectedTrainingBurnForDay(dateStr);
+  var expectedBurn = expected ? expected.burn : creditedBurnSum(workoutsForDate(dateStr || localDateStr()));
+  if (!(expectedBurn > 0)) return null;           // no training load to fuel
+  var base = (dateStr ? getGoalForDate(dateStr) : S.goals) || {};
+  var baseCal = parseFloat(base.cal) || 0;
+  var baseCrb = parseFloat(base.crb) || 0;
+  if (baseCal <= 0) return null;
+  var eaBefore = (baseCal - expectedBurn) / lbm;
+  if (eaBefore >= EA_ADJ_TARGET) return null;      // already safe — keep the full deficit
+  // Intake that lands EA exactly at the floor, capped at maintenance (never a surplus while
+  // cutting). Prefer adaptive TDEE, then the formula TDEE, else just "eat the burn back".
+  var neededCal = EA_ADJ_TARGET * lbm + expectedBurn;
+  var profile = S.profile || safeJSON('gd_profile', {}) || {};
+  var analyzer = (typeof readAnalyzerContext === 'function') ? readAnalyzerContext() : null;
+  var tdee = (analyzer && analyzer.adaptiveTDEE) || (typeof calcFormulaTDEE === 'function' ? calcFormulaTDEE(profile) : null) || (baseCal + expectedBurn);
+  var targetCal = Math.min(neededCal, tdee);
+  var addKcal = targetCal - baseCal;
+  if (addKcal < EA_ADJ_MIN_KCAL) return null;
+  // Fund the raise with carbs so P×4+C×4+F×9 still reconciles; recompute cal from the macro
+  // sum so the number shown is exactly what the macros add up to.
+  var addCrbG = Math.round(addKcal / 4);
+  var crb = baseCrb + addCrbG;
+  var cal = Math.round(baseCal + addCrbG * 4);
+  return { cal: cal, pro: base.pro, crb: crb, fat: base.fat,
+           _dayType: 'training_ea', _eaAddKcal: Math.round(addCrbG * 4), _expectedBurn: Math.round(expectedBurn),
+           _eaBefore: eaBefore, _eaAfter: (cal - expectedBurn) / lbm,
+           _eaBurnBasis: expected ? expected.basis : 'logged' };
+}
 // ── Goal History (point-in-time calorie/macro targets) ──────────────
 // S.goals is a single flat object that gets overwritten on every save, with
 // no memory of what it used to be. Every reader that used S.goals directly
@@ -4701,9 +4760,14 @@ function getGoalForDate(dateStr) {
 // Single source of truth for "today's" live target — dashboard ring, over-goal
 // alert, AI Daily Coach, and AI chat must all compare intake against this same
 // number so a rest day reads as a rest day everywhere, not just on one screen.
-// Priority: explicit Recovery-Adjusted Apply click > automatic rest-day carb cut > raw saved goal.
+// Priority: explicit Recovery-Adjusted Apply click > automatic rest-day carb cut >
+// training-day EA floor > raw saved goal. Rest-day cut and EA bump are mutually exclusive
+// (a day is either a rest day or a training day by plan), so ordering just picks whichever
+// applies. The EA bump is TODAY-ONLY (not in getEffectiveGoalForDate): it plans forward
+// from current history, so retro-applying it would rewrite what past days' goals actually
+// were and shift their over/under-goal readings.
 function getEffectiveGoalToday() {
-  return getRecoveryAdjGoals() || getDayTypeAdjGoal() || S.goals;
+  return getRecoveryAdjGoals() || getDayTypeAdjGoal() || getEATrainingDayAdjGoal() || S.goals;
 }
 // Same rest-day carb-cut logic as getEffectiveGoalToday(), but for a past date — used
 // by the Weekly Report, dashboard, fitness tab and trend charts to compare each day's
@@ -5454,7 +5518,12 @@ function updateDash() {
   if (dtNoteEl) {
     if (g._dayType === 'rest') {
       dtNoteEl.style.display = 'block';
+      dtNoteEl.style.color = 'var(--green)';
       dtNoteEl.textContent = (g._recompMild ? 'วันพักตามแผน (recomp) — ลดคาร์บแบบ mild ' : 'วันพักตามแผน — ลดคาร์บ ') + Math.round((g._carbCutPct != null ? g._carbCutPct : REST_DAY_CARB_CUT_PCT)*100) + '% (' + Math.round(g._carbCutKcal/4) + 'g / ' + g._carbCutKcal + ' kcal)' + (g._recompMild ? ' · ถึงเป้าน้ำหนักแล้ว' : '');
+    } else if (g._dayType === 'training_ea') {
+      dtNoteEl.style.display = 'block';
+      dtNoteEl.style.color = '#d97706';
+      dtNoteEl.textContent = 'วันเทรนตามแผน — เพิ่มคาร์บ +' + g._eaAddKcal + ' kcal กัน EA หลุด 30 (คาดเผา ~' + g._expectedBurn + ' kcal · EA ' + g._eaBefore.toFixed(1) + '→' + g._eaAfter.toFixed(1) + ')';
     } else {
       dtNoteEl.style.display = 'none';
     }
@@ -6359,6 +6428,30 @@ function getAvgTrainingDayCreditedBurn(refDate) {
   if (count < EA_AVG_MIN_TRAIN_DAYS) return null;
   return { burn: total / count, days: count };
 }
+var EA_WEEKDAY_MIN_SAMPLE = 2;  // same-weekday sessions needed before trusting a per-weekday average
+// Expected CREDITED burn for a specific day, used by both the badge and the training-day
+// calorie adjustment. Prefers the average over the SAME WEEKDAY in the window (leg day
+// tends to recur on the same weekday and burn differently from a light-cardio day), and
+// falls back to the overall training-day average when there aren't enough same-weekday
+// sessions yet. Returns { burn, days, basis:'weekday'|'overall' } or null.
+function getExpectedTrainingBurnForDay(dateStr) {
+  var ref = dateStr || (typeof localDateStr === 'function' ? localDateStr() : null);
+  if (!ref) return null;
+  var end = new Date(ref + 'T12:00:00');
+  var targetDow = end.getDay();
+  var total = 0, count = 0;
+  for (var i = 1; i <= EA_AVG_WINDOW_DAYS; i++) {
+    var d = new Date(end.getTime()); d.setDate(d.getDate() - i);
+    if (d.getDay() !== targetDow) continue;
+    var ds = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+    var burn = creditedBurnSum(workoutsForDate(ds));
+    if (burn > 0) { total += burn; count++; }
+  }
+  if (count >= EA_WEEKDAY_MIN_SAMPLE) return { burn: total / count, days: count, basis: 'weekday' };
+  var overall = getAvgTrainingDayCreditedBurn(ref);
+  if (overall) return { burn: overall.burn, days: overall.days, basis: 'overall' };
+  return null;
+}
 // Best-available current body-fat %. The Fitness Target's own current %BF wins (it's what
 // the user is actively cutting against), then the latest InBody reading, then any latest
 // body-comp log. Returns null when %BF is unknown — EA is undefined without lean mass, so
@@ -6425,16 +6518,17 @@ function getDashboardEA(date, isToday) {
   // alarm; the badge stays hidden until there's something to measure.
   if (intake <= 0) return { status:'nodata' };
 
-  // Expected training-day burn drives the plan number. Prefer the recent average; if a
-  // session is already logged today, that is the truth for today so it wins; with neither,
-  // fall back to 0.
-  var avg = getAvgTrainingDayCreditedBurn(date);
-  var expectedBurn = loggedBurn > 0 ? loggedBurn : (avg ? avg.burn : 0);
+  // The plan number uses the day's EXPECTED (historical) burn and stays put all day — it
+  // is the forward-looking coaching signal. Today's actual log is reported separately as
+  // `actual`, not folded into the plan, so the two stay comparable. With no history the
+  // expected burn falls back to whatever is logged today (0 until you train).
+  var expected = getExpectedTrainingBurnForDay(date);
+  var expectedBurn = expected ? expected.burn : loggedBurn;
   var res = calcEnergyAvailability(intake, expectedBurn, weight, bf);
   if (res.status !== 'ok') return res;
   res.basis = 'planned';
-  res.avg = avg;                                   // { burn, days } | null
-  res.expectedFromAvg = (loggedBurn <= 0 && !!avg); // number shown is the historical average
+  res.avg = expected;                 // { burn, days, basis } | null
+  res.expectedFromAvg = !!expected;   // number shown is the historical (weekday/overall) average
   // Realised EA for today, only once a session is actually logged (same goal intake, real
   // burn). Lets the badge show plan-vs-actual so an unusually hard evening session that
   // dipped EA is visible.
