@@ -4699,10 +4699,14 @@ function getDayTypeAdjGoal(dateStr) {
 // paid for. Because the burn is planned from history — not waited for — the calorie target
 // is raised in the MORNING, so an evening trainer can actually eat the extra in time
 // instead of finding out after under-eating all day. The raise is the minimum that lands
-// EA back at the floor, funded with carbs (training fuel), and capped at maintenance so a
-// training day never becomes a surplus while cutting. Rest days, days with no plan, and
-// days where EA is already safe are left on the full deficit → returns null.
-var EA_ADJ_TARGET = 30;    // EA (kcal/kg FFM) the training-day bump restores intake to
+// EA to just ABOVE the floor, funded with carbs (training fuel), and capped at maintenance
+// so a training day never becomes a surplus while cutting. Rest days, days with no plan,
+// and days where EA is already safe are left on the full deficit → returns null.
+var EA_ADJ_TRIGGER = 30;   // only bump when projected EA is below this (the RED-S floor)
+var EA_ADJ_TARGET = 31;    // ...and restore intake to just ABOVE the floor, so carb-gram
+                           // rounding can't leave EA a hair under 30 and re-flag it as
+                           // danger. The bump lands the day in the amber "low" band, which
+                           // reads as "handled, not optimal" rather than a red RED-S alarm.
 var EA_ADJ_MIN_KCAL = 25;  // don't bother adjusting for a raise smaller than this
 function getEATrainingDayAdjGoal(dateStr) {
   if (!isTrainingDayByPlan(dateStr)) return null;
@@ -4719,8 +4723,8 @@ function getEATrainingDayAdjGoal(dateStr) {
   var baseCrb = parseFloat(base.crb) || 0;
   if (baseCal <= 0) return null;
   var eaBefore = (baseCal - expectedBurn) / lbm;
-  if (eaBefore >= EA_ADJ_TARGET) return null;      // already safe — keep the full deficit
-  // Intake that lands EA exactly at the floor, capped at maintenance (never a surplus while
+  if (eaBefore >= EA_ADJ_TRIGGER) return null;     // already clear of the floor — keep the full deficit
+  // Intake that lands EA just above the floor, capped at maintenance (never a surplus while
   // cutting). Prefer adaptive TDEE, then the formula TDEE, else just "eat the burn back".
   var neededCal = EA_ADJ_TARGET * lbm + expectedBurn;
   var profile = S.profile || safeJSON('gd_profile', {}) || {};
@@ -4730,8 +4734,11 @@ function getEATrainingDayAdjGoal(dateStr) {
   var addKcal = targetCal - baseCal;
   if (addKcal < EA_ADJ_MIN_KCAL) return null;
   // Fund the raise with carbs so P×4+C×4+F×9 still reconciles; recompute cal from the macro
-  // sum so the number shown is exactly what the macros add up to.
-  var addCrbG = Math.round(addKcal / 4);
+  // sum so the number shown is exactly what the macros add up to. Round carbs UP so the raise
+  // never undershoots the EA target by a gram — the whole point of the margin above — except
+  // when that would tip a maintenance-capped day into a tiny surplus, where we round down.
+  var addCrbG = Math.ceil(addKcal / 4);
+  if (baseCal + addCrbG * 4 > tdee) addCrbG = Math.floor(addKcal / 4);
   var crb = baseCrb + addCrbG;
   var cal = Math.round(baseCal + addCrbG * 4);
   return { cal: cal, pro: base.pro, crb: crb, fat: base.fat,
