@@ -4021,6 +4021,19 @@ function generateDailySummary() {
   var workoutBurn = workouts.reduce(function(a, w) { return a + w.calories_burned; }, 0);
   var creditedBurn = creditedBurnSum(workouts);
 
+  // Energy Availability — computed by the app; the prompt passes the number so the model
+  // interprets it, never re-derives it (AI-output-never-trusted-for-app-numbers invariant).
+  var eaCtx = (typeof getDashboardEA === 'function') ? getDashboardEA(today, true) : null;
+  var eaLine = '';
+  if (eaCtx && eaCtx.status === 'ok') {
+    var eaZoneTh = eaCtx.zone === 'danger' ? 'ต่ำอันตราย (<30 = RED-S)' : (eaCtx.zone === 'low' ? 'ต่ำกว่าเหมาะสม (30–45)' : 'เหมาะสม (≥45)');
+    eaLine = 'Energy Availability (แอปคำนวณแล้ว — ใช้ตัวเลขนี้ตรง ๆ ห้ามคำนวณเอง): EA ≈ ' + eaCtx.ea.toFixed(1) + ' kcal/kg FFM — ' + eaZoneTh +
+      ' [เป้ากิน ' + eaCtx.intakeKcal + ' − ' + (eaCtx.expectedFromAvg ? 'เฉลี่ยวันเทรน ' : 'ออกกำลังกาย ') + eaCtx.exerciseKcal + ' ÷ LBM ' + eaCtx.lbm.toFixed(1) + ' กก.]' +
+      (eaCtx.actual ? ' | EA จริงหลัง log เวทวันนี้ = ' + eaCtx.actual.ea.toFixed(1) : '') + '\n';
+  } else if (eaCtx && eaCtx.reason === 'nobf') {
+    eaLine = 'Energy Availability: คำนวณไม่ได้ (ยังไม่มี %BF) — แนะนำผู้ใช้กรอก Body Composition เพื่อเปิดการติดตาม EA\n';
+  }
+
   // Aggregate nutrition
   var nut = meals.reduce(function(a, m) {
     return { cal: a.cal + m.calories, pro: a.pro + m.protein, crb: a.crb + m.carbs, fat: a.fat + m.fat, fib: a.fib + (+m.fiber || 0) };
@@ -4174,6 +4187,7 @@ function generateDailySummary() {
     'Workout Burn: ' + workoutBurn + ' kcal | Steps: ' + steps + ' ก้าว | NEAT: ' + Math.round(neatCal) + ' kcal\n' +
     (typeof getTodayWaterMl === 'function' ? 'Water Intake: ' + getTodayWaterMl() + ' / ' + getWaterGoalMl() + ' ml (ใช้เป็น context เสริมสำหรับ retention/performance เท่านั้น ไม่ใช่ macro)\n' : '') +
     'Net Calories (intake minus activity — for information only, NOT the primary comparison): ' + Math.round(netCal) + ' kcal\n' +
+    eaLine +
     'User Calorie Goal (compare intake against THIS): ' + manualGoal.cal + ' kcal | Intake vs Goal: ' + (nut.cal > manualGoal.cal ? '+' : '') + (nut.cal - manualGoal.cal) + ' kcal\n' +
     'Macro Gaps vs Manual Goal — Protein: ' + (proGap >= 0 ? '+' : '') + Math.round(proGap) + 'g | Carbs: ' + (crbGap >= 0 ? '+' : '') + Math.round(crbGap) + 'g | Fat: ' + (fatGap >= 0 ? '+' : '') + Math.round(fatGap) + 'g | Fiber: ' + (fiberGap >= 0 ? '+' : '') + Math.round(fiberGap) + 'g vs ' + fiberGoal + 'g guideline\n\n' +
     (function() {
@@ -4200,6 +4214,7 @@ function generateDailySummary() {
       }
       return line + '\n\n';
     })() +
+    'ENERGY AVAILABILITY RULE: ถ้ามีบรรทัด Energy Availability ด้านบน ใช้ตัวเลข EA นั้นตรง ๆ (ห้ามคำนวณใหม่). ถ้า EA < 30 (RED-S) ให้ถือเป็นเรื่องด่วนกว่าการคุม deficit: ใน nutrition/playbook แนะนำเพิ่มพลังงาน (เน้นคาร์บ) และห้ามเชียร์ให้กินน้อยลงหรือเพิ่มคาร์ดิโอ; ถ้า EA 30–45 เตือนเบา ๆ ว่าถ้าเทรนหนักควรดันเข้าใกล้ 45; ถ้า ≥45 ไม่ต้องพูดถึง. อ้างเลข EA ได้แต่ไม่ต้องอธิบายสูตร.\n' +
     'Respond ONLY with a valid JSON object — no markdown, no backticks, no preamble.\n' +
     'JSON format:\n' +
     '{\n' +
@@ -8928,6 +8943,24 @@ function calcTargetFeasibility(target, profile) {
   // Duration this fat gap would need at a sustainable ~0.6% BW/week
   res.recommendedWeeks = Math.ceil(fatToLose / Math.max(0.2, currW * 0.006));
 
+  // EA sanity check: at this prescribed intake, does a TYPICAL training day still clear the
+  // RED-S floor (30 kcal/kg FFM) once the session's burn is paid for? Uses the same
+  // historical training-day burn the dashboard plans with. Only computed when there's
+  // training history and lean mass; guarded so the pure-math unit tests (which don't stub
+  // the burn helper) skip it. This is the "will this plan repeatedly starve me on lifting
+  // days" warning the raw deficit/floor check can't see — the floor never subtracts exercise.
+  res.eaTrainingDay = null; res.eaExpectedBurn = null; res.eaLow = false;
+  if (leanCurr > 0 && typeof getExpectedTrainingBurnForDay === 'function') {
+    var eaBurnObj = getExpectedTrainingBurnForDay();
+    if (eaBurnObj && eaBurnObj.burn > 0) {
+      res.eaExpectedBurn = Math.round(eaBurnObj.burn);
+      res.eaExpectedBurnBasis = eaBurnObj.basis;
+      res.eaTrainingDay = +((res.intakeAtDeficit - eaBurnObj.burn) / leanCurr).toFixed(1);
+      res.eaRestDay = +(res.intakeAtDeficit / leanCurr).toFixed(1);
+      res.eaLow = res.eaTrainingDay < 30; // EA_DANGER
+    }
+  }
+
   // A plan that needs fat loss AND meaningful lean gain at the same time is internally
   // contradictory — the deficit that drives the fat loss is what caps the lean gain.
   res.leanGainUnrealistic = impliedLeanGainPerMonth > LEAN_GAIN_IN_DEFICIT_MAX_KG_PER_MONTH;
@@ -8949,6 +8982,14 @@ function feasibilityBannerHTML(f) {
   }
   lines.push('📐 ต้องลดไขมัน <b>' + f.fatToLose + ' กก.</b> ใน ' + f.duration + ' สัปดาห์ = <b>' + f.weeklyFatLoss + ' กก./สัปดาห์</b> (' + f.pctBWPerWeek + '% BW/wk)');
   lines.push('ต้องการ deficit ~<b>' + f.requiredDeficit + ' kcal/วัน</b> → กินประมาณ ' + f.intakeAtDeficit + ' kcal/วัน (TDEE ' + f.tdee + ')');
+  if (f.eaTrainingDay != null) {
+    if (f.eaLow) {
+      var addBack = Math.max(0, Math.round((30 * f.leanCurr + f.eaExpectedBurn) - f.intakeAtDeficit));
+      lines.push('⚡ วันเทรน EA จะเหลือ ~<b>' + f.eaTrainingDay + '</b> (ต่ำกว่า 30 = RED-S) เพราะหักออกกำลังกายเฉลี่ย ~' + f.eaExpectedBurn + ' kcal — วันฝึกควรกินเพิ่ม ~<b>' + addBack + ' kcal</b> (เน้นคาร์บ) หรือผ่อนคาร์ดิโอ ไม่งั้นเสี่ยงเสียกล้าม/ฮอร์โมน');
+    } else {
+      lines.push('⚡ วันเทรน EA ~<b>' + f.eaTrainingDay + '</b> ยังพ้นเกณฑ์ 30 (หักออกกำลังกายเฉลี่ย ~' + f.eaExpectedBurn + ' kcal)');
+    }
+  }
   if (f.status === 'unrealistic') {
     // Name the binding constraint. The lean-gain case needs its own wording — telling
     // someone to "take more weeks" doesn't help when the problem is that their weight
@@ -8969,6 +9010,9 @@ function feasibilityBannerHTML(f) {
   var theme = f.status === 'unrealistic' || f.belowEssential ? { bg:'rgba(239,68,68,0.08)', border:'rgba(239,68,68,0.3)' }
             : f.status === 'aggressive' ? { bg:'rgba(245,158,11,0.08)', border:'rgba(245,158,11,0.3)' }
             : { bg:'rgba(34,197,94,0.08)', border:'rgba(34,197,94,0.3)' };
+  // A plan that reads "reasonable" on rate/deficit but starves training days (low EA) must
+  // not stay green — raise it to a warning tone so the EA line is taken seriously.
+  if (f.eaLow && f.status === 'ok' && !f.belowEssential) theme = { bg:'rgba(245,158,11,0.08)', border:'rgba(245,158,11,0.3)' };
   return { bg:theme.bg, border:theme.border, html:lines.join('<br>') };
 }
 

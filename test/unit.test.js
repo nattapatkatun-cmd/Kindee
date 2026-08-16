@@ -664,3 +664,37 @@ test('EA training-day bump never pushes a cutting day into surplus (caps at main
   assert.ok(g.cal <= 1900 + 4, 'capped at maintenance TDEE, not the full EA-30 requirement');
   assert.ok(g._eaAfter < 30, 'when the base deficit is too deep the cap leaves EA below floor (a real signal, not a surplus)');
 });
+
+// ── EA: feasibility guard (training-day EA at the prescribed deficit) ────────────
+test('calcTargetFeasibility flags a deficit that starves training days (low EA)', () => {
+  const ctx = load(['calcTargetFeasibility', 'elapsedDaysSince', 'calcBMRFromProfile', 'getActivityMultiplier', 'calcFormulaTDEE'], {
+    prelude: `
+      var MOCK = { weight: 75, expected: { burn: 700, basis: 'overall' } };
+      var S = { goals: { cal: 2000 } };
+      function getLatestCheckinWeight(){ return MOCK.weight; }
+      function profileSafe(){ return {}; }
+      function localDateStr(){ return '2026-07-25'; }
+      function readAnalyzerContext(){ return null; }
+      function getExpectedTrainingBurnForDay(){ return MOCK.expected; }`,
+  });
+  const profile = { gender: 'male', weight: 75, age: 30, height: 175, activity: 1.55 };
+  const target = { currBF: 22, bf: 18, weight: 72, duration: 12 };
+
+  // ~700 kcal typical session against a ~2300 intake and 58.5 kg FFM → EA < 30.
+  const low = ctx.calcTargetFeasibility(target, profile);
+  assert.strictEqual(low.eaExpectedBurn, 700, 'reports the burn it subtracted');
+  assert.ok(low.eaLow, 'training-day EA below 30 is flagged');
+  assert.ok(low.eaTrainingDay < low.eaRestDay, 'training day EA is lower than the rest-day figure');
+
+  // A lighter typical session clears the floor → not flagged.
+  ctx.MOCK.expected = { burn: 300, basis: 'overall' };
+  const ok = ctx.calcTargetFeasibility(target, profile);
+  assert.ok(!ok.eaLow, 'a lighter training load is not flagged');
+  assert.ok(ok.eaTrainingDay != null, 'EA is still reported when history exists');
+
+  // No training history → the guard stays silent instead of guessing.
+  ctx.MOCK.expected = null;
+  const noHist = ctx.calcTargetFeasibility(target, profile);
+  assert.strictEqual(noHist.eaTrainingDay, null, 'no history ⇒ no EA verdict');
+  assert.strictEqual(noHist.eaLow, false);
+});
