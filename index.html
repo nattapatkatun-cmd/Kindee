@@ -5809,7 +5809,7 @@ function renderDietBreakCard() {
       '<div style="background:rgba(59,130,246,0.08);border:1px solid rgba(59,130,246,0.35);border-radius:16px;padding:14px 16px;">' +
         '<div style="font-size:14px;font-weight:800;color:var(--blue);margin-bottom:5px;">🍽️ ถึงเวลาพัก? (Diet Break)</div>' +
         reasonHtml +
-        '<div style="font-size:11px;color:var(--text3);line-height:1.5;margin:7px 0 10px;">พักกินที่ maintenance 1–2 สัปดาห์ (เทรนเท่าเดิม เป้าหมายยังลดไขมัน) แล้วค่อยลดต่อ — รีเซ็ตฮอร์โมน/เมตาบอลิซึมให้รอบหน้าลดได้ดีขึ้น</div>' +
+        '<div style="font-size:11px;color:var(--text3);line-height:1.5;margin:7px 0 10px;">พักกินที่ maintenance 1–2 สัปดาห์ ให้ฮอร์โมน/เมตาบอลิซึมฟื้น แล้วค่อยกลับมาลดต่อ รอบหน้าจะลดได้ดีขึ้น</div>' +
         '<div style="display:flex;gap:8px;">' +
           '<button onclick="startDietBreak(7)" style="flex:1;padding:9px;background:var(--blue);border:none;border-radius:12px;color:#fff;font-family:inherit;font-size:12px;font-weight:700;cursor:pointer;">พัก 1 สัปดาห์</button>' +
           '<button onclick="startDietBreak(14)" style="flex:1;padding:9px;background:var(--blue);border:none;border-radius:12px;color:#fff;font-family:inherit;font-size:12px;font-weight:700;cursor:pointer;">พัก 2 สัปดาห์</button>' +
@@ -5820,7 +5820,7 @@ function renderDietBreakCard() {
   el.innerHTML =
     '<div style="background:var(--surface2);border:1px solid var(--border);border-radius:16px;padding:12px 16px;">' +
       '<div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:3px;">🍽️ Diet Break</div>' +
-      '<div style="font-size:11px;color:var(--text3);line-height:1.5;margin-bottom:9px;">ลดมานาน/น้ำหนักนิ่ง? พักกินที่ maintenance 1–2 สัปดาห์เพื่อรีเซ็ตฮอร์โมนและเมตาบอลิซึม แล้วค่อยลดต่อ (เทรนเท่าเดิม เป้าหมายยังลดไขมันเหมือนเดิม)</div>' +
+      '<div style="font-size:11px;color:var(--text3);line-height:1.5;margin-bottom:9px;">ลดมานาน/น้ำหนักนิ่ง? พักกินที่ maintenance 1–2 สัปดาห์ ให้ฮอร์โมน/เมตาบอลิซึมฟื้น แล้วค่อยกลับมาลดต่อ</div>' +
       '<div style="display:flex;gap:8px;">' +
         '<button onclick="startDietBreak(7)" style="flex:1;padding:8px;background:rgba(59,130,246,0.1);border:1px solid rgba(59,130,246,0.35);border-radius:12px;color:var(--blue);font-family:inherit;font-size:12px;font-weight:700;cursor:pointer;">พัก 1 สัปดาห์</button>' +
         '<button onclick="startDietBreak(14)" style="flex:1;padding:8px;background:rgba(59,130,246,0.1);border:1px solid rgba(59,130,246,0.35);border-radius:12px;color:var(--blue);font-family:inherit;font-size:12px;font-weight:700;cursor:pointer;">พัก 2 สัปดาห์</button>' +
@@ -5879,18 +5879,12 @@ function renderDashEA(date, isToday) {
     var am = EA_ZONE_META[res.actual.zone] || EA_ZONE_META.low;
     html += '<div style="font-size:10px;color:var(--text3);margin-top:2px;line-height:1.5;">ออกจริงวันนี้เผา ' + res.actual.exerciseKcal + ' → EA จริง <b style="color:' + am.fg + ';">' + res.actual.ea.toFixed(1) + '</b></div>';
   }
-  // The "low" band means something different depending on the goal. While actively cutting,
-  // EA ~30–33 is the INTENDED state (it's the maximal safe deficit) — pushing toward 45 would
-  // erase the deficit, so don't tell a dieter to eat up to optimal. Only a maintenance /
-  // muscle-gain phase should chase 45.
-  var tipText = m.tip;
-  if (res.zone === 'low') {
-    var gmode = (typeof normalizeGoalMode === 'function') ? normalizeGoalMode((S.profile || {}).goalType) : ((S.profile || {}).goalType);
-    tipText = (gmode === 'fat_loss' || gmode === 'recomp')
-      ? 'ระดับนี้คือที่ตั้งใจตอนลดไขมัน — ปลอดภัยจาก RED-S แล้ว ✅ ไม่ต้องดันถึง 45 (จะไม่เหลือ deficit) ถ้าจะพักฟื้นค่อยทำ diet break เป็นช่วง'
-      : '30–45 — พอไปได้แต่ยังไม่เต็มที่ ถ้าเทรนหนักควรดันเข้าใกล้ ~45';
+  // Only the danger band gets an explanatory line — it's an actionable safety warning
+  // ("กินเพิ่ม/ลดคาร์ดิโอ"). The low/optimal reassurance text was clutter (and read oddly
+  // since it changed with the goal); the number + zone label already say enough.
+  if (res.zone === 'danger') {
+    html += '<div style="font-size:10px;color:var(--text2);margin-top:2px;line-height:1.5;">' + m.tip + '</div>';
   }
-  html += '<div style="font-size:10px;color:var(--text2);margin-top:2px;line-height:1.5;">' + tipText + '</div>';
   el.innerHTML = html;
 }
 var DASH_RECOVERY_EMPTY_HTML = '<div style="text-align:center;padding:10px 0;color:var(--text3);font-size:12px;">ยังไม่มี Recovery Score วันนี้<br>'+
