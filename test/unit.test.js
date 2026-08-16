@@ -756,3 +756,80 @@ test('getDietBreakAdjGoal is null when inactive or already at/above maintenance'
   ctx.MOCK.tdee = 1500; // below the base goal — nothing to raise
   assert.strictEqual(ctx.getDietBreakAdjGoal(), null, 'TDEE ≤ base goal ⇒ no-op');
 });
+
+// ── Diet Break auto-suggestion (Phase 2) ────────────────────────────────────────
+function loadDBSuggest() {
+  return load(['evaluateDietBreakSuggestion', '_daysBetweenStr'], {
+    consts: ['DIET_BREAK_SUGGEST_LOSS_PCT', 'DIET_BREAK_SUGGEST_WEEKS', 'DIET_BREAK_STALL_MIN_WEEKS'],
+    prelude: `
+      var MOCK = { db:null, target:null, weight:[], wa:null };
+      var window = { get _wtAnalysisData(){ return MOCK.wa; } };
+      var S = { profile:{ goalType:'fat_loss' } };
+      function safeJSON(k, d){ if (k === 'gd_diet_break') return MOCK.db; if (k === 'gd_ft_target') return MOCK.target; if (k === 'gd_weight') return MOCK.weight; return d; }
+      function localDateStr(){ return '2026-08-16'; }
+      function normalizeGoalMode(m){ return m; }
+      function getActiveDietBreak(){ return MOCK.db && MOCK.db.active ? { dayNum:1 } : null; }`,
+  });
+}
+
+test('diet-break suggestion fires on ≥5% cumulative loss', () => {
+  const ctx = loadDBSuggest();
+  ctx.MOCK.target = { startDate: '2026-07-20' };
+  // 70 → 66 kg = 5.7% lost.
+  ctx.MOCK.weight = [
+    { date: '2026-07-20', weight: 70 },
+    { date: '2026-08-16', weight: 66 },
+  ];
+  const s = ctx.evaluateDietBreakSuggestion();
+  assert.ok(s, 'suggestion returned');
+  assert.ok(s.reasons.some((r) => r.key === 'loss'), 'flags the cumulative loss');
+  assert.ok(s.lossPct >= 5);
+});
+
+test('diet-break suggestion fires after a long continuous deficit', () => {
+  const ctx = loadDBSuggest();
+  ctx.MOCK.target = { startDate: '2026-05-01' }; // ~15 weeks before 08-16
+  ctx.MOCK.weight = [
+    { date: '2026-05-01', weight: 70 },
+    { date: '2026-08-16', weight: 68.5 }, // only ~2% lost — time is the trigger, not loss
+  ];
+  const s = ctx.evaluateDietBreakSuggestion();
+  assert.ok(s, 'suggestion returned');
+  assert.ok(s.reasons.some((r) => r.key === 'time'), 'flags the long stint');
+  assert.ok(!s.reasons.some((r) => r.key === 'loss'), 'loss alone did not trip it');
+});
+
+test('diet-break suggestion stays quiet early, on maintenance mode, and during a break', () => {
+  const ctx = loadDBSuggest();
+  // Recent, small loss, short stint → nothing to suggest.
+  ctx.MOCK.target = { startDate: '2026-08-02' }; // 2 weeks
+  ctx.MOCK.weight = [
+    { date: '2026-08-02', weight: 70 },
+    { date: '2026-08-16', weight: 69.3 }, // 1% in 2 weeks
+  ];
+  assert.strictEqual(ctx.evaluateDietBreakSuggestion(), null, 'too early / too little ⇒ no nag');
+
+  // Not a cutting goal → never suggested.
+  ctx.MOCK.target = { startDate: '2026-05-01' };
+  ctx.MOCK.weight = [{ date: '2026-05-01', weight: 70 }, { date: '2026-08-16', weight: 66 }];
+  ctx.S.profile.goalType = 'maintain';
+  assert.strictEqual(ctx.evaluateDietBreakSuggestion(), null, 'maintenance goal ⇒ no suggestion');
+
+  // Already on a break → not suggested.
+  ctx.S.profile.goalType = 'fat_loss';
+  ctx.MOCK.db = { active: true, startDate: '2026-08-14', days: 14 };
+  assert.strictEqual(ctx.evaluateDietBreakSuggestion(), null, 'already resting ⇒ no suggestion');
+});
+
+test('diet-break anchor resets after a finished break (no immediate re-nag)', () => {
+  const ctx = loadDBSuggest();
+  ctx.MOCK.target = { startDate: '2026-05-01' };
+  // A break ran 07-25 → 08-08; the fresh cut since then is short and small.
+  ctx.MOCK.db = { active: false, startDate: '2026-07-25', days: 14 }; // ends 2026-08-08
+  ctx.MOCK.weight = [
+    { date: '2026-05-01', weight: 72 },
+    { date: '2026-08-08', weight: 68 }, // most loss happened BEFORE the break
+    { date: '2026-08-16', weight: 67.8 }, // since the break: ~0.3% over ~1 week
+  ];
+  assert.strictEqual(ctx.evaluateDietBreakSuggestion(), null, 'clock restarts at the break end, so no instant re-suggestion');
+});
