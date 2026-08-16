@@ -4214,7 +4214,7 @@ function generateDailySummary() {
       }
       return line + '\n\n';
     })() +
-    'ENERGY AVAILABILITY RULE: ถ้ามีบรรทัด Energy Availability ด้านบน ใช้ตัวเลข EA นั้นตรง ๆ (ห้ามคำนวณใหม่). ถ้า EA < 30 (RED-S) ให้ถือเป็นเรื่องด่วนกว่าการคุม deficit: ใน nutrition/playbook แนะนำเพิ่มพลังงาน (เน้นคาร์บ) และห้ามเชียร์ให้กินน้อยลงหรือเพิ่มคาร์ดิโอ; ถ้า EA 30–45 เตือนเบา ๆ ว่าถ้าเทรนหนักควรดันเข้าใกล้ 45; ถ้า ≥45 ไม่ต้องพูดถึง. อ้างเลข EA ได้แต่ไม่ต้องอธิบายสูตร.\n' +
+    'ENERGY AVAILABILITY RULE: ถ้ามีบรรทัด Energy Availability ด้านบน ใช้ตัวเลข EA นั้นตรง ๆ (ห้ามคำนวณใหม่). ถ้า EA < 30 (RED-S) ให้ถือเป็นเรื่องด่วนกว่าการคุม deficit: ใน nutrition/playbook แนะนำเพิ่มพลังงาน (เน้นคาร์บ) และห้ามเชียร์ให้กินน้อยลงหรือเพิ่มคาร์ดิโอ; ถ้า EA 30–45 ให้ดูเป้าหมาย: ถ้าเป้าหมายคือลดไขมัน (fat_loss/recomp) EA ระดับนี้คือที่ตั้งใจอยู่แล้ว — ยืนยันว่าปลอดภัยและให้คงโปรตีน+เวท ห้ามเชียร์ให้ดันถึง 45 (จะไม่เหลือ deficit); ถ้าเป้าหมายคือ maintain/เพิ่มกล้าม ค่อยแนะนำดันเข้าใกล้ 45; ถ้า EA ≥45 ไม่ต้องพูดถึง. อ้างเลข EA ได้แต่ไม่ต้องอธิบายสูตร.\n' +
     'Respond ONLY with a valid JSON object — no markdown, no backticks, no preamble.\n' +
     'JSON format:\n' +
     '{\n' +
@@ -5689,7 +5689,18 @@ function renderDashEA(date, isToday) {
     var am = EA_ZONE_META[res.actual.zone] || EA_ZONE_META.low;
     html += '<div style="font-size:10px;color:var(--text3);margin-top:2px;line-height:1.5;">ออกจริงวันนี้เผา ' + res.actual.exerciseKcal + ' → EA จริง <b style="color:' + am.fg + ';">' + res.actual.ea.toFixed(1) + '</b></div>';
   }
-  html += '<div style="font-size:10px;color:var(--text2);margin-top:2px;line-height:1.5;">' + m.tip + '</div>';
+  // The "low" band means something different depending on the goal. While actively cutting,
+  // EA ~30–33 is the INTENDED state (it's the maximal safe deficit) — pushing toward 45 would
+  // erase the deficit, so don't tell a dieter to eat up to optimal. Only a maintenance /
+  // muscle-gain phase should chase 45.
+  var tipText = m.tip;
+  if (res.zone === 'low') {
+    var gmode = (typeof normalizeGoalMode === 'function') ? normalizeGoalMode((S.profile || {}).goalType) : ((S.profile || {}).goalType);
+    tipText = (gmode === 'fat_loss' || gmode === 'recomp')
+      ? 'ระดับนี้คือที่ตั้งใจตอนลดไขมัน — ปลอดภัยจาก RED-S แล้ว ✅ ไม่ต้องดันถึง 45 (จะไม่เหลือ deficit) ถ้าจะพักฟื้นค่อยทำ diet break เป็นช่วง'
+      : '30–45 — พอไปได้แต่ยังไม่เต็มที่ ถ้าเทรนหนักควรดันเข้าใกล้ ~45';
+  }
+  html += '<div style="font-size:10px;color:var(--text2);margin-top:2px;line-height:1.5;">' + tipText + '</div>';
   el.innerHTML = html;
 }
 var DASH_RECOVERY_EMPTY_HTML = '<div style="text-align:center;padding:10px 0;color:var(--text3);font-size:12px;">ยังไม่มี Recovery Score วันนี้<br>'+
