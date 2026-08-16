@@ -5572,19 +5572,34 @@ function renderDashEA(date, isToday) {
     return;
   }
   var m = EA_ZONE_META[res.zone] || EA_ZONE_META.low;
-  var basisNote = res.basis === 'planned'
-    ? 'ตามเป้ากินวันนี้ ' + res.intakeKcal + ' − ออกกำลังกาย ' + res.exerciseKcal
-    : 'กินจริง ' + res.intakeKcal + ' − ออกกำลังกาย ' + res.exerciseKcal;
+  // How the exercise term was derived — spell it out so the number is auditable.
+  var exerciseNote;
+  if (res.basis === 'planned') {
+    if (res.expectedFromAvg) exerciseNote = 'เฉลี่ยวันเทรน ' + res.exerciseKcal + ' (' + res.avg.days + ' วันย้อนหลัง)';
+    else if (res.exerciseKcal > 0) exerciseNote = 'ออกกำลังกายวันนี้ ' + res.exerciseKcal;
+    else exerciseNote = 'ยังไม่มีข้อมูลเทรน';
+  } else {
+    exerciseNote = 'ออกกำลังกาย ' + res.exerciseKcal;
+  }
+  var intakeLabel = res.basis === 'planned' ? 'ตามเป้ากินวันนี้ ' : 'กินจริง ';
   el.style.display = 'block';
   el.style.background = m.bg;
   el.style.border = '1px solid ' + m.bd;
-  el.innerHTML =
+  var titleTag = (res.basis === 'planned' && res.expectedFromAvg) ? ' <span style="font-size:9px;font-weight:600;">(แผน)</span>' : '';
+  var html =
     '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">' +
-      '<span style="font-size:13px;font-weight:800;color:' + m.fg + ';">' + m.icon + ' EA ' + res.ea.toFixed(1) + '</span>' +
+      '<span style="font-size:13px;font-weight:800;color:' + m.fg + ';">' + m.icon + ' EA ' + res.ea.toFixed(1) + titleTag + '</span>' +
       '<span style="font-size:10px;font-weight:700;color:' + m.fg + ';">' + m.label + '</span>' +
     '</div>' +
-    '<div style="font-size:10px;color:var(--text3);margin-top:3px;line-height:1.5;">พลังงานพร้อมใช้ kcal/กก. มวลไร้ไขมัน — (' + basisNote + ') ÷ LBM ' + res.lbm.toFixed(1) + ' กก.</div>' +
-    '<div style="font-size:10px;color:var(--text2);margin-top:2px;line-height:1.5;">' + m.tip + '</div>';
+    '<div style="font-size:10px;color:var(--text3);margin-top:3px;line-height:1.5;">พลังงานพร้อมใช้ kcal/กก. มวลไร้ไขมัน — (' + intakeLabel + res.intakeKcal + ' − ' + exerciseNote + ') ÷ LBM ' + res.lbm.toFixed(1) + ' กก.</div>';
+  // Plan-vs-actual: once today's session is logged, show the realised EA alongside the
+  // averaged plan so an unusually hard evening session that dipped EA is visible.
+  if (res.actual) {
+    var am = EA_ZONE_META[res.actual.zone] || EA_ZONE_META.low;
+    html += '<div style="font-size:10px;color:var(--text3);margin-top:2px;line-height:1.5;">ออกจริงวันนี้เผา ' + res.actual.exerciseKcal + ' → EA จริง <b style="color:' + am.fg + ';">' + res.actual.ea.toFixed(1) + '</b></div>';
+  }
+  html += '<div style="font-size:10px;color:var(--text2);margin-top:2px;line-height:1.5;">' + m.tip + '</div>';
+  el.innerHTML = html;
 }
 var DASH_RECOVERY_EMPTY_HTML = '<div style="text-align:center;padding:10px 0;color:var(--text3);font-size:12px;">ยังไม่มี Recovery Score วันนี้<br>'+
   '<button onclick="showPage(\'fitness\');showFitnessTab(\'sleep\');" style="margin-top:8px;background:none;border:1px solid var(--border);border-radius:20px;padding:4px 14px;font-size:11px;color:var(--text2);cursor:pointer;">กรอก Sleep Data</button>'+
@@ -6316,6 +6331,34 @@ function getDateRangeMetrics(startDate, endDate) {
 // heavy-cardio day — the floor guard never subtracts exercise or scales by lean mass.
 var EA_DANGER = 30;   // kcal/kg FFM/day — clinical low-EA threshold below which physiology is suppressed (RED-S)
 var EA_OPTIMAL = 45;  // kcal/kg FFM/day — energy availability associated with normal function
+var EA_AVG_WINDOW_DAYS = 28;   // look-back window for the typical training-day burn
+var EA_AVG_MIN_TRAIN_DAYS = 3; // need at least this many training days for a stable average
+// Average CREDITED workout burn on TRAINING DAYS across the recent window, with today
+// excluded (today is the day being planned FOR). Averages only the days that actually had
+// a session, so it answers "on a day I train, how much do I typically burn" rather than
+// diluting that with rest days. Returns { burn, days } once there's enough history, else
+// null. This is what lets today's EA pre-provision for a normal training day — the point
+// being that if you train in the EVENING you can't top up calories after the fact, so the
+// plan has to assume the session before it happens, not react to it once logged.
+//
+// Distinct from getAvgTrainingDayBurn (rest-day carb-cut sizing): that one averages GROSS
+// calories_burned, this one averages the CREDITED burn so it stays consistent with the
+// same-day actual EA (which also uses credited burn) — otherwise plan-vs-actual would
+// compare a gross average against a discounted actual.
+function getAvgTrainingDayCreditedBurn(refDate) {
+  refDate = refDate || (typeof localDateStr === 'function' ? localDateStr() : null);
+  if (!refDate) return null;
+  var end = new Date(refDate + 'T12:00:00');
+  var total = 0, count = 0;
+  for (var i = 1; i <= EA_AVG_WINDOW_DAYS; i++) {
+    var d = new Date(end.getTime()); d.setDate(d.getDate() - i);
+    var ds = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+    var burn = creditedBurnSum(workoutsForDate(ds));
+    if (burn > 0) { total += burn; count++; }
+  }
+  if (count < EA_AVG_MIN_TRAIN_DAYS) return null;
+  return { burn: total / count, days: count };
+}
 // Best-available current body-fat %. The Fitness Target's own current %BF wins (it's what
 // the user is actively cutting against), then the latest InBody reading, then any latest
 // body-comp log. Returns null when %BF is unknown — EA is undefined without lean mass, so
@@ -6343,34 +6386,62 @@ function calcEnergyAvailability(intakeKcal, exerciseKcal, weightKg, bfPct) {
   var zone = ea < EA_DANGER ? 'danger' : (ea < EA_OPTIMAL ? 'low' : 'optimal');
   return { status:'ok', ea:ea, lbm:lbm, intakeKcal:Math.round(intakeKcal), exerciseKcal:Math.round(exerciseKcal), zone:zone };
 }
-// Dashboard-facing EA for a date. For TODAY the intake basis is the effective calorie
-// goal (planned EA: a stable coaching signal that answers "is my prescribed intake safe
-// given how much I've trained today?" and updates as workouts are logged) — NOT the
-// running total, which would flash a false RED-S alarm at breakfast the way the ring
-// shows 20% mid-day. For a PAST date the day is complete, so actual logged intake is used.
-// Exercise is the CREDITED workout burn (the app's true-active-burn estimate, same figure
-// netCal uses), never NEAT — EA subtracts training only.
+// Dashboard-facing EA for a date.
+//
+// TODAY is a forward-looking PLAN: intake = the effective calorie goal (a stable signal —
+// not the running total, which would flash a false RED-S alarm at breakfast the way the
+// ring shows 20% mid-day), and the exercise term is the TYPICAL training-day burn from
+// recent history when available (getAvgTrainingDayCreditedBurn), NOT today's log. Averaging the
+// exercise term is what makes the number actionable for evening trainers: it warns you at
+// breakfast that hitting your goal still lands you below 30 once tonight's usual session is
+// paid for — early enough to eat more, instead of discovering it after you've already
+// under-eaten all day. Once today's session is actually logged, `actual` carries the
+// realised EA (same goal intake, real burn) so you can see how the day compared to plan.
+// When there's no training history yet, the expected burn falls back to whatever is logged
+// today (0 until you train), i.e. the pre-existing behaviour.
+//
+// A PAST date is complete, so it uses actual logged intake and that day's actual burn.
+//
+// Exercise is always the CREDITED workout burn (the app's true-active-burn estimate, the
+// same figure netCal uses), never NEAT — EA subtracts training only.
 function getDashboardEA(date, isToday) {
   var weight = parseFloat(getLatestCheckinWeight() || (S.profile && S.profile.weight)) || null;
   var bf = getCurrentBodyFatPct();
   if (!weight) return { status:'insufficient', reason:'noweight' };
   if (!bf) return { status:'insufficient', reason:'nobf' };
-  var workouts = (typeof workoutsForDate === 'function') ? workoutsForDate(date) : (FT.workouts || []).filter(function(w){ return w.date === date; });
-  var exercise = creditedBurnSum(workouts);
-  var actualIntake = (S.meals || []).filter(function(m){ return m.date === date; }).reduce(function(a,m){ return a + (+m.calories || 0); }, 0);
-  var intake, basis;
-  if (isToday) {
-    var g = (typeof getEffectiveGoalToday === 'function') ? getEffectiveGoalToday() : S.goals;
-    intake = (g && g.cal) ? g.cal : actualIntake;
-    basis = 'planned';
-  } else {
-    intake = actualIntake; basis = 'actual';
+  var loggedBurn = creditedBurnSum(workoutsForDate(date));
+  var actualIntake = mealsForDate(date).reduce(function(a,m){ return a + (+m.calories || 0); }, 0);
+
+  if (!isToday) {
+    if (actualIntake <= 0) return { status:'nodata' };
+    var pastRes = calcEnergyAvailability(actualIntake, loggedBurn, weight, bf);
+    if (pastRes.status === 'ok') pastRes.basis = 'actual';
+    return pastRes;
   }
-  // No intake basis to speak of (no goal set and nothing logged) → don't flash a false
-  // EA-of-zero alarm; the badge simply stays hidden until there's something to measure.
+
+  var g = (typeof getEffectiveGoalToday === 'function') ? getEffectiveGoalToday() : S.goals;
+  var intake = (g && g.cal) ? g.cal : actualIntake;
+  // No intake basis (no goal set and nothing logged) → don't flash a false EA-of-zero
+  // alarm; the badge stays hidden until there's something to measure.
   if (intake <= 0) return { status:'nodata' };
-  var res = calcEnergyAvailability(intake, exercise, weight, bf);
-  if (res.status === 'ok') res.basis = basis;
+
+  // Expected training-day burn drives the plan number. Prefer the recent average; if a
+  // session is already logged today, that is the truth for today so it wins; with neither,
+  // fall back to 0.
+  var avg = getAvgTrainingDayCreditedBurn(date);
+  var expectedBurn = loggedBurn > 0 ? loggedBurn : (avg ? avg.burn : 0);
+  var res = calcEnergyAvailability(intake, expectedBurn, weight, bf);
+  if (res.status !== 'ok') return res;
+  res.basis = 'planned';
+  res.avg = avg;                                   // { burn, days } | null
+  res.expectedFromAvg = (loggedBurn <= 0 && !!avg); // number shown is the historical average
+  // Realised EA for today, only once a session is actually logged (same goal intake, real
+  // burn). Lets the badge show plan-vs-actual so an unusually hard evening session that
+  // dipped EA is visible.
+  if (loggedBurn > 0) {
+    var act = calcEnergyAvailability(intake, loggedBurn, weight, bf);
+    if (act.status === 'ok') res.actual = { ea: act.ea, zone: act.zone, exerciseKcal: act.exerciseKcal };
+  }
   return res;
 }
 
