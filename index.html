@@ -867,6 +867,9 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
     </div>
     </div><!-- end fold-grid -->
 
+    <!-- DIET BREAK card (maintenance phase) — populated by renderDietBreakCard() -->
+    <div id="diet-break-card" style="display:none;margin:0 16px 14px;"></div>
+
     <!-- WEIGHT + RECOVERY pair -->
     <div class="stat-pair">
     <!-- Weight stat card (hero number) -->
@@ -4057,6 +4060,7 @@ function generateDailySummary() {
   // cut rather than replacing it — so report both instead of letting one hide the other.
   var dayTypeNotes = [];
   if (goals._dayType === 'rest') dayTypeNotes.push('วันนี้เป็นวันพักตามแผน — เป้าคาร์บ/แคลถูกลดจากปกติอัตโนมัติ (' + goals._carbCutKcal + ' kcal, ' + Math.round(goals._carbCutKcal/4) + 'g carb)');
+  if (goals._dayType === 'diet_break') dayTypeNotes.push('วันนี้อยู่ช่วง DIET BREAK (พัก maintenance วันที่ ' + goals._dbDay + '/' + goals._dbTotal + ') — ตั้งใจกินเท่า TDEE (~' + goals._dbMaintenance + ' kcal) ไม่มี deficit เพื่อรีเซ็ตฮอร์โมน/เมตาบอลิซึม เป้าหมายรวมยังลดไขมัน. น้ำหนักนิ่งหรือเด้งขึ้นจากน้ำ/ไกลโคเจนเป็นเรื่องปกติของช่วงนี้ — ห้ามตีความว่าล้มเหลวหรือเชียร์ให้กลับไป deficit; โฟกัสคงโปรตีนสูงและเทรนต่อเนื่อง');
   if (goals._adj) dayTypeNotes.push('วันนี้ใช้เป้าที่ปรับจาก Recovery แล้ว: ' + goals._adj.reason);
   var dayTypeNote = dayTypeNotes.join(' | ');
 
@@ -4746,6 +4750,72 @@ function getEATrainingDayAdjGoal(dateStr) {
            _eaBefore: eaBefore, _eaAfter: (cal - expectedBurn) / lbm,
            _eaBurnBasis: expected ? expected.basis : 'logged' };
 }
+// ── Diet Break (planned maintenance phase) ───────────────────────────
+// A diet break is a temporary pause WITHIN a fat-loss campaign, not a goal change: for a
+// declared window (1–2 weeks) intake is lifted to maintenance (deficit → 0) while training
+// and the goal mode stay exactly the same, to let hormones/metabolism/adherence recover
+// (Trexler et al. 2014; MATADOR trial, Byrne 2018). It is stored as one window and applied
+// by DATE, so past days inside the window also read as maintenance — which keeps the weight
+// analyzer from scoring a deliberately flat break week as a failure.
+function getActiveDietBreak(dateStr) {
+  var db = safeJSON('gd_diet_break', null);
+  if (!db || !db.active || !db.startDate || !db.days) return null;
+  var ref = dateStr || localDateStr();
+  var total = parseInt(db.days) || 14;
+  var startD = new Date(db.startDate + 'T12:00:00');
+  var end = new Date(startD.getTime()); end.setDate(end.getDate() + total);
+  var endStr = end.getFullYear() + '-' + String(end.getMonth()+1).padStart(2,'0') + '-' + String(end.getDate()).padStart(2,'0');
+  if (ref < db.startDate || ref >= endStr) return null; // outside the window (incl. naturally finished)
+  // Day number relative to the evaluated date (not the wall clock) so it's correct for any
+  // date the dashboard is showing and stays deterministic.
+  var dayNum = Math.max(1, Math.min(total, Math.round((new Date(ref + 'T12:00:00') - startD) / 86400000) + 1));
+  return { startDate: db.startDate, totalDays: total, endStr: endStr, dayNum: dayNum };
+}
+// Maintenance goal for a date inside an active break: keep protein and fat, refill the rest
+// as carbs up to TDEE (no recursion into getEffectiveGoal* — TDEE resolved inline, same as
+// calcTargetFeasibility). Returns null when inactive or already at/above maintenance.
+function getDietBreakAdjGoal(dateStr) {
+  var db = getActiveDietBreak(dateStr);
+  if (!db) return null;
+  var base = (dateStr && dateStr !== localDateStr() ? getGoalForDate(dateStr) : S.goals) || {};
+  var baseCal = parseFloat(base.cal) || 0;
+  var basePro = parseFloat(base.pro) || 0;
+  var baseFat = parseFloat(base.fat) || 0;
+  var profile = S.profile || safeJSON('gd_profile', {}) || {};
+  var analyzer = (typeof readAnalyzerContext === 'function') ? readAnalyzerContext() : null;
+  var tdee = Math.round((analyzer && analyzer.adaptiveTDEE) || (typeof calcFormulaTDEE === 'function' ? calcFormulaTDEE(profile) : 0) || baseCal);
+  if (!tdee || tdee <= baseCal) return null; // no meaningful raise → leave the base goal
+  var crb = Math.max(0, Math.round((tdee - basePro*4 - baseFat*9) / 4));
+  var cal = Math.round(basePro*4 + crb*4 + baseFat*9);
+  return { cal: cal, pro: basePro, crb: crb, fat: baseFat,
+           _dayType: 'diet_break', _dbDay: db.dayNum, _dbTotal: db.totalDays, _dbMaintenance: tdee };
+}
+function startDietBreak(days) {
+  days = parseInt(days) || 14;
+  var db = { active: true, startDate: localDateStr(), days: days };
+  localStorage.setItem('gd_diet_break', JSON.stringify(db));
+  clearGoalDependentCaches();
+  if (window.FB_OK && window.FB) window.FB.saveSetting('dietBreak', db).catch(function(){});
+  if (typeof showToast === 'function') showToast('เริ่ม Diet Break — กินที่ maintenance ' + days + ' วัน', 'success');
+  if (typeof updateDash === 'function') updateDash();
+}
+function endDietBreak() {
+  var db = safeJSON('gd_diet_break', null) || {};
+  db.active = false;
+  localStorage.setItem('gd_diet_break', JSON.stringify(db));
+  clearGoalDependentCaches();
+  if (window.FB_OK && window.FB) window.FB.saveSetting('dietBreak', db).catch(function(){});
+  if (typeof showToast === 'function') showToast('จบ Diet Break — กลับไปลดไขมันต่อ', 'success');
+  if (typeof updateDash === 'function') updateDash();
+}
+// Today's effective goal just changed → drop every per-day cached analysis that was keyed
+// to the old target (same set the goal/weight/target editors clear).
+function clearGoalDependentCaches() {
+  ['gd_daily_summary','gd_weekly_summary','gd_wt_analysis','gd_wt_analysis_data','gd_wt_ai_result'].forEach(function(k){
+    try { localStorage.removeItem(k); } catch(e){}
+  });
+}
+
 // ── Goal History (point-in-time calorie/macro targets) ──────────────
 // S.goals is a single flat object that gets overwritten on every save, with
 // no memory of what it used to be. Every reader that used S.goals directly
@@ -4789,7 +4859,9 @@ function getGoalForDate(dateStr) {
 // from current history, so retro-applying it would rewrite what past days' goals actually
 // were and shift their over/under-goal readings.
 function getEffectiveGoalToday() {
-  return getRecoveryAdjGoals() || getDayTypeAdjGoal() || getEATrainingDayAdjGoal() || S.goals;
+  // Diet break outranks the deficit-modifiers: during a planned maintenance phase you eat at
+  // TDEE every day, so the rest-day cut and the training-day EA bump don't apply.
+  return getRecoveryAdjGoals() || getDietBreakAdjGoal() || getDayTypeAdjGoal() || getEATrainingDayAdjGoal() || S.goals;
 }
 // Same rest-day carb-cut logic as getEffectiveGoalToday(), but for a past date — used
 // by the Weekly Report, dashboard, fitness tab and trend charts to compare each day's
@@ -4798,7 +4870,9 @@ function getEffectiveGoalToday() {
 // replayed for past dates — the rest-day cut is the one that recurs predictably by
 // weekday and actually explains most of the week-to-week goal variation.
 function getEffectiveGoalForDate(dateStr) {
-  return getDayTypeAdjGoal(dateStr) || getGoalForDate(dateStr);
+  // The diet break is a declared window with fixed dates, so unlike the EA bump it CAN be
+  // replayed for past dates — a break day genuinely was a maintenance day.
+  return getDietBreakAdjGoal(dateStr) || getDayTypeAdjGoal(dateStr) || getGoalForDate(dateStr);
 }
 
 // ── Anomaly Detection ─────────────────────────────────────────────
@@ -5546,6 +5620,10 @@ function updateDash() {
       dtNoteEl.style.display = 'block';
       dtNoteEl.style.color = '#d97706';
       dtNoteEl.textContent = 'วันเทรนตามแผน — เพิ่มคาร์บ +' + g._eaAddKcal + ' kcal กัน EA หลุด 30 (คาดเผา ~' + g._expectedBurn + ' kcal · EA ' + g._eaBefore.toFixed(1) + '→' + g._eaAfter.toFixed(1) + ')';
+    } else if (g._dayType === 'diet_break') {
+      dtNoteEl.style.display = 'block';
+      dtNoteEl.style.color = 'var(--blue)';
+      dtNoteEl.textContent = '🍽️ Diet Break วันที่ ' + g._dbDay + '/' + g._dbTotal + ' — กินที่ maintenance ~' + g._dbMaintenance + ' kcal (พัก deficit) · น้ำหนักเด้งช่วงนี้คือน้ำ ไม่ใช่ไขมัน';
     } else {
       dtNoteEl.style.display = 'none';
     }
@@ -5612,6 +5690,7 @@ function updateDash() {
   renderDashWeight(viewDate);
   if (typeof renderDashWater === 'function') renderDashWater(viewDate);
   renderDashEA(viewDate, isToday);
+  renderDietBreakCard();
 
   // Recovery card: only "today" reads from live S.sleepData (which init()/
   // generateMorningRecovery() also write straight into this card) — a past
@@ -5636,6 +5715,42 @@ function updateDash() {
       }
     }
   }
+}
+// Diet Break card: active → status + water-weight caveat + End button; inactive → a start
+// prompt, shown only while actively cutting and only on today's view (it's a "today" action).
+function renderDietBreakCard() {
+  var el = document.getElementById('diet-break-card');
+  if (!el) return;
+  var isToday = (typeof dashActiveDate === 'function') ? (dashActiveDate() === localDateStr()) : true;
+  var active = getActiveDietBreak();
+  if (active) {
+    var g = getDietBreakAdjGoal();
+    var remaining = active.totalDays - active.dayNum;
+    el.style.display = 'block';
+    el.innerHTML =
+      '<div style="background:rgba(59,130,246,0.07);border:1px solid rgba(59,130,246,0.28);border-radius:16px;padding:14px 16px;">' +
+        '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px;">' +
+          '<div style="font-size:14px;font-weight:800;color:var(--blue);">🍽️ Diet Break</div>' +
+          '<div style="font-size:11px;font-weight:700;color:var(--blue);">วันที่ ' + active.dayNum + '/' + active.totalDays + '</div>' +
+        '</div>' +
+        '<div style="font-size:12px;color:var(--text2);line-height:1.6;">กินที่ maintenance ' + (g ? '~' + g.cal + ' kcal ' : '') + '(พัก deficit ' + (remaining > 0 ? 'อีก ' + remaining + ' วัน' : 'วันสุดท้าย') + ') — เทรน/โปรตีนคงเดิม ให้ฮอร์โมน+เมตาบอลิซึมฟื้น</div>' +
+        '<div style="font-size:11px;color:var(--text3);line-height:1.5;margin-top:6px;">⚖️ น้ำหนักช่วงนี้อาจเด้งขึ้น 0.5–1.5 กก. = น้ำ+ไกลโคเจน ไม่ใช่ไขมันกลับ</div>' +
+        '<button onclick="endDietBreak()" style="margin-top:10px;padding:7px 14px;background:none;border:1px solid var(--blue);border-radius:20px;color:var(--blue);font-family:inherit;font-size:12px;font-weight:700;cursor:pointer;">จบ Break กลับไปลดต่อ</button>' +
+      '</div>';
+    return;
+  }
+  var gm = (typeof normalizeGoalMode === 'function') ? normalizeGoalMode((S.profile || {}).goalType) : ((S.profile || {}).goalType);
+  if (!isToday || (gm !== 'fat_loss' && gm !== 'recomp')) { el.style.display = 'none'; return; }
+  el.style.display = 'block';
+  el.innerHTML =
+    '<div style="background:var(--surface2);border:1px solid var(--border);border-radius:16px;padding:12px 16px;">' +
+      '<div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:3px;">🍽️ Diet Break</div>' +
+      '<div style="font-size:11px;color:var(--text3);line-height:1.5;margin-bottom:9px;">ลดมานาน/น้ำหนักนิ่ง? พักกินที่ maintenance 1–2 สัปดาห์เพื่อรีเซ็ตฮอร์โมนและเมตาบอลิซึม แล้วค่อยลดต่อ (เทรนเท่าเดิม เป้าหมายยังลดไขมันเหมือนเดิม)</div>' +
+      '<div style="display:flex;gap:8px;">' +
+        '<button onclick="startDietBreak(7)" style="flex:1;padding:8px;background:rgba(59,130,246,0.1);border:1px solid rgba(59,130,246,0.35);border-radius:12px;color:var(--blue);font-family:inherit;font-size:12px;font-weight:700;cursor:pointer;">พัก 1 สัปดาห์</button>' +
+        '<button onclick="startDietBreak(14)" style="flex:1;padding:8px;background:rgba(59,130,246,0.1);border:1px solid rgba(59,130,246,0.35);border-radius:12px;color:var(--blue);font-family:inherit;font-size:12px;font-weight:700;cursor:pointer;">พัก 2 สัปดาห์</button>' +
+      '</div>' +
+    '</div>';
 }
 // Energy Availability badge on the calorie card. Colour + copy by RED-S zone. Hidden
 // entirely when there's no lean-mass basis yet (no weight) or nothing to show for a past
@@ -11763,10 +11878,17 @@ function buildAnalysisHTML(recent) {
     currentPace7d=Math.max(-1.0, Math.min(1.0, -(actualDeficit*7/7700))).toFixed(2);
   }
 
-  // STATUS priority: DataError > WaterNoise/Retention/Recomp > Inconsistent > Limited > Classification-based
+  // STATUS priority: DietBreak > DataError > WaterNoise/Retention/Recomp > Inconsistent > Limited > Classification-based
   var statusLabel, statusColor, statusNote='';
   var suppressRecommend=false;
-  if(dataError){
+  var dietBreakNow = (typeof getActiveDietBreak === 'function') ? getActiveDietBreak() : null;
+  if(dietBreakNow){
+    // A planned maintenance phase — flat or slightly-up weight is the intended outcome, not a
+    // stall to "fix". Suppress the pace verdict and don't push the deficit here.
+    statusLabel='Diet Break 🍽️'; statusColor='#38bdf8';
+    statusNote='พัก maintenance วันที่ '+dietBreakNow.dayNum+'/'+dietBreakNow.totalDays+' — น้ำหนักนิ่ง/เด้งจากน้ำเป็นเรื่องปกติ ไม่ใช่การหยุดลด';
+    suppressRecommend=true;
+  } else if(dataError){
     statusLabel='Data Error 🔴'; statusColor='#ef4444';
     statusNote='พบมื้อซ้ำ (ชื่อ+แคล+เวลาเดียวกัน) ใน '+dupDays+' วัน — ตัวเลข intake อาจสูงเกินจริง';
     suppressRecommend=true;
