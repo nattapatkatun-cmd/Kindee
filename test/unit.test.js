@@ -701,3 +701,58 @@ test('calcTargetFeasibility flags a deficit that starves training days (low EA)'
   assert.strictEqual(noHist.eaTrainingDay, null, 'no history ⇒ no EA verdict');
   assert.strictEqual(noHist.eaLow, false);
 });
+
+// ── Diet Break (planned maintenance phase) ──────────────────────────────────────
+function loadDietBreak() {
+  return load(['getActiveDietBreak', 'getDietBreakAdjGoal'], {
+    prelude: `
+      var MOCK = { db:null, tdee:2350 };
+      var S = { profile:{ goalType:'fat_loss' }, goals:{ cal:1600, pro:140, crb:161, fat:44 } };
+      function safeJSON(k, d){ return k === 'gd_diet_break' ? MOCK.db : d; }
+      function localDateStr(){ return '2026-08-16'; }
+      function getGoalForDate(){ return S.goals; }
+      function readAnalyzerContext(){ return null; }
+      function calcFormulaTDEE(){ return MOCK.tdee; }`,
+  });
+}
+
+test('getActiveDietBreak is windowed by date and reports the day number', () => {
+  const ctx = loadDietBreak();
+  ctx.MOCK.db = { active: true, startDate: '2026-08-10', days: 14 }; // window [08-10, 08-24)
+
+  const a = ctx.getActiveDietBreak(); // today = 2026-08-16
+  assert.ok(a, 'inside the window ⇒ active');
+  assert.strictEqual(a.totalDays, 14);
+  assert.strictEqual(a.dayNum, 7, '08-10 is day 1, so 08-16 is day 7');
+  assert.strictEqual(a.endStr, '2026-08-24');
+
+  assert.strictEqual(ctx.getActiveDietBreak('2026-08-24'), null, 'the end date is exclusive (break over)');
+  assert.strictEqual(ctx.getActiveDietBreak('2026-08-09'), null, 'before the start ⇒ inactive');
+
+  ctx.MOCK.db = { active: false, startDate: '2026-08-10', days: 14 };
+  assert.strictEqual(ctx.getActiveDietBreak(), null, 'cancelled break ⇒ inactive');
+});
+
+test('getDietBreakAdjGoal lifts intake to maintenance, keeping protein and reconciling macros', () => {
+  const ctx = loadDietBreak();
+  ctx.MOCK.db = { active: true, startDate: '2026-08-10', days: 14 };
+
+  const g = ctx.getDietBreakAdjGoal();
+  assert.ok(g, 'active break ⇒ adjusted goal');
+  assert.strictEqual(g._dayType, 'diet_break');
+  assert.ok(Math.abs(g.cal - 2350) <= 4, `calories lifted to ~maintenance TDEE, got ${g.cal}`);
+  assert.ok(g.cal > 1600, 'deficit removed (above the base cutting goal)');
+  assert.strictEqual(g.pro, 140, 'protein held (muscle protection)');
+  assert.strictEqual(g.fat, 44, 'fat held; the surplus goes to carbs');
+  assert.ok(g.crb > 161, 'extra energy funded with carbs');
+  assert.ok(Math.abs((g.pro * 4 + g.crb * 4 + g.fat * 9) - g.cal) <= 4, 'macros reconcile to calories');
+});
+
+test('getDietBreakAdjGoal is null when inactive or already at/above maintenance', () => {
+  const ctx = loadDietBreak();
+  assert.strictEqual(ctx.getDietBreakAdjGoal(), null, 'no break record ⇒ null');
+
+  ctx.MOCK.db = { active: true, startDate: '2026-08-10', days: 14 };
+  ctx.MOCK.tdee = 1500; // below the base goal — nothing to raise
+  assert.strictEqual(ctx.getDietBreakAdjGoal(), null, 'TDEE ≤ base goal ⇒ no-op');
+});
