@@ -450,3 +450,50 @@ test('the progression card collapses, filters by group, and keeps the deload war
 
   await noErrors(page, 'the progression card');
 });
+
+test('the deload "consecutive weeks" count is the real streak, not a fixed 6-week window', async () => {
+  // The Timeline card shows the *program* week (days since the Fitness Target start); the
+  // deload "เทรนต่อเนื่อง N สัปดาห์" line is anchored to the strength log instead, and the
+  // two are different quantities on purpose. The old code reported
+  // Object.keys(weekTon).sort().slice(-6).length — a lookback-window size capped at 6 —
+  // so eight straight training weeks rendered as "6 สัปดาห์", colliding with the program
+  // week and reading as a sync bug. It must report the true consecutive streak (8) and
+  // break the run at a skipped week.
+  const back = (n) => {
+    const d = new Date();
+    d.setDate(d.getDate() - n);
+    return d.toISOString().slice(0, 10);
+  };
+  const log = [];
+  // 8 consecutive weeks (7 days apart → adjacent Monday buckets), uniform tonnage so no
+  // week is "light" and the whole run counts. A ninth, older, non-adjacent week is
+  // separated by a gap and must NOT extend the streak.
+  for (let w = 0; w < 8; w++) {
+    log.push({ id: w + 1, date: back(3 + w * 7), exerciseId: 'bench-press',
+      exerciseName: 'bench-press', weight: 100, reps: 8, rir: 2, e1RM: 133 });
+  }
+  log.push({ id: 99, date: back(3 + 9 * 7 + 7), exerciseId: 'bench-press', // gap week between
+    exerciseName: 'bench-press', weight: 100, reps: 8, rir: 2, e1RM: 133 });
+
+  // A second deload signal (sleep debt ≥ 6h) so checkDeloadNeed clears its ≥2-signal gate
+  // and actually returns the signal text under test.
+  const sleepLog = [];
+  for (let i = 0; i < 12; i++) {
+    sleepLog.push({ date: back(i), hours: 4, timeInBed: 4.5, rhr: 56, hrv: 61,
+      hrvBaseline: 60, bedtime: '01:00', wakeTime: '05:00', sleepScore: 40 });
+  }
+
+  const page = await openApp(browser, Object.assign(buildSeed(), {
+    gd_strength_log: log,
+    gd_sleep_log: sleepLog,
+  }));
+
+  const res = await page.evaluate(() => checkDeloadNeed());
+  assert.ok(res, 'deload fires once two independent signals stack');
+  const streakSignal = res.signals.find((s) => s.includes('เทรนต่อเนื่อง'));
+  assert.ok(streakSignal, 'the consecutive-week signal is present');
+  assert.match(streakSignal, /เทรนต่อเนื่อง 8 สัปดาห์/, 'reports the real 8-week streak');
+  assert.doesNotMatch(streakSignal, /เทรนต่อเนื่อง 6 สัปดาห์/, 'never the 6-week window artifact');
+
+  await noErrors(page, 'the deload week-streak count');
+});
