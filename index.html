@@ -7619,8 +7619,17 @@ function checkDeloadNeed() {
   if (tracked >= 3 && down >= 1 && (down + plateau) / tracked >= 0.6) {
     signals.push('ท่าที่ติดตาม ' + tracked + ' ท่า: นิ่ง/ถดถอย ' + (down + plateau) + ' ท่า (ถดถอย ' + down + ')');
   }
-  // Signal 2: no light week — weekly tonnage never dropped below 65% of the
-  // heaviest week across the last up-to-6 weeks that have training.
+  // Signal 2: no light week — the user has trained several CONSECUTIVE calendar
+  // weeks with none light (weekly tonnage never dropping below 65% of the
+  // heaviest week in the run). "Consecutive" is literal: a skipped week is itself
+  // a de-facto light/rest week and breaks the run, so we walk back from the most
+  // recent trained week only while each earlier week is the immediately adjacent
+  // one, and report that true run length — never a fixed lookback window, which
+  // used to cap the number at 6 regardless of the real streak. This count is
+  // anchored to the strength log and is deliberately independent of the Fitness
+  // Target timeline, so it can legitimately differ from the program week on the
+  // dashboard; the label says so, so the two week-counts don't read as a
+  // contradiction.
   var weekTon = {};
   log.forEach(function(e){
     var d = new Date(e.date + 'T12:00:00');
@@ -7628,11 +7637,20 @@ function checkDeloadNeed() {
     var wk = localDateStr(mon);
     weekTon[wk] = (weekTon[wk] || 0) + (+e.weight || 0) * (+e.reps || 0);
   });
-  var weeks = Object.keys(weekTon).sort().slice(-6);
-  if (weeks.length >= 4) {
-    var maxTon = Math.max.apply(null, weeks.map(function(w){ return weekTon[w]; }));
-    var hasLight = weeks.some(function(w){ return weekTon[w] < maxTon * 0.65; });
-    if (maxTon > 0 && !hasLight) signals.push('เทรนต่อเนื่อง ' + weeks.length + ' สัปดาห์โดยไม่มีสัปดาห์เบาเลย (volume ไม่เคยต่ำกว่า 65% ของสัปดาห์หนักสุด)');
+  var allWeeks = Object.keys(weekTon).sort(); // ascending week-start dates
+  if (allWeeks.length) {
+    var streak = [allWeeks[allWeeks.length - 1]];
+    for (var wi = allWeeks.length - 2; wi >= 0; wi--) {
+      var prevMon = new Date(allWeeks[wi] + 'T12:00:00');
+      var runMon  = new Date(streak[0] + 'T12:00:00');
+      if (Math.round((runMon - prevMon) / 86400000) === 7) streak.unshift(allWeeks[wi]);
+      else break;
+    }
+    if (streak.length >= 4) {
+      var maxTon = Math.max.apply(null, streak.map(function(w){ return weekTon[w]; }));
+      var hasLight = streak.some(function(w){ return weekTon[w] < maxTon * 0.65; });
+      if (maxTon > 0 && !hasLight) signals.push('เทรนต่อเนื่อง ' + streak.length + ' สัปดาห์ติด (นับจากบันทึกเวท ไม่ใช่สัปดาห์ของโปรแกรม) โดยไม่มีสัปดาห์เบาเลย — volume ไม่เคยต่ำกว่า 65% ของสัปดาห์หนักสุด');
+    }
   }
   // Signal 3: overnight load overreaching (Polar Strain > Tolerance trend)
   var strain = (typeof computeStrainLoadTrend === 'function') ? computeStrainLoadTrend(today) : null;
