@@ -4061,6 +4061,10 @@ function generateDailySummary() {
   var dayTypeNotes = [];
   if (goals._dayType === 'rest') dayTypeNotes.push('วันนี้เป็นวันพักตามแผน — เป้าคาร์บ/แคลถูกลดจากปกติอัตโนมัติ (' + goals._carbCutKcal + ' kcal, ' + Math.round(goals._carbCutKcal/4) + 'g carb)');
   if (goals._dayType === 'diet_break') dayTypeNotes.push('วันนี้อยู่ช่วง DIET BREAK (พัก maintenance วันที่ ' + goals._dbDay + '/' + goals._dbTotal + ') — ตั้งใจกินเท่า TDEE (~' + goals._dbMaintenance + ' kcal) ไม่มี deficit เพื่อรีเซ็ตฮอร์โมน/เมตาบอลิซึม เป้าหมายรวมยังลดไขมัน. น้ำหนักนิ่งหรือเด้งขึ้นจากน้ำ/ไกลโคเจนเป็นเรื่องปกติของช่วงนี้ — ห้ามตีความว่าล้มเหลวหรือเชียร์ให้กลับไป deficit; โฟกัสคงโปรตีนสูงและเทรนต่อเนื่อง');
+  if (goals._dayType !== 'diet_break') {
+    var dbSug = (typeof evaluateDietBreakSuggestion === 'function') ? evaluateDietBreakSuggestion() : null;
+    if (dbSug) dayTypeNotes.push('สัญญาณว่าน่าจะถึงเวลา DIET BREAK: ' + dbSug.reasons.map(function(r){ return r.text; }).join(' / ') + ' — coach เสนอพัก maintenance 1–2 สัปดาห์ได้ (เทรนเท่าเดิม เป้าหมายยังลดไขมัน) ถ้าเหมาะกับบริบทวันนี้');
+  }
   if (goals._adj) dayTypeNotes.push('วันนี้ใช้เป้าที่ปรับจาก Recovery แล้ว: ' + goals._adj.reason);
   var dayTypeNote = dayTypeNotes.join(' | ');
 
@@ -4814,6 +4818,60 @@ function clearGoalDependentCaches() {
   ['gd_daily_summary','gd_weekly_summary','gd_wt_analysis','gd_wt_analysis_data','gd_wt_ai_result'].forEach(function(k){
     try { localStorage.removeItem(k); } catch(e){}
   });
+}
+// ── Diet Break auto-suggestion (Phase 2) ─────────────────────────────
+// Decide whether NOW is a sensible time to suggest a break — the user still confirms it,
+// this only surfaces the prompt. Fires on any of: enough cumulative fat lost, a long
+// continuous stint in a deficit, or the weight analyzer already reading a genuine stall
+// (not water) despite decent logging. The clock starts at the later of the program start
+// and the last break's end, so a fresh post-break cut isn't nagged immediately.
+var DIET_BREAK_SUGGEST_LOSS_PCT = 5;    // % of bodyweight lost since the anchor
+var DIET_BREAK_SUGGEST_WEEKS = 10;      // continuous weeks in a deficit since the anchor
+var DIET_BREAK_STALL_MIN_WEEKS = 4;     // ignore an early "plateau" (usually water, too soon to break)
+function _daysBetweenStr(a, b) {
+  return Math.round((new Date(b + 'T12:00:00') - new Date(a + 'T12:00:00')) / 86400000);
+}
+function evaluateDietBreakSuggestion() {
+  if (getActiveDietBreak()) return null;                       // already resting
+  var mode = (typeof normalizeGoalMode === 'function') ? normalizeGoalMode((S.profile || {}).goalType) : ((S.profile || {}).goalType);
+  if (mode !== 'fat_loss' && mode !== 'recomp') return null;   // only while cutting
+  var today = (typeof localDateStr === 'function') ? localDateStr() : null;
+  if (!today) return null;
+
+  // Anchor = later of program start and the last break's end.
+  var target = safeJSON('gd_ft_target', null);
+  var anchorDate = (target && target.startDate) ? target.startDate : null;
+  var db = safeJSON('gd_diet_break', null);
+  if (db && db.startDate) {
+    var end = new Date(db.startDate + 'T12:00:00'); end.setDate(end.getDate() + (parseInt(db.days) || 14));
+    var endStr = end.getFullYear() + '-' + String(end.getMonth()+1).padStart(2,'0') + '-' + String(end.getDate()).padStart(2,'0');
+    if (!anchorDate || endStr > anchorDate) anchorDate = endStr;
+  }
+
+  var log = (typeof WT !== 'undefined' && WT.log && WT.log.length) ? WT.log : safeJSON('gd_weight', []);
+  var sorted = (log || []).filter(function(e){ return e && e.weight && e.date; })
+    .sort(function(a,b){ return (a.date + (a.time||'')).localeCompare(b.date + (b.time||'')); });
+  if (sorted.length < 2) return null;
+  var currentW = parseFloat(sorted[sorted.length-1].weight);
+  if (!anchorDate) anchorDate = sorted[0].date;
+  var anchorEntry = null;
+  for (var i = 0; i < sorted.length; i++) { if (sorted[i].date >= anchorDate) { anchorEntry = sorted[i]; break; } }
+  if (!anchorEntry) anchorEntry = sorted[0];
+  var anchorW = parseFloat(anchorEntry.weight);
+  if (!anchorW || !currentW) return null;
+
+  var weeks = _daysBetweenStr(anchorDate, today) / 7;
+  var lossPct = (anchorW - currentW) / anchorW * 100;
+
+  var reasons = [];
+  if (lossPct >= DIET_BREAK_SUGGEST_LOSS_PCT) reasons.push({ key:'loss', text:'ลดมาแล้ว ' + lossPct.toFixed(1) + '% ของน้ำหนักตัว (ถึงจุดพักฟื้นฮอร์โมน)' });
+  if (weeks >= DIET_BREAK_SUGGEST_WEEKS) reasons.push({ key:'time', text:'อยู่ในภาวะ deficit ต่อเนื่อง ~' + Math.round(weeks) + ' สัปดาห์' });
+  var wa = (typeof window !== 'undefined') ? window._wtAnalysisData : null;
+  if (wa && weeks >= DIET_BREAK_STALL_MIN_WEEKS && /Plateau|Slow Progress/.test(wa.statusLabel || '') && (wa.logRate == null || wa.logRate >= 0.6)) {
+    reasons.push({ key:'stall', text:'น้ำหนักเริ่มนิ่งทั้งที่ทำตามเป้า — สัญญาณ metabolic adaptation' });
+  }
+  if (!reasons.length) return null;
+  return { weeks: Math.round(weeks), lossPct: +lossPct.toFixed(1), reasons: reasons };
 }
 
 // ── Goal History (point-in-time calorie/macro targets) ──────────────
@@ -5741,7 +5799,24 @@ function renderDietBreakCard() {
   }
   var gm = (typeof normalizeGoalMode === 'function') ? normalizeGoalMode((S.profile || {}).goalType) : ((S.profile || {}).goalType);
   if (!isToday || (gm !== 'fat_loss' && gm !== 'recomp')) { el.style.display = 'none'; return; }
+  // Prominent, reasoned prompt when the app detects it's time; a subtle discovery card
+  // otherwise so the feature stays findable without nagging.
+  var sug = (typeof evaluateDietBreakSuggestion === 'function') ? evaluateDietBreakSuggestion() : null;
   el.style.display = 'block';
+  if (sug) {
+    var reasonHtml = sug.reasons.map(function(r){ return '<div style="font-size:11px;color:var(--text2);line-height:1.6;">• ' + r.text + '</div>'; }).join('');
+    el.innerHTML =
+      '<div style="background:rgba(59,130,246,0.08);border:1px solid rgba(59,130,246,0.35);border-radius:16px;padding:14px 16px;">' +
+        '<div style="font-size:14px;font-weight:800;color:var(--blue);margin-bottom:5px;">🍽️ ถึงเวลาพัก? (Diet Break)</div>' +
+        reasonHtml +
+        '<div style="font-size:11px;color:var(--text3);line-height:1.5;margin:7px 0 10px;">พักกินที่ maintenance 1–2 สัปดาห์ (เทรนเท่าเดิม เป้าหมายยังลดไขมัน) แล้วค่อยลดต่อ — รีเซ็ตฮอร์โมน/เมตาบอลิซึมให้รอบหน้าลดได้ดีขึ้น</div>' +
+        '<div style="display:flex;gap:8px;">' +
+          '<button onclick="startDietBreak(7)" style="flex:1;padding:9px;background:var(--blue);border:none;border-radius:12px;color:#fff;font-family:inherit;font-size:12px;font-weight:700;cursor:pointer;">พัก 1 สัปดาห์</button>' +
+          '<button onclick="startDietBreak(14)" style="flex:1;padding:9px;background:var(--blue);border:none;border-radius:12px;color:#fff;font-family:inherit;font-size:12px;font-weight:700;cursor:pointer;">พัก 2 สัปดาห์</button>' +
+        '</div>' +
+      '</div>';
+    return;
+  }
   el.innerHTML =
     '<div style="background:var(--surface2);border:1px solid var(--border);border-radius:16px;padding:12px 16px;">' +
       '<div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:3px;">🍽️ Diet Break</div>' +
