@@ -606,7 +606,7 @@ test('getExpectedTrainingBurnForDay prefers the same weekday, then falls back to
 // ── EA: training-day calorie floor (the goal-engine adjustment) ──────────────────
 function loadEAAdj() {
   return load(['getEATrainingDayAdjGoal'], {
-    consts: ['EA_ADJ_TARGET', 'EA_ADJ_MIN_KCAL'],
+    consts: ['EA_ADJ_TRIGGER', 'EA_ADJ_TARGET', 'EA_ADJ_MIN_KCAL'],
     prelude: `
       var MOCK = { train:true, weight:65, bf:20, expected:{burn:400,basis:'weekday'}, tdee:2200 };
       var S = { profile:{}, goals:{ cal:1600, pro:140, crb:161, fat:44 } };
@@ -624,13 +624,16 @@ function loadEAAdj() {
   });
 }
 
-test('EA training-day bump raises intake to the floor and keeps macros reconciled', () => {
+test('EA training-day bump clears the floor with a margin and keeps macros reconciled', () => {
   const ctx = loadEAAdj();
   // LBM = 65 × 0.8 = 52. eaBefore = (1600 − 400)/52 = 23.1 < 30 → must bump.
   const g = ctx.getEATrainingDayAdjGoal();
   assert.ok(g, 'a deep-deficit training day is adjusted');
   assert.strictEqual(g._dayType, 'training_ea');
-  assert.ok(Math.abs(g._eaAfter - 30) < 0.2, `EA restored to ~30, got ${g._eaAfter.toFixed(2)}`);
+  // Lands just ABOVE 30 (target 31) so carb-gram rounding can't leave it re-flagged as
+  // danger — but still well inside the amber band, not over-fed.
+  assert.ok(g._eaAfter >= 30, `EA must clear the RED-S floor, got ${g._eaAfter.toFixed(2)}`);
+  assert.ok(g._eaAfter < 32, `EA stays a small margin above the floor, got ${g._eaAfter.toFixed(2)}`);
   assert.strictEqual(g.pro, 140, 'protein unchanged');
   assert.strictEqual(g.fat, 44, 'fat unchanged');
   assert.ok(g.crb > 161, 'the raise is funded with carbs');
