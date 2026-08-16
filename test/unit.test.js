@@ -760,14 +760,15 @@ test('getDietBreakAdjGoal is null when inactive or already at/above maintenance'
 // ── Diet Break auto-suggestion (Phase 2) ────────────────────────────────────────
 function loadDBSuggest() {
   return load(['evaluateDietBreakSuggestion', '_daysBetweenStr'], {
-    consts: ['DIET_BREAK_SUGGEST_LOSS_PCT', 'DIET_BREAK_SUGGEST_WEEKS', 'DIET_BREAK_STALL_MIN_WEEKS'],
+    consts: ['DIET_BREAK_SUGGEST_LOSS_PCT', 'DIET_BREAK_SUGGEST_WEEKS', 'DIET_BREAK_STALL_MIN_WEEKS', 'DIET_BREAK_TDEE_DROP_PCT', 'DIET_BREAK_MIN_CONFIDENCE', 'DIET_BREAK_LOWEA_DAYS', 'DIET_BREAK_RECOVERY_DROP'],
     prelude: `
-      var MOCK = { db:null, target:null, weight:[], wa:null };
+      var MOCK = { db:null, target:null, weight:[], wa:null, formulaTDEE:null };
       var window = { get _wtAnalysisData(){ return MOCK.wa; } };
       var S = { profile:{ goalType:'fat_loss' } };
       function safeJSON(k, d){ if (k === 'gd_diet_break') return MOCK.db; if (k === 'gd_ft_target') return MOCK.target; if (k === 'gd_weight') return MOCK.weight; return d; }
       function localDateStr(){ return '2026-08-16'; }
       function normalizeGoalMode(m){ return m; }
+      function calcFormulaTDEE(){ return MOCK.formulaTDEE; }
       function getActiveDietBreak(){ return MOCK.db && MOCK.db.active ? { dayNum:1 } : null; }`,
   });
 }
@@ -832,4 +833,64 @@ test('diet-break anchor resets after a finished break (no immediate re-nag)', ()
     { date: '2026-08-16', weight: 67.8 }, // since the break: ~0.3% over ~1 week
   ];
   assert.strictEqual(ctx.evaluateDietBreakSuggestion(), null, 'clock restarts at the break end, so no instant re-suggestion');
+});
+
+test('diet-break suggestion: adaptive TDEE well below formula fires it, but only at high confidence', () => {
+  const ctx = loadDBSuggest();
+  ctx.MOCK.target = { startDate: '2026-08-01' }; // short + small loss → only adaptation can fire
+  ctx.MOCK.weight = [{ date: '2026-08-01', weight: 70 }, { date: '2026-08-16', weight: 69.5 }];
+  ctx.MOCK.formulaTDEE = 2400;
+
+  // Adaptive 2050 = 14.6% below formula, confidence 70 → fires.
+  ctx.MOCK.wa = { trueTDEE: 2050, confidencePct: 70, statusLabel: 'On Track ✅', n: 18 };
+  let s = ctx.evaluateDietBreakSuggestion();
+  assert.ok(s && s.reasons.some((r) => r.key === 'adaptation'), 'high-confidence TDEE drop flags adaptation');
+  assert.strictEqual(s.tdeeConfidence, 70, 'confidence is passed through for the UI');
+  assert.strictEqual(s.tdeeDays, 18);
+
+  // Same drop, low confidence (under-logging fakes it) → suppressed.
+  ctx.MOCK.wa = { trueTDEE: 2050, confidencePct: 40, statusLabel: 'On Track ✅', n: 18 };
+  assert.strictEqual(ctx.evaluateDietBreakSuggestion(), null, 'low confidence ⇒ TDEE drop is not trusted');
+
+  // A small drop (under the 12% bar) at high confidence → not flagged.
+  ctx.MOCK.wa = { trueTDEE: 2250, confidencePct: 70, statusLabel: 'On Track ✅', n: 18 }; // 6.25% below
+  assert.strictEqual(ctx.evaluateDietBreakSuggestion(), null, 'a modest TDEE gap is not adaptation');
+});
+
+test('diet-break stall trigger is gated on analyzer confidence', () => {
+  const ctx = loadDBSuggest();
+  ctx.MOCK.target = { startDate: '2026-07-05' }; // ~6 weeks: past the stall minimum, under the time trigger
+  ctx.MOCK.weight = [{ date: '2026-07-05', weight: 70 }, { date: '2026-08-16', weight: 69 }]; // ~1.4%
+
+  ctx.MOCK.wa = { statusLabel: 'Plateau ➡️', logRate: 0.8, confidencePct: 70 };
+  assert.ok(ctx.evaluateDietBreakSuggestion().reasons.some((r) => r.key === 'stall'), 'confident stall fires');
+
+  ctx.MOCK.wa = { statusLabel: 'Plateau ➡️', logRate: 0.8, confidencePct: 40 };
+  assert.strictEqual(ctx.evaluateDietBreakSuggestion(), null, 'a stall on low-confidence data is not trusted');
+});
+
+test('countLowEADaysRecent counts logged days below the RED-S floor, skips unlogged days', () => {
+  const ctx = load(['countLowEADaysRecent'], {
+    prelude: `
+      var MOCK = { weight:65, bf:20, meals:{}, burns:{} };
+      var S = { profile:{} };
+      function getLatestCheckinWeight(){ return MOCK.weight; }
+      function getCurrentBodyFatPct(){ return MOCK.bf; }
+      function localDateStr(){ return '2026-08-16'; }
+      function mealsForDate(ds){ return MOCK.meals[ds] || []; }
+      function workoutsForDate(ds){ return MOCK.burns[ds] != null ? [{ c: MOCK.burns[ds] }] : []; }
+      function creditedBurnSum(list){ return list.reduce(function(a,w){ return a + (w.c || 0); }, 0); }`,
+  });
+  const before = (n) => {
+    const d = new Date('2026-08-16T12:00:00'); d.setDate(d.getDate() - n);
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  };
+  // LBM = 65 × 0.8 = 52. EA < 30 ⇔ (intake − burn) < 1560.
+  [1, 2, 3].forEach((n) => { ctx.MOCK.meals[before(n)] = [{ calories: 1500 }]; ctx.MOCK.burns[before(n)] = 100; }); // 1400/52 = 26.9 → low
+  ctx.MOCK.meals[before(4)] = [{ calories: 2000 }]; // 38.5 → safe
+  // before(5) has no meals → unlogged, must be skipped, not counted as low
+  assert.strictEqual(ctx.countLowEADaysRecent(14), 3);
+
+  ctx.MOCK.bf = null; // no lean-mass basis → can't judge EA
+  assert.strictEqual(ctx.countLowEADaysRecent(14), 0);
 });
