@@ -4828,8 +4828,47 @@ function clearGoalDependentCaches() {
 var DIET_BREAK_SUGGEST_LOSS_PCT = 5;    // % of bodyweight lost since the anchor
 var DIET_BREAK_SUGGEST_WEEKS = 10;      // continuous weeks in a deficit since the anchor
 var DIET_BREAK_STALL_MIN_WEEKS = 4;     // ignore an early "plateau" (usually water, too soon to break)
+var DIET_BREAK_TDEE_DROP_PCT = 12;      // adaptive TDEE this far below the formula = real metabolic adaptation
+var DIET_BREAK_MIN_CONFIDENCE = 55;     // analyzer confidence needed before trusting a stall / TDEE-drop verdict
+var DIET_BREAK_LOWEA_DAYS = 5;          // low-EA logged days (of the last 14) that signal chronic RED-S risk
+var DIET_BREAK_RECOVERY_DROP = 8;       // recovery-score drop (recent 7-day avg vs the prior 7) worth flagging
 function _daysBetweenStr(a, b) {
   return Math.round((new Date(b + 'T12:00:00') - new Date(a + 'T12:00:00')) / 86400000);
+}
+// How many of the last N logged days had actual EA below the RED-S floor (30). Chronic low
+// EA — even after the per-day training bump — means the deficit itself is too deep. Returns
+// 0 when lean mass is unknown (EA can't be computed) or nothing is logged.
+function countLowEADaysRecent(nDays) {
+  if (typeof getLatestCheckinWeight !== 'function' || typeof getCurrentBodyFatPct !== 'function') return 0;
+  var weight = parseFloat(getLatestCheckinWeight() || (S.profile && S.profile.weight)) || null;
+  var bf = getCurrentBodyFatPct();
+  if (!weight || !bf) return 0;
+  var lbm = weight * (1 - bf/100); if (lbm <= 0) return 0;
+  var end = new Date(localDateStr() + 'T12:00:00');
+  var count = 0;
+  for (var i = 1; i <= (nDays || 14); i++) {
+    var d = new Date(end.getTime()); d.setDate(d.getDate() - i);
+    var ds = d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+    var intake = (typeof mealsForDate === 'function' ? mealsForDate(ds) : []).reduce(function(a,m){ return a + (+m.calories || 0); }, 0);
+    if (intake <= 0) continue; // unlogged day — no verdict
+    var burn = (typeof creditedBurnSum === 'function' && typeof workoutsForDate === 'function') ? creditedBurnSum(workoutsForDate(ds)) : 0;
+    if ((intake - burn) / lbm < 30) count++; // 30 = EA_DANGER floor
+  }
+  return count;
+}
+// Recovery-score trend: recent 7-day average vs the prior 7. A meaningful drop is an
+// under-recovery signal that often tracks over-dieting. Null unless there's enough history.
+function recoveryTrendDropping() {
+  var log = (typeof safeJSON === 'function') ? safeJSON('gd_sleep_log', []) : [];
+  var scored = (log || []).filter(function(s){ return s && s.date && s.recoveryScore; })
+    .sort(function(a,b){ return a.date.localeCompare(b.date); });
+  if (scored.length < 8) return null;
+  var recent = scored.slice(-7), prior = scored.slice(-14, -7);
+  if (prior.length < 3) return null;
+  var avg = function(arr){ return arr.reduce(function(a,s){ return a + (parseFloat(s.recoveryScore) || 0); }, 0) / arr.length; };
+  var rAvg = avg(recent), pAvg = avg(prior);
+  if (pAvg - rAvg >= DIET_BREAK_RECOVERY_DROP) return 'Recovery เฉลี่ยตกจาก ' + Math.round(pAvg) + '→' + Math.round(rAvg) + ' (ฟื้นตัวแย่ลง อาจ under-recovery)';
+  return null;
 }
 function evaluateDietBreakSuggestion() {
   if (getActiveDietBreak()) return null;                       // already resting
@@ -4866,12 +4905,34 @@ function evaluateDietBreakSuggestion() {
   var reasons = [];
   if (lossPct >= DIET_BREAK_SUGGEST_LOSS_PCT) reasons.push({ key:'loss', text:'ลดมาแล้ว ' + lossPct.toFixed(1) + '% ของน้ำหนักตัว (ถึงจุดพักฟื้นฮอร์โมน)' });
   if (weeks >= DIET_BREAK_SUGGEST_WEEKS) reasons.push({ key:'time', text:'อยู่ในภาวะ deficit ต่อเนื่อง ~' + Math.round(weeks) + ' สัปดาห์' });
+
   var wa = (typeof window !== 'undefined') ? window._wtAnalysisData : null;
-  if (wa && weeks >= DIET_BREAK_STALL_MIN_WEEKS && /Plateau|Slow Progress/.test(wa.statusLabel || '') && (wa.logRate == null || wa.logRate >= 0.6)) {
+  var conf = (wa && wa.confidencePct != null) ? wa.confidencePct : null;
+  var confOK = conf == null || conf >= DIET_BREAK_MIN_CONFIDENCE; // don't trust noisy/under-logged data
+
+  // Stall — trust it only when the analyzer is reasonably confident (not just when logging
+  // was decent), so weight noise on thin data can't false-trigger a break.
+  if (wa && weeks >= DIET_BREAK_STALL_MIN_WEEKS && /Plateau|Slow Progress/.test(wa.statusLabel || '') && (wa.logRate == null || wa.logRate >= 0.6) && confOK) {
     reasons.push({ key:'stall', text:'น้ำหนักเริ่มนิ่งทั้งที่ทำตามเป้า — สัญญาณ metabolic adaptation' });
   }
+  // Personalised (adaptive) TDEE has fallen well below the population formula — the most
+  // direct adaptation signal — but only when confidence is high (a low-confidence adaptive
+  // TDEE is usually just under-logging, which would fake a "drop").
+  var adaptiveTDEE = (wa && wa.trueTDEE) ? wa.trueTDEE : null;
+  var formulaTDEE = (typeof calcFormulaTDEE === 'function') ? calcFormulaTDEE(S.profile) : null;
+  if (adaptiveTDEE && formulaTDEE && conf != null && conf >= DIET_BREAK_MIN_CONFIDENCE && adaptiveTDEE <= formulaTDEE * (1 - DIET_BREAK_TDEE_DROP_PCT/100)) {
+    reasons.push({ key:'adaptation', text:'TDEE จริงต่ำกว่าค่าคำนวณ ~' + Math.round((1 - adaptiveTDEE/formulaTDEE)*100) + '% (เมตาบอลิซึมปรับลด)' });
+  }
+  // Chronic low EA (many days below the RED-S floor even after the per-day bump).
+  var lowEa = (typeof countLowEADaysRecent === 'function') ? countLowEADaysRecent(14) : 0;
+  if (lowEa >= DIET_BREAK_LOWEA_DAYS) reasons.push({ key:'low_ea', text:'EA ต่ำกว่า 30 ถึง ' + lowEa + ' วันใน 14 วันหลัง — พลังงานพร้อมใช้ต่ำเรื้อรัง' });
+  // Recovery trending down (under-recovery, often tracks over-dieting).
+  var recDrop = (typeof recoveryTrendDropping === 'function') ? recoveryTrendDropping() : null;
+  if (recDrop) reasons.push({ key:'recovery', text: recDrop });
+
   if (!reasons.length) return null;
-  return { weeks: Math.round(weeks), lossPct: +lossPct.toFixed(1), reasons: reasons };
+  return { weeks: Math.round(weeks), lossPct: +lossPct.toFixed(1), reasons: reasons,
+           tdeeConfidence: conf, tdeeDays: (wa && wa.n) || null };
 }
 
 // ── Goal History (point-in-time calorie/macro targets) ──────────────
@@ -5805,10 +5866,16 @@ function renderDietBreakCard() {
   el.style.display = 'block';
   if (sug) {
     var reasonHtml = sug.reasons.map(function(r){ return '<div style="font-size:11px;color:var(--text2);line-height:1.6;">• ' + r.text + '</div>'; }).join('');
+    // How trustworthy the TDEE/trend behind this call is — daily weight is mostly water, so
+    // low confidence (thin/under-logged data) means "watch the weekly average, don't rush".
+    var confHtml = (sug.tdeeConfidence != null)
+      ? '<div style="font-size:10px;color:var(--text3);margin-top:6px;">📊 ความมั่นใจ TDEE/เทรนด์ ~' + Math.round(sug.tdeeConfidence) + '%' + (sug.tdeeDays ? ' · อิง ' + sug.tdeeDays + ' วัน' : '') + (sug.tdeeConfidence < DIET_BREAK_MIN_CONFIDENCE ? ' (ยังไม่สูง — ดูค่าเฉลี่ยสัปดาห์ประกอบ)' : '') + '</div>'
+      : '';
     el.innerHTML =
       '<div style="background:rgba(59,130,246,0.08);border:1px solid rgba(59,130,246,0.35);border-radius:16px;padding:14px 16px;">' +
         '<div style="font-size:14px;font-weight:800;color:var(--blue);margin-bottom:5px;">🍽️ ถึงเวลาพัก? (Diet Break)</div>' +
         reasonHtml +
+        confHtml +
         '<div style="font-size:11px;color:var(--text3);line-height:1.5;margin:7px 0 10px;">พักกินที่ maintenance 1–2 สัปดาห์ ให้ฮอร์โมน/เมตาบอลิซึมฟื้น แล้วค่อยกลับมาลดต่อ รอบหน้าจะลดได้ดีขึ้น</div>' +
         '<div style="display:flex;gap:8px;">' +
           '<button onclick="startDietBreak(7)" style="flex:1;padding:9px;background:var(--blue);border:none;border-radius:12px;color:#fff;font-family:inherit;font-size:12px;font-weight:700;cursor:pointer;">พัก 1 สัปดาห์</button>' +
