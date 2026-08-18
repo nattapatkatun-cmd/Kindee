@@ -25,7 +25,7 @@ const DEFAULT_GEMINI_MODEL = 'gemini-2.5-flash';
 const FIREBASE_PROJECT_ID = 'kindee-f0cc1';
 // bump ทุกครั้งที่แก้ไฟล์นี้ — เปิด https://kindee.ojo0308.workers.dev/health
 // ในเบราว์เซอร์แล้วเทียบเลขนี้ เพื่อเช็คว่าโค้ดบน Cloudflare ตรงกับ repo หรือยัง
-const WORKER_VERSION = '2026-07-25.1';
+const WORKER_VERSION = '2026-08-18.1';
 
 export default {
   async fetch(request, env) {
@@ -78,6 +78,11 @@ export default {
 };
 
 async function handleGemini(request, env, cors) {
+  // Cloudflare Worker รันจาก colo ที่ใกล้ผู้เรียกที่สุด ไม่ใช่ตำแหน่ง GPS ของผู้ใช้
+  // ถ้า Gemini ตอบ "User location is not supported" ให้แปะ colo/country ของ colo นั้น
+  // ต่อท้าย error message เพื่อวินิจฉัยว่า Worker ไปโผล่ที่ colo ไหน (ดู isLocationBlocked ด้านล่าง)
+  const cf = request.cf || {};
+
   // 1) ตรวจ Firebase ID token
   const authHeader = request.headers.get('Authorization') || '';
   const idToken = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
@@ -169,6 +174,22 @@ async function handleGemini(request, env, cors) {
       }
       if (isOverload) break; // ครบ retry → key ถัดไป
       // error อื่น (เช่น request ผิดรูปแบบ) — ส่งกลับเลย ไม่มีประโยชน์ที่จะ rotate
+      // (rotate key ช่วยไม่ได้เพราะทุก key ยิงผ่าน colo เดียวกัน — ไม่ใช่ปัญหาที่ key)
+      const isLocationBlocked = msg.includes('location is not supported');
+      if (isLocationBlocked) {
+        // แปะ colo/country ของ Cloudflare Worker (ไม่ใช่ตำแหน่งผู้ใช้) ต่อท้าย เพื่อวินิจฉัย
+        // ว่า request ไปโผล่ที่ colo ไหนตอนโดนบล็อก — ดูคอมเมนต์บนสุดของ handleGemini
+        return json(
+          {
+            error: {
+              ...data.error,
+              message: `${data.error.message} [colo: ${cf.colo || '?'}, country: ${cf.country || '?'}]`,
+            },
+          },
+          200,
+          cors
+        );
+      }
       return json({ error: data.error }, 200, cors);
     }
   }
