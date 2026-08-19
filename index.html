@@ -5944,7 +5944,7 @@ function renderDashEA(date, isToday) {
   // averaged plan so an unusually hard evening session that dipped EA is visible.
   if (res.actual) {
     var am = EA_ZONE_META[res.actual.zone] || EA_ZONE_META.low;
-    html += '<div style="font-size:10px;color:var(--text3);margin-top:2px;line-height:1.5;">ออกจริงวันนี้เผา ' + res.actual.exerciseKcal + ' → EA จริง <b style="color:' + am.fg + ';">' + res.actual.ea.toFixed(1) + '</b></div>';
+    html += '<div style="font-size:10px;color:var(--text3);margin-top:2px;line-height:1.5;">กินจริงวันนี้ ' + res.actual.intakeKcal + ' − เผา ' + res.actual.exerciseKcal + ' → EA จริง <b style="color:' + am.fg + ';">' + res.actual.ea.toFixed(1) + '</b></div>';
   }
   // Only the danger band gets an explanatory line — it's an actionable safety warning
   // ("กินเพิ่ม/ลดคาร์ดิโอ"). The low/optimal reassurance text was clutter (and read oddly
@@ -6773,7 +6773,7 @@ function calcEnergyAvailability(intakeKcal, exerciseKcal, weightKg, bfPct) {
 // breakfast that hitting your goal still lands you below 30 once tonight's usual session is
 // paid for — early enough to eat more, instead of discovering it after you've already
 // under-eaten all day. Once today's session is actually logged, `actual` carries the
-// realised EA (same goal intake, real burn) so you can see how the day compared to plan.
+// realised EA (real eaten intake, real burn) so you can see how the day compared to plan.
 // When there's no training history yet, the expected burn falls back to whatever is logged
 // today (0 until you train), i.e. the pre-existing behaviour.
 //
@@ -6813,12 +6813,16 @@ function getDashboardEA(date, isToday) {
   res.basis = 'planned';
   res.avg = expected;                 // { burn, days, basis } | null
   res.expectedFromAvg = !!expected;   // number shown is the historical (weekday/overall) average
-  // Realised EA for today, only once a session is actually logged (same goal intake, real
-  // burn). Lets the badge show plan-vs-actual so an unusually hard evening session that
-  // dipped EA is visible.
-  if (loggedBurn > 0) {
-    var act = calcEnergyAvailability(intake, loggedBurn, weight, bf);
-    if (act.status === 'ok') res.actual = { ea: act.ea, zone: act.zone, exerciseKcal: act.exerciseKcal };
+  // Realised EA for today, shown once there's a real session AND real food logged. Unlike
+  // the plan number (which is deliberately pinned to the goal so it can't flash a false
+  // RED-S alarm at breakfast), "actual" must be actual: it uses the calories genuinely
+  // eaten so far, not the goal — otherwise a day eaten 400 kcal over goal still reads as
+  // low-EA. Both terms real (eaten intake, credited burn) is what makes it comparable to
+  // the plan and honest to the "จริง" label. Gated on actualIntake > 0 so a logged-but-
+  // unfed day can't render a negative EA.
+  if (loggedBurn > 0 && actualIntake > 0) {
+    var act = calcEnergyAvailability(actualIntake, loggedBurn, weight, bf);
+    if (act.status === 'ok') res.actual = { ea: act.ea, zone: act.zone, exerciseKcal: act.exerciseKcal, intakeKcal: act.intakeKcal };
   }
   return res;
 }
