@@ -285,6 +285,39 @@ test('viewing a past date shows that date\'s own calorie goal, not today\'s', as
   await page.close();
 });
 
+test("today's actual EA is measured from calories actually eaten, not the goal", async () => {
+  // Reported symptom: after eating well over the goal the dashboard still showed a low
+  // "EA จริง". The plan number is deliberately pinned to the goal (so it can't flash a
+  // false RED-S alarm at breakfast), but the *actual* line was reusing that same goal
+  // intake instead of what was logged — so "จริง" was only half real (real burn, planned
+  // food). The fixture logs 1860 kcal eaten today against an 1800 goal, plus a workout, so
+  // goal-based and eaten-based EA are ~1 point apart and the swap is observable.
+  const page = await openApp(browser, buildSeed());
+
+  const r = await page.evaluate(() => {
+    const today = localDateStr();
+    const eaten = mealsForDate(today).reduce((a, m) => a + (+m.calories || 0), 0);
+    const res = getDashboardEA(today, true);
+    return { eaten, res };
+  });
+
+  assert.ok(r.res && r.res.actual, 'the actual EA line is present once a session is logged');
+  assert.ok(r.eaten > 0, 'the fixture logs food today');
+  assert.strictEqual(
+    r.res.actual.intakeKcal, Math.round(r.eaten),
+    'actual EA uses the calories genuinely eaten, not the calorie goal',
+  );
+  // And the EA value itself follows the eaten intake: (eaten − burn) / lean mass.
+  const expected = (r.eaten - r.res.actual.exerciseKcal) / r.res.lbm;
+  assert.ok(
+    Math.abs(r.res.actual.ea - expected) < 0.05,
+    'actual EA = (eaten − credited burn) / FFM',
+  );
+
+  await noErrors(page, "today's actual EA");
+  await page.close();
+});
+
 test('a meal whose macros contradict its calories is reconciled before it is stored', async () => {
   const page = await openApp(browser, buildSeed());
 
