@@ -318,6 +318,52 @@ test("today's actual EA is measured from calories actually eaten, not the goal",
   await page.close();
 });
 
+test('on a planned rest day the EA plan does not subtract a phantom training burn, and actual EA still surfaces from what was eaten', async () => {
+  // Reported symptom: a rest day showed "EA 24.9 อันตราย (RED-S)" no matter what was
+  // eaten. Two bugs: (1) the plan subtracted the historical training-day burn even though
+  // no training happens on a rest day, inflating the danger; (2) the actual line was gated
+  // on a logged workout, so on a rest day (never any) it never appeared — the eaten
+  // calories could not move the number.
+  const seed = buildSeed();
+  // Make today a genuine rest day: a saved plan whose today-slot is a rest theme, and no
+  // workout logged today (the fixture logs one on even-index days, including today).
+  const today = dateBack(0);
+  seed.gd_workouts = seed.gd_workouts.filter((w) => w.date !== today);
+  const page = await openApp(browser, seed);
+
+  const setup = await page.evaluate((todayStr) => {
+    const weekday = new Date(todayStr + 'T12:00:00').getDay();
+    const plan = { days: [{ day: PLAN_DAY_NAMES[weekday], theme: 'พัก', exercises: [], note: '' }] };
+    localStorage.setItem('gd_workout_plan', JSON.stringify({ plan, savedAt: new Date().toISOString() }));
+
+    const g = getEffectiveGoalToday();
+    const eaten = mealsForDate(todayStr).reduce((a, m) => a + (+m.calories || 0), 0);
+    const res = getDashboardEA(todayStr, true);
+    return { dayType: g && g._dayType, planCal: g && g.cal, eaten, res };
+  }, today);
+
+  assert.strictEqual(setup.dayType, 'rest', 'today is resolving as a planned rest day');
+  // (1) plan burn is zero on a rest day — the number is intake / FFM, not (intake − 267)/FFM.
+  assert.strictEqual(setup.res.exerciseKcal, 0, 'rest-day plan subtracts no training burn');
+  assert.strictEqual(setup.res.restPlan, true, 'the result is flagged as a rest-day plan');
+  const planExpected = setup.planCal / setup.res.lbm;
+  assert.ok(
+    Math.abs(setup.res.ea - planExpected) < 0.05,
+    'rest-day plan EA = goal intake / FFM (no phantom burn)',
+  );
+  // (2) actual EA appears from the eaten calories even with no workout logged.
+  assert.ok(setup.res.actual, 'actual EA surfaces on a rest day once intake reaches the goal');
+  assert.strictEqual(setup.res.actual.exerciseKcal, 0, 'no burn logged on the rest day');
+  assert.strictEqual(setup.res.actual.intakeKcal, Math.round(setup.eaten), 'actual uses eaten calories');
+  assert.ok(
+    Math.abs(setup.res.actual.ea - setup.eaten / setup.res.lbm) < 0.05,
+    'rest-day actual EA = eaten / FFM',
+  );
+
+  await noErrors(page, 'rest-day EA');
+  await page.close();
+});
+
 test('a meal whose macros contradict its calories is reconciled before it is stored', async () => {
   const page = await openApp(browser, buildSeed());
 
