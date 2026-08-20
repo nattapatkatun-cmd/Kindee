@@ -5925,6 +5925,7 @@ function renderDashEA(date, isToday) {
   if (res.basis === 'planned') {
     if (res.expectedFromAvg) exerciseNote = 'เฉลี่ยวันเทรน ' + res.exerciseKcal + ' (' + res.avg.days + ' วันย้อนหลัง)';
     else if (res.exerciseKcal > 0) exerciseNote = 'ออกกำลังกายวันนี้ ' + res.exerciseKcal;
+    else if (res.restPlan) exerciseNote = 'วันพัก — ไม่หักการเทรน';
     else exerciseNote = 'ยังไม่มีข้อมูลเทรน';
   } else {
     exerciseNote = 'ออกกำลังกาย ' + res.exerciseKcal;
@@ -5944,7 +5945,8 @@ function renderDashEA(date, isToday) {
   // averaged plan so an unusually hard evening session that dipped EA is visible.
   if (res.actual) {
     var am = EA_ZONE_META[res.actual.zone] || EA_ZONE_META.low;
-    html += '<div style="font-size:10px;color:var(--text3);margin-top:2px;line-height:1.5;">กินจริงวันนี้ ' + res.actual.intakeKcal + ' − เผา ' + res.actual.exerciseKcal + ' → EA จริง <b style="color:' + am.fg + ';">' + res.actual.ea.toFixed(1) + '</b></div>';
+    var burnNote = res.actual.exerciseKcal > 0 ? ' − เผา ' + res.actual.exerciseKcal : '';
+    html += '<div style="font-size:10px;color:var(--text3);margin-top:2px;line-height:1.5;">กินจริงวันนี้ ' + res.actual.intakeKcal + burnNote + ' → EA จริง <b style="color:' + am.fg + ';">' + res.actual.ea.toFixed(1) + '</b></div>';
   }
   // Only the danger band gets an explanatory line — it's an actionable safety warning
   // ("กินเพิ่ม/ลดคาร์ดิโอ"). The low/optimal reassurance text was clutter (and read oddly
@@ -6806,21 +6808,30 @@ function getDashboardEA(date, isToday) {
   // is the forward-looking coaching signal. Today's actual log is reported separately as
   // `actual`, not folded into the plan, so the two stay comparable. With no history the
   // expected burn falls back to whatever is logged today (0 until you train).
-  var expected = getExpectedTrainingBurnForDay(date);
+  //
+  // EXCEPT on a PLANNED REST day: there's no training to pre-provision, and EA subtracts
+  // purposeful exercise only — a rest day's expected purposeful exercise is whatever is
+  // actually logged (0 if none), NOT the historical training-day average. Subtracting a
+  // phantom ~260 kcal on rest days was flagging a false RED-S "danger" (e.g. a 1704 rest
+  // goal read as 24.9 instead of its true 29.6).
+  var isRestPlan = !!(g && g._dayType === 'rest');
+  var expected = isRestPlan ? null : getExpectedTrainingBurnForDay(date);
   var expectedBurn = expected ? expected.burn : loggedBurn;
   var res = calcEnergyAvailability(intake, expectedBurn, weight, bf);
   if (res.status !== 'ok') return res;
   res.basis = 'planned';
+  res.restPlan = isRestPlan;
   res.avg = expected;                 // { burn, days, basis } | null
   res.expectedFromAvg = !!expected;   // number shown is the historical (weekday/overall) average
-  // Realised EA for today, shown once there's a real session AND real food logged. Unlike
-  // the plan number (which is deliberately pinned to the goal so it can't flash a false
-  // RED-S alarm at breakfast), "actual" must be actual: it uses the calories genuinely
-  // eaten so far, not the goal — otherwise a day eaten 400 kcal over goal still reads as
-  // low-EA. Both terms real (eaten intake, credited burn) is what makes it comparable to
-  // the plan and honest to the "จริง" label. Gated on actualIntake > 0 so a logged-but-
-  // unfed day can't render a negative EA.
-  if (loggedBurn > 0 && actualIntake > 0) {
+  // Realised EA for today. Shown once there's something real to report: a logged session
+  // (the plan-vs-actual dip warning, which must also fire on training days eaten under
+  // goal) OR intake that has already reached the plan target (this is what surfaces it on
+  // rest days, where nothing is ever logged). Unlike the plan number — deliberately pinned
+  // to the goal so it can't flash a false RED-S alarm at breakfast — "actual" uses the
+  // calories genuinely eaten, so a day eaten well over goal stops reading as low-EA.
+  // Gating the intake case on actualIntake ≥ plan means the rest-day actual line can only
+  // ever REASSURE (a higher, safer EA), never render a scary sub-goal number mid-morning.
+  if (actualIntake > 0 && (loggedBurn > 0 || actualIntake >= intake)) {
     var act = calcEnergyAvailability(actualIntake, loggedBurn, weight, bf);
     if (act.status === 'ok') res.actual = { ea: act.ea, zone: act.zone, exerciseKcal: act.exerciseKcal, intakeKcal: act.intakeKcal };
   }
