@@ -894,3 +894,78 @@ test('countLowEADaysRecent counts logged days below the RED-S floor, skips unlog
   ctx.MOCK.bf = null; // no lean-mass basis → can't judge EA
   assert.strictEqual(ctx.countLowEADaysRecent(14), 0);
 });
+
+// ── Progress-trend source isolation (AI Daily Coach) ──────────────────────────
+// InBody and a home BIA scale carry different systematic %BF offsets, so a slope that
+// mixes them turns a device switch into a fake trend (AUDIT finding F1). The Daily
+// Coach's PROGRESS TREND must pick exactly ONE source and never merge.
+test('pickBodyCompSource never mixes measurement sources', () => {
+  const ctx = load(['pickBodyCompSource']);
+
+  // InBody has ≥4 readings → it wins even though the scale logged far more often.
+  const rows = [
+    { date: '2026-01-01', source: 'inbody', bf: 22 },
+    { date: '2026-02-01', source: 'inbody', bf: 21 },
+    { date: '2026-03-01', source: 'inbody', bf: 20 },
+    { date: '2026-04-01', source: 'inbody', bf: 19 },
+    { date: '2026-04-02', source: 'eufy', bf: 25 },
+    { date: '2026-04-03', source: 'eufy', bf: 25.4 },
+    { date: '2026-04-04', source: 'eufy', bf: 24.8 },
+    { date: '2026-04-05', source: 'eufy', bf: 25.1 },
+    { date: '2026-04-06', source: 'eufy', bf: 24.9 },
+  ];
+  const pick = ctx.pickBodyCompSource(rows, 'bf', 4);
+  assert.strictEqual(pick.source, 'inbody');
+  assert.strictEqual(pick.fallback, false);
+  assert.strictEqual(pick.rows.length, 4, 'only the 4 InBody rows, never blended with the 5 eufy rows');
+  assert.ok(pick.rows.every((r) => r.source === 'inbody'), 'every returned row is a single source');
+  assert.strictEqual(pick.rows.map((r) => r.date).join(','), '2026-01-01,2026-02-01,2026-03-01,2026-04-01', 'sorted oldest-first');
+});
+
+test('pickBodyCompSource falls back to the single largest non-InBody source', () => {
+  const ctx = load(['pickBodyCompSource']);
+
+  // InBody has only 2 (< 4) → fall back to the device with the most readings, alone.
+  const rows = [
+    { date: '2026-03-01', source: 'inbody', bf: 20 },
+    { date: '2026-04-01', source: 'inbody', bf: 19 },
+    { date: '2026-04-02', source: 'eufy', bf: 25 },
+    { date: '2026-04-03', source: 'eufy', bf: 24.8 },
+    { date: '2026-04-04', source: 'eufy', bf: 24.6 },
+    { date: '2026-04-05', source: 'manual', bf: 23 },
+  ];
+  const pick = ctx.pickBodyCompSource(rows, 'bf', 4);
+  assert.strictEqual(pick.source, 'eufy');
+  assert.strictEqual(pick.fallback, true, 'flagged so the caller can label it non-InBody');
+  assert.ok(pick.rows.every((r) => r.source === 'eufy'), 'no InBody or manual rows leak in');
+
+  // InBody present but below threshold and nothing else → reported insufficient, not merged.
+  const onlyInbody = ctx.pickBodyCompSource(
+    [{ date: '2026-03-01', source: 'inbody', bf: 20 }, { date: '2026-04-01', source: 'inbody', bf: 19 }],
+    'bf', 4
+  );
+  assert.strictEqual(onlyInbody.insufficient, true);
+
+  assert.strictEqual(ctx.pickBodyCompSource([], 'bf', 4), null, 'no data → null');
+});
+
+test('bodyCompMetricTrend returns a weekly rate and absolute delta, or null below minPts', () => {
+  const ctx = load(['bodyCompMetricTrend', 'estimateEMATrend']);
+
+  const rows = [
+    { date: '2026-01-01', source: 'inbody', bf: 22 },
+    { date: '2026-02-01', source: 'inbody', bf: 21 },
+    { date: '2026-03-01', source: 'inbody', bf: 20 },
+    { date: '2026-04-01', source: 'inbody', bf: 19 },
+  ];
+  const tr = ctx.bodyCompMetricTrend(rows, 'bf', 3);
+  assert.ok(tr, 'four points is enough');
+  assert.ok(tr.perWeek < 0, 'falling %BF → negative weekly rate');
+  assert.strictEqual(tr.delta, -3, 'absolute change first→last');
+  assert.strictEqual(tr.from, 22);
+  assert.strictEqual(tr.to, 19);
+  assert.strictEqual(tr.points, 4);
+  assert.ok(tr.spanDays > 80 && tr.spanDays < 95, 'span measured in days, irregular spacing kept');
+
+  assert.strictEqual(ctx.bodyCompMetricTrend(rows.slice(0, 2), 'bf', 3), null, 'below minPts → null, never a guessed slope');
+});

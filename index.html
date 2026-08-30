@@ -4184,6 +4184,7 @@ function generateDailySummary() {
       });
       return block + '\n';
     })() +
+    ((typeof buildProgressTrendContext === 'function') ? buildProgressTrendContext(tdee, manualGoal.cal) : '') +
     'USER\'S SAVED FAVORITE MEALS (ranked by protein — use these FIRST when suggesting macro fixes):\n' + favContext + '\n\n' +
     'RECENT MEAL HISTORY (last 3 days — detect patterns: chronic low carb, chronic high fat, repeated meals causing imbalance):\n' + recentMealHistory + '\n\n' +
     'TODAY\'S DATA:\n' +
@@ -4232,7 +4233,7 @@ function generateDailySummary() {
     // deterministically (calculateSleepScoreFromData) and renders that. Letting the model
     // return its own put a second, contradicting "Recovery" badge on the same dashboard.
     '  "recovery": { "headline": "cross-reference: was todays strain appropriate given the morning recovery score?", "detail": "2-3 sentences in Thai comparing todays workout load against the morning recovery score. If no morning recovery was run, say so and reason from sleep data only. Do NOT state your own overall recovery rating — the app displays the computed one." },\n' +
-    '  "progress": { "headline": "one-line", "detail": "2-3 sentences on trajectory toward fitness target, include estimated weeks/days if calculable. Anchor EVERY timeline statement to the current program position given in Fitness Target (ตำแหน่งในโปรแกรม — สัปดาห์ที่ X, เหลืออีก Y สัปดาห์): talk about the REMAINING weeks, never phrase it as if the full program duration still lies ahead" },\n' +
+    '  "progress": { "headline": "one-line", "detail": "2-3 sentences on trajectory toward fitness target. If a PROGRESS TREND block is present, ground this section in those precomputed numbers: state the actual weight/%BF/muscle rate, and EXPLAIN WHY it is happening by cross-referencing the ADHERENCE line — e.g. actual weight rate vs the predicted rate from the average deficit (a gap points to water/glycogen retention, under-logging, or a stalled metabolism), muscle preserved/lost vs protein g/kg and training days. Use the trend numbers verbatim; never recompute a slope or invent a rate the block did not provide, and if the block says data is insufficient (ไม่พอ) say so plainly instead of guessing. Read each body-composition rate ONLY against its own labeled source — never compare an InBody %BF against a home-scale %BF. Include estimated weeks/days to target if calculable, and anchor EVERY timeline statement to the current program position given in Fitness Target (ตำแหน่งในโปรแกรม — สัปดาห์ที่ X, เหลืออีก Y สัปดาห์): talk about the REMAINING weeks, never phrase it as if the full program duration still lies ahead" },\n' +
     '  "playbook": [\n' +
     '    { "category": "อาหาร", "action": "specific meal recommendation. If intake was over goal today, specify which meal to reduce tomorrow and what to swap it with" },\n' +
     '    { "category": "ออกกำลังกาย", "action": "specific workout type and duration or rest advice" },\n' +
@@ -11017,13 +11018,17 @@ function handleDeleteWeight(id) {
   WT.log = WT.log.filter(function(e){ return e.id !== id; });
   localStorage.setItem('gd_weight', JSON.stringify(WT.log));
   // Removing a data point changes the trend / Adaptive TDEE — drop the same-day cache.
+  // The Daily Coach's PROGRESS TREND now reads the weight log too, so its cache
+  // (gd_daily_summary) and the weekly summary must be invalidated here as well.
   localStorage.removeItem('gd_wt_analysis'); localStorage.removeItem('gd_wt_analysis_data');
+  localStorage.removeItem('gd_daily_summary'); localStorage.removeItem('gd_weekly_summary');
   if (window.FB_OK && window.FB.delWeight) window.FB.delWeight(id); else queueFBWrite('weight','del',id);
   _renderWeightTab();
   showUndoToast('ลบรายการแล้ว', function(){
     WT.log = backup;
     localStorage.setItem('gd_weight', JSON.stringify(WT.log));
     localStorage.removeItem('gd_wt_analysis'); localStorage.removeItem('gd_wt_analysis_data');
+    localStorage.removeItem('gd_daily_summary'); localStorage.removeItem('gd_weekly_summary');
     if (window.FB_OK && window.FB.saveWeight && deleted) window.FB.saveWeight(deleted); else if(deleted) queueFBWrite('weight','save',deleted);
     _renderWeightTab(); showToast('คืนค่าแล้ว','info');
   });
@@ -11430,6 +11435,135 @@ function estimateEMATrend(entries, spanDays){
   }
   var den = sw*sxx - sx*sx;
   return den<=0 ? 0 : ((sw*sxy - sx*sy)/den)*7;
+}
+
+// ── Historical progress trend for the AI Daily Coach ──────────────────────────
+// InBody and a home BIA scale (Eufy) / manual entry carry different systematic %BF
+// offsets — routinely several points apart on the same body — so a slope that mixes
+// them turns a device switch into a fake trend (AUDIT finding F1). These helpers pick
+// exactly ONE source and never merge, mirroring getBFTrajectory / the outlier detector.
+//
+// Source policy: InBody is authoritative. If it has >= minInbody readings, use InBody
+// regardless of how many days apart they are. Otherwise fall back to the single
+// non-InBody source with the most readings (the device the user actually logs with),
+// and the caller labels it so the absolute values are not read as InBody-comparable.
+function pickBodyCompSource(rows, field, minInbody){
+  minInbody = minInbody || 4;
+  var withVal = (rows||[]).filter(function(r){ return r && r.date && r[field] != null && isFinite(parseFloat(r[field])); });
+  var bySrc = {};
+  withVal.forEach(function(r){ var k = String(r.source||'other').toLowerCase(); (bySrc[k] = bySrc[k] || []).push(r); });
+  function sortByDate(a){ return a.slice().sort(function(x,y){ return x.date.localeCompare(y.date); }); }
+  var inbody = bySrc['inbody'] || [];
+  if (inbody.length >= minInbody) return { source:'inbody', rows: sortByDate(inbody), fallback:false };
+  // InBody not usable on its own — take the single non-InBody source with the most points.
+  var bestKey = null, best = [];
+  Object.keys(bySrc).forEach(function(k){
+    if (k === 'inbody') return;
+    if (bySrc[k].length > best.length) { best = bySrc[k]; bestKey = k; }
+  });
+  if (bestKey) return { source: bestKey, rows: sortByDate(best), fallback:true };
+  // Only InBody exists but below the threshold — report it as insufficient, never merged.
+  if (inbody.length) return { source:'inbody', rows: sortByDate(inbody), fallback:false, insufficient:true };
+  return null;
+}
+
+// Weekly rate + absolute change for one metric over a set of SAME-SOURCE readings.
+// Reuses estimateEMATrend (weighted least-squares slope in unit/week) so the coach is
+// handed a finished number and never re-derives a slope from raw points
+// (AI-output-never-trusted-for-app-numbers invariant). Returns null below minPts.
+function bodyCompMetricTrend(rows, field, minPts){
+  minPts = minPts || 3;
+  var pts = (rows||[])
+    .filter(function(r){ return r && r.date && r[field] != null && isFinite(parseFloat(r[field])); })
+    .map(function(r){ return { date:r.date, weight:parseFloat(r[field]) }; })
+    .sort(function(a,b){ return a.date.localeCompare(b.date); });
+  if (pts.length < minPts) return null;
+  var perWeek = estimateEMATrend(pts, Math.min(21, pts.length));
+  var first = pts[0], last = pts[pts.length-1];
+  var spanDays = Math.round((new Date(last.date + 'T12:00:00') - new Date(first.date + 'T12:00:00')) / 86400000);
+  return {
+    perWeek: perWeek == null ? null : +perWeek.toFixed(3),
+    delta: +(last.weight - first.weight).toFixed(2),
+    from: last != first ? first.weight : last.weight,
+    to: last.weight,
+    fromDate: first.date, toDate: last.date,
+    spanDays: spanDays, points: pts.length
+  };
+}
+
+// Build the PROGRESS TREND prompt block: weight (14d EMA) + %BF / muscle / visceral
+// (single-source per pickBodyCompSource) + adherence aggregates over the same window,
+// so the model can explain WHY the trend happened (predicted vs actual) instead of
+// guessing. Every figure is precomputed here. Returns '' when nothing has enough data.
+function buildProgressTrendContext(tdee, goalCal){
+  var today = (typeof localDateStr === 'function') ? localDateStr() : new Date().toISOString().slice(0,10);
+  var lines = [];
+
+  // Weight: 14-day weighted trend from the scale log (single implicit source).
+  var wlog = (typeof WT !== 'undefined' && WT.log && WT.log.length) ? WT.log : safeJSON('gd_weight', []);
+  var w14 = (typeof entriesWithinDays === 'function') ? entriesWithinDays(wlog, 14) : (wlog||[]);
+  var wPerWeek = (w14.length >= 3) ? estimateEMATrend(w14, 14) : null;
+  var latestW = wlog.length ? parseFloat(wlog[wlog.length-1].weight) : (S.profile ? parseFloat(S.profile.weight) : null);
+  if (wPerWeek != null) {
+    var wFirst = parseFloat(w14[0].weight), wLast = parseFloat(w14[w14.length-1].weight);
+    lines.push('• น้ำหนัก (14 วัน, n=' + w14.length + '): ' + (wPerWeek>=0?'+':'') + wPerWeek.toFixed(2) + ' กก./สัปดาห์ | รวม ' + (wLast-wFirst>=0?'+':'') + (wLast-wFirst).toFixed(1) + ' กก. (' + wFirst + ' → ' + wLast + ')');
+  } else {
+    lines.push('• น้ำหนัก: ข้อมูล 14 วันไม่พอสรุปเทรนด์ (ต้องมี ≥3 จุด)');
+  }
+
+  // Body composition metrics — one source each, never mixed.
+  var bc = (typeof getBodyCompLogs === 'function') ? getBodyCompLogs() : safeJSON('gd_body_comp_logs', []);
+  var srcLabel = { inbody:'InBody (เครื่องมืออาชีพ)', eufy:'เครื่องที่บ้าน (BIA)', manual:'กรอกเอง' };
+  [ { field:'bf', name:'%BF', unit:'%' },
+    { field:'smmPct', name:'มวลกล้าม %SMM', unit:'%' },
+    { field:'visceral', name:'Visceral Fat', unit:'' } ].forEach(function(m){
+    var pick = pickBodyCompSource(bc, m.field, 4);
+    if (!pick || pick.insufficient) {
+      if (pick && pick.insufficient) lines.push('• ' + m.name + ': InBody มี ' + pick.rows.length + ' ครั้ง (ต้อง ≥4) และไม่มีเครื่องอื่นพอ — ยังไม่สรุปเทรนด์');
+      return; // no source at all → omit the line entirely
+    }
+    var tr = bodyCompMetricTrend(pick.rows, m.field, 3);
+    if (!tr || tr.perWeek == null) { lines.push('• ' + m.name + ': ข้อมูลไม่พอสรุปเทรนด์ (เครื่องเดียวกัน ≥3 ครั้ง)'); return; }
+    var lbl = srcLabel[pick.source] || pick.source;
+    var caveat = pick.fallback ? ' — อ้างอิง' + lbl + ' ไม่ใช่ InBody ค่าสัมบูรณ์เทียบ InBody ไม่ได้' : '';
+    var flat = Math.abs(tr.perWeek) < 0.02;
+    lines.push('• ' + m.name + ' (' + (pick.source==='inbody'?'InBody':lbl) + ', n=' + tr.points + ', ช่วง ' + tr.spanDays + ' วัน): ' +
+      (flat ? 'คงที่' : ((tr.perWeek>=0?'+':'') + tr.perWeek.toFixed(2) + m.unit + '/สัปดาห์ | รวม ' + (tr.delta>=0?'+':'') + tr.delta + m.unit + ' (' + tr.from + ' → ' + tr.to + ')')) + caveat);
+  });
+
+  // Adherence aggregates over the same 14-day window — the "why" levers.
+  var allMeals = (S && S.meals && S.meals.length) ? S.meals : safeJSON('gd_meals', []);
+  var sumCal = 0, sumPro = 0, loggedDays = 0, trainDays = 0;
+  for (var i = 1; i <= 14; i++) {
+    var d = new Date(); d.setDate(d.getDate() - i);
+    var ds = (typeof localDateStr === 'function') ? localDateStr(d) : d.toISOString().slice(0,10);
+    var dayMeals = allMeals.filter(function(mm){ return mm.date === ds; });
+    if (dayMeals.length) {
+      loggedDays++;
+      dayMeals.forEach(function(mm){ sumCal += (+mm.calories||0); sumPro += (+mm.protein||0); });
+    }
+    if (typeof workoutsForDate === 'function' && workoutsForDate(ds).length) trainDays++;
+  }
+  if (loggedDays >= 3) {
+    var avgCal = Math.round(sumCal / loggedDays);
+    var avgPro = Math.round(sumPro / loggedDays);
+    var adh = 'ADHERENCE 14 วัน: กินเฉลี่ย ' + avgCal + ' kcal/วัน (log ' + loggedDays + '/14 วัน)';
+    if (tdee) {
+      var deficit = Math.round(tdee - avgCal); // + = deficit (under TDEE)
+      var expWk = -(deficit * 7 / 7700); // 7700 kcal ≈ 1 kg
+      adh += ' vs TDEE ' + Math.round(tdee) + ' → ' + (deficit>=0 ? 'deficit เฉลี่ย ~' + deficit : 'surplus เฉลี่ย ~' + Math.abs(deficit)) + ' kcal/วัน → คาดน้ำหนัก ' + (expWk>=0?'+':'') + expWk.toFixed(2) + ' กก./สัปดาห์';
+      if (wPerWeek != null) adh += ' (จริง ' + (wPerWeek>=0?'+':'') + wPerWeek.toFixed(2) + ' กก./สัปดาห์)';
+    }
+    adh += ' | โปรตีนเฉลี่ย ' + avgPro + ' ก./วัน' + (latestW ? ' (' + (avgPro/latestW).toFixed(1) + ' ก./กก.)' : '') + ' | เทรน ' + trainDays + '/14 วัน';
+    var sdebt = (typeof computeSleepDebt === 'function') ? computeSleepDebt(today) : null;
+    if (sdebt && sdebt.hours > 0) adh += ' | Sleep debt สะสม ' + sdebt.hours + ' ชม.';
+    lines.push('• ' + adh);
+  }
+
+  // Nothing but the "not enough data" weight line → not worth a block.
+  var hasSignal = lines.some(function(l){ return l.indexOf('ไม่พอ') === -1; });
+  if (!hasSignal) return '';
+  return 'PROGRESS TREND (ย้อนหลัง — ตัวเลขคำนวณโดยแอปแล้ว ใช้ตรง ๆ ห้ามคำนวณ slope เอง; แต่ละค่ามาจากเครื่องวัดเครื่องเดียว ไม่ปนข้ามเครื่อง):\n' + lines.join('\n') + '\n\n';
 }
 function getSourceAwareStatusText(){
   var c=getBodyCompCalibration();
