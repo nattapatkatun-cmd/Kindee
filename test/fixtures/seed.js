@@ -8,7 +8,13 @@
 // rather than toISOString().
 
 function dateBack(days) {
-  const x = new Date();
+  // Mirror the app's localDateStr(): its day boundary is 04:00 local, not midnight
+  // (subtract 4h first). Without this shift, between 00:00 and 03:59 local the fixture's
+  // "today" was one calendar day — and one weekday — ahead of what the app calls today,
+  // so a rest-day plan keyed to the fixture weekday never matched the app's. That was the
+  // midnight-to-4am flake in the planned-rest-day EA test: a real date-boundary mismatch,
+  // not a random timing issue.
+  const x = new Date(Date.now() - 4 * 60 * 60 * 1000);
   x.setDate(x.getDate() - days);
   return (
     x.getFullYear() +
