@@ -168,6 +168,44 @@ test('changing the calorie goal invalidates the cached analysis', async () => {
   await page.close();
 });
 
+test('STATUS follows the smoothed 21d EMA, not a single-day scale spike', async () => {
+  // The reported split: a lone water-drop makes the raw 7-day slope read steeper than
+  // -1.0 kg/wk ("Losing Fast"), while the 21-day EMA the forecast/ACTION already use is
+  // mild. STATUS must speak the same (EMA) signal, or it contradicts its own advice.
+  const seed = buildSeed();
+  // Twenty flat mornings at 75.7 kg, then one 74.2 kg reading today — a 1.5 kg overnight
+  // "drop" that is water, not fat. The 7-day regression turns sharply negative; the 21-day
+  // EMA barely moves.
+  seed.gd_weight = [];
+  for (let i = 20; i >= 0; i--) {
+    seed.gd_weight.push({
+      id: 2000 + i, date: dateBack(i), time: '07:30',
+      weight: i === 0 ? 74.2 : 75.7, waist: 84, note: '',
+    });
+  }
+
+  const page = await openApp(browser, seed);
+  const data = await page.evaluate(() => {
+    showPage('weight');
+    if (typeof initWeightTab === 'function') initWeightTab();
+    runWeightAnalysis();
+    const d = window._wtAnalysisData || {};
+    return { statusLabel: d.statusLabel, trendPerWeek: d.trendPerWeek, ema21PerWeek: d.ema21PerWeek, suppress: d.suppressRecommend };
+  });
+
+  // Preconditions that make this a real test of the fix, not an accident of the seed:
+  assert.ok(!data.suppress, 'the seed must reach the trend-classified branch, not a suppressed one');
+  assert.ok(data.trendPerWeek < -1.0, `raw 7-day slope must be in "Losing Fast" territory, got ${data.trendPerWeek}`);
+  assert.ok(data.ema21PerWeek !== null && data.ema21PerWeek > -1.0, `21d EMA must be milder than the raw slope, got ${data.ema21PerWeek}`);
+
+  // The fix: STATUS reflects the mild EMA, so it is NOT the alarmist raw-slope verdict.
+  assert.notStrictEqual(data.statusLabel, 'Losing Fast ⚠️', 'STATUS must not fire on the raw one-day spike');
+  assert.match(data.statusLabel, /On Track|Slow Progress|Plateau|Recomp/, 'STATUS is an EMA-consistent verdict');
+
+  await noErrors(page, 'EMA-based STATUS');
+  await page.close();
+});
+
 test('a stale calorie goal cannot push the required deficit past the 25%-of-TDEE safety cap', async () => {
   // Regression: requiredDeficit is derived from the user's committed Settings goal, but
   // that goal can go stale as Adaptive TDEE drifts upward after it was set. The

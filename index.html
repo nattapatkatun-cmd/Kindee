@@ -4660,9 +4660,12 @@ function isRecompHoldState() {
   var tgtW = ft.weight != null ? parseFloat(ft.weight) : null;
   var tgtBF = ft.bf != null ? parseFloat(ft.bf) : null;
   var curBF = ft.currBF != null ? parseFloat(ft.currBF) : null;
-  var lastW = (typeof getLatestCheckinWeight === 'function') ? parseFloat(getLatestCheckinWeight()) : (profile.weight != null ? parseFloat(profile.weight) : null);
-  if (tgtW == null || isNaN(tgtW) || lastW == null || isNaN(lastW) || tgtBF == null || isNaN(tgtBF) || curBF == null || isNaN(curBF)) return false;
-  return lastW <= tgtW + 0.3 && curBF > tgtBF + 0.3;
+  // Smoothed weight, not the raw last reading — a single low morning must not trip goal-met.
+  var curW = (typeof getSmoothedRecentWeight === 'function') ? parseFloat(getSmoothedRecentWeight())
+           : (typeof getLatestCheckinWeight === 'function') ? parseFloat(getLatestCheckinWeight())
+           : (profile.weight != null ? parseFloat(profile.weight) : null);
+  if (tgtW == null || isNaN(tgtW) || curW == null || isNaN(curW) || tgtBF == null || isNaN(tgtBF) || curBF == null || isNaN(curBF)) return false;
+  return curW <= tgtW + 0.3 && curBF > tgtBF + 0.3;
 }
 // dateStr is optional — defaults to today (see isTodayRestDayByPlan above).
 function getDayTypeAdjGoal(dateStr) {
@@ -6324,6 +6327,27 @@ function getLatestCheckinWeight() {
 function profileSafe() {
   return S.profile || safeJSON('gd_profile', {}) || {};
 }
+// A noise-robust "current weight" for goal-met decisions. A single latest reading swings
+// with hydration/glycogen, so one low morning can falsely trip "reached target" (the
+// "ถึงเป้าปลอม" bug). This returns an EMA over the most recent readings within `days`
+// (default 10), newest weighted most — the value maintenance/recomp triggers should compare
+// against the goal weight, NEVER a lone reading and never a %BF/LBM-derived guess. Falls back
+// to the latest reading, then profile weight, so callers always get a number when any exists.
+function getSmoothedRecentWeight(days) {
+  days = days || 10;
+  var log = (typeof WT !== 'undefined' && WT.log && WT.log.length) ? WT.log : safeJSON('gd_weight', []);
+  var entries = (typeof entriesWithinDays === 'function') ? entriesWithinDays(log, days) : null;
+  if (!entries || !entries.length) return getLatestCheckinWeight();
+  // entriesWithinDays returns oldest-first; EMA forward so the newest reading dominates.
+  var alpha = 2 / (entries.length + 1);
+  var ema = null;
+  for (var i = 0; i < entries.length; i++) {
+    var w = parseFloat(entries[i].weight);
+    if (isNaN(w)) continue;
+    ema = (ema === null) ? w : (alpha * w + (1 - alpha) * ema);
+  }
+  return ema !== null ? ema : getLatestCheckinWeight();
+}
 function syncProfileWeightFromLatestCheckin() {
   var w = getLatestCheckinWeight();
   if (!w) return null;
@@ -6432,6 +6456,14 @@ function buildGoalFromMode(mode, profile, tdee) {
     pro = Math.round(lbm * (cfg.proteinPerKg + 0.4));
     proteinBasis = 'lbm';
   }
+  // Hard ceiling at 2.2 g/kg BODYWEIGHT. For a very lean user the LBM basis above
+  // (proteinPerKg + 0.4 g/kg LBM) can drift past ~2.3 g/kg BW — more protein than the
+  // deficit-athlete range needs, and it crowds out the carbs that fund training. Capping
+  // at 2.2 g/kg BW keeps the proposed target inside the Helms 2.3–3.1 g/kg FFM band for a
+  // normal-to-lean %BF while stopping the number ballooning (the "168 g lifted wholesale"
+  // case). Never below the per-mode intent, so this only ever trims, never raises.
+  var proCapBW = Math.round(weight * 2.2);
+  if (pro > proCapBW) { pro = proCapBW; proteinBasis = proteinBasis + '_capped'; }
   var fat = Math.max(Math.round(weight * cfg.fatPerKg), Math.round(weight * 0.7));
   var crb = Math.round((cal - (pro*4) - (fat*9)) / 4);
   if (crb < 80) {
@@ -11835,6 +11867,39 @@ function _linReg(entries) {
   return den===0 ? 0 : (num/den)*7;
 }
 
+// Issue 2 gate: is the engine's suggested calorie change smaller than the user's own
+// day-to-day intake swing? A "+N kcal" below the intake standard deviation is noise, not a
+// signal — prescribing it just chases variance (the "+306 kcal under ±394 variance" case).
+// True ⇒ hold the committed goal instead of moving it. Zero/no suggestion is never "in noise".
+function isSuggestedChangeInNoise(suggestedCalChange, intakeVarianceKcal) {
+  return suggestedCalChange != null && suggestedCalChange > 0
+    && intakeVarianceKcal != null && suggestedCalChange < intakeVarianceKcal;
+}
+// Pure on-track/status classifier. Takes the SMOOTHED trend (EMA 21d when available) so
+// STATUS and the ACTION/forecast — which are already driven by the EMA-blended Adaptive
+// TDEE — read the same signal instead of judging you on a noisy 7-day scale slope. The raw
+// scale trend is still shown separately as secondary context, never as the verdict.
+// requiredWeeklyLoss is negative for a loss goal. Returns { isOnTrack, label, color }.
+function classifyWeightStatus(trend, goalMode, requiredWeeklyLoss) {
+  var isOnTrack;
+  if (goalMode === 'maintain') {
+    isOnTrack = Math.abs(trend) <= 0.25;
+  } else if (goalMode === 'lean_gain') {
+    isOnTrack = trend >= 0.05 && trend <= 0.45;
+  } else {
+    var threshold = requiredWeeklyLoss * 0.6; // e.g. target -0.41/wk, on track if <= -0.25/wk
+    isOnTrack = trend <= threshold && trend >= -1.0;
+  }
+  var label, color;
+  if (isOnTrack) { label = 'On Track ✅'; color = '#22c55e'; }
+  else if (goalMode === 'lean_gain' && trend < 0.05) { label = 'Not Gaining ⚠️'; color = '#f59e0b'; }
+  else if (goalMode === 'maintain' && Math.abs(trend) > 0.25) { label = 'Drifting ⚠️'; color = '#f59e0b'; }
+  else if (trend < -1.0) { label = 'Losing Fast ⚠️'; color = '#f59e0b'; } // faster than the safe cap — not "slow"
+  else if (trend < -0.25) { label = 'Slow Progress ⚠️'; color = '#f59e0b'; }
+  else if (trend <= 0.25) { label = 'Plateau ➡️'; color = '#f59e0b'; }
+  else { label = 'Gaining ⬆️'; color = '#ef4444'; }
+  return { isOnTrack: isOnTrack, label: label, color: color };
+}
 function buildAnalysisHTML(recent) {
   var n = recent.length;
   var lastW = recent[n-1].weight;
@@ -11848,7 +11913,10 @@ function buildAnalysisHTML(recent) {
   // Trend via linear regression (last 7 or all if fewer) + 21d smoothing context
   var trendSrc = isLimited ? recent : recent.slice(-7);
   var trendPerWeek = _linReg(trendSrc);
-  var trend21PerWeek = _linReg(entriesWithinDays(WT.log, 21));
+  // ONE canonical 21-day figure. The tile, the calorie breakdown, the AI prompt and
+  // _wtAnalysisData all read this same EMA slope — a plain linear-regression 21d value
+  // used to sit alongside it (tile said one number, breakdown said another for the same
+  // "21 days"). EMA is the one kept because it is also what the Adaptive-TDEE blend uses.
   var ema21PerWeek = estimateEMATrend(entriesWithinDays(WT.log, 21), 21);
   var sourceCal = getBodyCompCalibration();
   var visualAnalysis = getLatestVisualAnalysis();
@@ -12093,8 +12161,14 @@ function buildAnalysisHTML(recent) {
   var tgtWforGoal = ftForRecomp.weight ? parseFloat(ftForRecomp.weight) : null;
   var curBFforGoal = ftForRecomp.currBF != null ? parseFloat(ftForRecomp.currBF) : null;
   var tgtBFforGoal = ftForRecomp.bf != null ? parseFloat(ftForRecomp.bf) : null;
+  // Goal-met is judged on a SMOOTHED weight, not lastW (the single most recent reading):
+  // one low morning from water/glycogen must not declare "ถึงเป้าแล้ว" and flip the whole
+  // plan to maintenance. EMA weight ≤ goal weight is the trigger; %BF only decides recomp
+  // (fat still to lose) vs plain maintenance below — it never declares the weight goal met.
+  var smoothedWforGoal = (typeof getSmoothedRecentWeight === 'function') ? parseFloat(getSmoothedRecentWeight()) : lastW;
+  if (smoothedWforGoal == null || isNaN(smoothedWforGoal)) smoothedWforGoal = lastW;
   var recompHold = (goalMode === 'fat_loss' || goalMode === 'recomp')
-    && tgtWforGoal != null && lastW != null && lastW <= tgtWforGoal + 0.3
+    && tgtWforGoal != null && smoothedWforGoal != null && smoothedWforGoal <= tgtWforGoal + 0.3
     && tgtBFforGoal != null && curBFforGoal != null && curBFforGoal > tgtBFforGoal + 0.3;
   var recompDeficit = 0;
   if (recompHold) {
@@ -12104,13 +12178,22 @@ function buildAnalysisHTML(recent) {
     // muscle. Whichever number we land on, the sync button / analysis text / AI all
     // quote it (engineRecommendedIntake is realigned below) so the plan is self-consistent.
     recompDeficit = trueTDEE != null ? Math.max(150, Math.min(250, Math.round(trueTDEE * 0.10))) : 0;
-    var recompWeightUnder = (tgtWforGoal != null && lastW < tgtWforGoal - 0.5);
+    var recompWeightUnder = (tgtWforGoal != null && smoothedWforGoal < tgtWforGoal - 0.5);
     var recompDroppingFast = (trendPerWeek != null && trendPerWeek <= -0.4);
     if (recompWeightUnder || recompDroppingFast) recompDeficit = 0; // already losing → hold at maintenance
     requiredDeficit = recompDeficit;
     if (trueTDEE != null) recommendedIntake = Math.round(trueTDEE - recompDeficit);
     engineRecommendedIntake = recommendedIntake;
   }
+  // Issue 2: only prescribe a calorie CHANGE when the signal clears the day-to-day intake
+  // noise. calVariance is the SD of the user's own net intake across the window; if the
+  // engine's suggested new target differs from the committed goal by less than that SD, the
+  // "+N kcal" it wants is smaller than the user's normal daily swing — prescribing it chases
+  // noise (the "+306 kcal" advice sitting under a ±394 kcal intake variance). In that case we
+  // hold the committed goal and say the data is not yet decisive, rather than move the target.
+  var intakeVarianceKcal = (calDays.length > 1) ? Math.round(calVariance) : null;
+  var suggestedCalChange = (engineRecommendedIntake != null && userGoalCal != null) ? Math.abs(engineRecommendedIntake - userGoalCal) : null;
+  var changeInNoise = isSuggestedChangeInNoise(suggestedCalChange, intakeVarianceKcal);
   var requiredWeeklyLoss = -(requiredDeficit * 7 / 7700); // negative = loss, positive = gain
   var targetW = (window._fitnessTarget && window._fitnessTarget.weight) ? parseFloat(window._fitnessTarget.weight) : null;
   var durationWks = (window._fitnessTarget && window._fitnessTarget.duration) ? parseFloat(window._fitnessTarget.duration) : null;
@@ -12208,28 +12291,20 @@ function buildAnalysisHTML(recent) {
     statusNote='ข้อมูล '+n+' วัน — บันทึกต่อเนื่องเพื่อ accuracy สูงขึ้น';
     suppressRecommend=false;
   } else {
-    var isOnTrack=false;
-    if(goalMode==='maintain'){
-      isOnTrack = Math.abs(trendPerWeek) <= 0.25;
-    } else if(goalMode==='lean_gain'){
-      isOnTrack = trendPerWeek >= 0.05 && trendPerWeek <= 0.45;
-    } else {
-      var threshold = requiredWeeklyLoss * 0.6; // e.g. target -0.41/wk, on track if <= -0.25/wk
-      isOnTrack = trendPerWeek <= threshold && trendPerWeek >= -1.0;
-    }
+    // STATUS runs on the SMOOTHED trend (EMA 21d when we have it), the same signal the
+    // forecast/Adaptive-TDEE already use — so STATUS and ACTION stop disagreeing (the
+    // "-1.01 raw scale vs -0.28 EMA" split). The raw 7-day scale trend stays visible in its
+    // own tile as secondary context, never as the verdict. Falls back to the 7d trend only
+    // when there is no EMA (too few points in 21 days).
+    var trendForStatus = (ema21PerWeek !== null && ema21PerWeek !== undefined) ? ema21PerWeek : trendPerWeek;
+    var cls = classifyWeightStatus(trendForStatus, goalMode, requiredWeeklyLoss);
     if(recompHold){
       // Weight target met → holding weight IS on-track for recomposition; losing
       // further just drops below the weight target.
-      if(trendPerWeek < -0.35){ statusLabel='Recomp · น้ำหนักหลุดต่ำ ⚠️'; statusColor='#f59e0b'; }
-      else { statusLabel='Recomp 🔄'; statusColor='#22c55e'; isOnTrack=true; }
+      if(trendForStatus < -0.35){ statusLabel='Recomp · น้ำหนักหลุดต่ำ ⚠️'; statusColor='#f59e0b'; }
+      else { statusLabel='Recomp 🔄'; statusColor='#22c55e'; }
     }
-    else if(isOnTrack){ statusLabel='On Track ✅'; statusColor='#22c55e'; }
-    else if(goalMode==='lean_gain' && trendPerWeek < 0.05){ statusLabel='Not Gaining ⚠️'; statusColor='#f59e0b'; }
-    else if(goalMode==='maintain' && Math.abs(trendPerWeek)>0.25){ statusLabel='Drifting ⚠️'; statusColor='#f59e0b'; }
-    else if(trendPerWeek < -1.0){ statusLabel='Losing Fast ⚠️'; statusColor='#f59e0b'; } // faster than the safe cap — not "slow"
-    else if(trendPerWeek<-0.25){ statusLabel='Slow Progress ⚠️'; statusColor='#f59e0b'; }
-    else if(trendPerWeek<=0.25){ statusLabel='Plateau ➡️'; statusColor='#f59e0b'; }
-    else { statusLabel='Gaining ⬆️'; statusColor='#ef4444'; }
+    else { statusLabel=cls.label; statusColor=cls.color; }
   }
   var isOnTrack = !suppressRecommend && (statusLabel.indexOf('On Track')>=0 || statusLabel==='Recomp 🔄');
 
@@ -12287,8 +12362,9 @@ function buildAnalysisHTML(recent) {
     forecast7d:forecast7d, forecastLabel:forecastLabel, currentPace7d:currentPace7d, tdeeSignalClamped:tdeeSignalClamped, aiEligible:aiEligible,
     goalMode:goalMode, goalModeLabel:goalCfg.label, centralGoal:centralGoalForAnalysis,
     recompHold:recompHold, userGoalCal:userGoalCal, engineRecommendedIntake:engineRecommendedIntake,
+    changeInNoise:changeInNoise, suggestedCalChange:suggestedCalChange, intakeVarianceKcal:intakeVarianceKcal,
     confidencePct:confidencePct, // [6] fix: was missing
-    statusLabel:statusLabel, inconsistent:inconsistent, retentionRange:retentionRange, waistPerWeek:waistPerWeek, trend21PerWeek:trend21PerWeek, ema21PerWeek:ema21PerWeek, sourceCalibration:getSourceAwareStatusText(), visualSignal:visualAnalysis ? (visualAnalysis.summary||visualAnalysis.visualTrend||'available') : 'N/A', dataError:dataError,
+    statusLabel:statusLabel, inconsistent:inconsistent, retentionRange:retentionRange, waistPerWeek:waistPerWeek, ema21PerWeek:ema21PerWeek, sourceCalibration:getSourceAwareStatusText(), visualSignal:visualAnalysis ? (visualAnalysis.summary||visualAnalysis.visualTrend||'available') : 'N/A', dataError:dataError,
     suppressRecommend:suppressRecommend, recent:recent
   };
   saveAnalyzerCalorieContext(window._wtAnalysisData);
@@ -12378,9 +12454,9 @@ function buildAnalysisHTML(recent) {
   html+='<div style="flex:1;min-width:0;background:var(--surface2);border-radius:12px;padding:8px 10px;display:flex;align-items:center;justify-content:space-between;"><span style="font-size:11px;color:var(--text3);">น้ำหนัก variance</span><span style="font-size:12px;font-weight:700;color:'+(wVariance<0.5?'var(--green)':wVariance<1?'var(--yellow)':'var(--red)')+';">±'+wVariance.toFixed(2)+' กก.</span></div>';
   html+='<div style="flex:1;min-width:0;background:var(--surface2);border-radius:12px;padding:8px 10px;display:flex;align-items:center;justify-content:space-between;"><span style="font-size:11px;color:var(--text3);">Intake variance</span><span style="font-size:12px;font-weight:700;color:'+(calVariance<300?'var(--green)':calVariance<600?'var(--yellow)':'var(--red)')+';">'+(calDays.length>0?'±'+Math.round(calVariance)+' kcal':'—')+'</span></div>';
   html+='</div>';
-  if(waistPerWeek!==null || trend21PerWeek){
+  if(waistPerWeek!==null || ema21PerWeek!==null){
     html+='<div style="display:flex;gap:8px;margin-bottom:10px;">';
-    html+='<div style="flex:1;min-width:0;background:var(--surface2);border-radius:12px;padding:8px 10px;display:flex;align-items:center;justify-content:space-between;"><span style="font-size:11px;color:var(--text3);">21d trend</span><span style="font-size:12px;font-weight:700;color:var(--blue);">'+(trend21PerWeek>=0?'+':'')+trend21PerWeek.toFixed(2)+' กก./wk</span></div>';
+    html+='<div style="flex:1;min-width:0;background:var(--surface2);border-radius:12px;padding:8px 10px;display:flex;align-items:center;justify-content:space-between;"><span style="font-size:11px;color:var(--text3);">21d EMA trend</span><span style="font-size:12px;font-weight:700;color:var(--blue);">'+(ema21PerWeek!==null?((ema21PerWeek>=0?'+':'')+ema21PerWeek.toFixed(2)+' กก./wk'):'—')+'</span></div>';
     html+='<div style="flex:1;min-width:0;background:var(--surface2);border-radius:12px;padding:8px 10px;display:flex;align-items:center;justify-content:space-between;"><span style="font-size:11px;color:var(--text3);">Waist trend</span><span style="font-size:12px;font-weight:700;color:'+(waistPerWeek!==null?(waistPerWeek<0?'var(--green)':waistPerWeek>0?'var(--red)':'var(--yellow)'):'var(--text3)')+';">'+(waistPerWeek!==null?((waistPerWeek>=0?'+':'')+waistPerWeek.toFixed(2)+' ซม./wk'):'—')+'</span></div>';
     html+='</div>';
   }
@@ -12404,7 +12480,7 @@ function buildAnalysisHTML(recent) {
   html+='• Estimated Deficit: <strong>'+(actualDeficit!==null?Math.round(actualDeficit)+(inconsistent?' ⚠️ (ขัดกับ trend)':'')+' kcal/วัน':'—')+'</strong> <span style="color:var(--text3);">(TDEE − intake ดิบ · NEAT/workout รวมใน TDEE แล้ว)</span><br>';
   html+='• Retention context: <strong style="color:'+retentionRange.label.color+';">'+retentionRange.avgScore+'% · '+retentionRange.label.th+'</strong> ('+retentionRange.highDays+' high-risk days)<br>';
   if(waistPerWeek!==null) html+='• Waist trend: <strong>'+(waistPerWeek>=0?'+':'')+waistPerWeek.toFixed(2)+' ซม./wk</strong><br>';
-  if(ema21PerWeek!==null) html+='• EMA 21d trend: <strong>'+(ema21PerWeek>=0?'+':'')+ema21PerWeek.toFixed(2)+' กก./wk</strong><br>';
+  // 21d EMA already shown in its own tile above — not repeated here to keep one number, one place.
   if(sourceCal && sourceCal.preferred) html+='• Source calibration: <strong>'+getSourceAwareStatusText()+'</strong><br>';
   if(visualAnalysis) html+='• Visual signal: <strong>'+(visualAnalysis.summary||visualAnalysis.visualTrend||'available')+'</strong><br>';
   if(recompHold){
@@ -12467,7 +12543,11 @@ function buildAnalysisHTML(recent) {
     // ACTION
     html+='<div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:0.5px;margin:8px 0 6px;">ACTION</div>';
     html+='<div style="padding:10px;background:var(--surface2);border-radius:12px;font-size:12px;color:var(--text2);line-height:1.7;margin-bottom:10px;">';
-    if(recommendedIntake!==null){
+    if(changeInNoise){
+      // The suggested change is smaller than the user's own intake variance — hold, don't chase noise.
+      html+='• <strong>คงเป้าไว้ก่อน</strong> — ส่วนต่างที่แนะนำ (±'+suggestedCalChange+' kcal) ยังเล็กกว่าความแกว่งของ intake (±'+intakeVarianceKcal+' kcal/วัน) จึงยังไม่ชัดพอจะปรับเป้า เก็บข้อมูลให้สม่ำเสมออีกสักระยะ<br>';
+      html+='• เป้าปัจจุบัน: <strong>'+(userGoalCal!=null?userGoalCal:recommendedIntake)+' kcal/วัน</strong>'+(calDays.length>0?' (ปัจจุบัน '+Math.round(avgIntake)+')':'')+'<br>';
+    } else if(recommendedIntake!==null){
       var intakeSuffix=calDays.length>0?' (ปัจจุบัน '+Math.round(avgIntake)+')':(trueTDEE?' (จาก TDEE '+trueTDEE+')':'');
       html+='• Intake ที่แนะนำ: <strong>'+recommendedIntake+' kcal/วัน</strong>'+intakeSuffix+'<br>';
     }
@@ -12478,9 +12558,11 @@ function buildAnalysisHTML(recent) {
     }
     html+='</div>';
 
-    // Sync button — offers the Goal Engine's suggestion, shown only when it
-    // actually differs from the goal the user already set (otherwise it's a no-op).
-    if(engineRecommendedIntake!==null && engineRecommendedIntake!==userGoalCal){
+    // Sync button — offers the Goal Engine's suggestion, shown only when it actually differs
+    // from the goal the user already set (otherwise it's a no-op) AND the difference clears
+    // the intake noise (Issue 2): a change smaller than the user's own daily swing isn't a
+    // signal worth acting on, so we hold the committed goal instead of offering to move it.
+    if(engineRecommendedIntake!==null && engineRecommendedIntake!==userGoalCal && !changeInNoise){
       html+='<button onclick="syncRecommendedCalToGoal('+engineRecommendedIntake+')" style="width:100%;padding:10px;background:var(--green);border:none;border-radius:12px;color:white;font-family:inherit;font-size:13px;font-weight:700;cursor:pointer;margin-bottom:10px;transition:all 0.2s;" onmouseover="this.style.opacity=\'0.85\'" onmouseout="this.style.opacity=\'1\'">⚙️ ปรับเป้าเป็น '+engineRecommendedIntake+' kcal + macro ตาม Goal Engine</button>';
     }
   }
@@ -12571,7 +12653,7 @@ function runAIWeightDeepDive() {
     +'- Avg net cal: '+(d.avgNetCal||'?')+' kcal\n'
     +'- Actual deficit (TDEE − gross intake): '+(d.actualDeficit!==null&&d.actualDeficit!==undefined?d.actualDeficit:'?')+' kcal/day\n'
     +'- Required deficit: '+(d.requiredDeficit||'?')+' kcal/day\n'
-    +'- Recommended intake: '+(d.suppressRecommend?'SUPPRESSED — do not recommend calorie change':d.recommendedIntake||'?')+' kcal/day\n'
+    +'- Recommended intake: '+(d.suppressRecommend?'SUPPRESSED — do not recommend calorie change':(d.changeInNoise?'HOLD at the committed goal ('+(d.userGoalCal||d.recommendedIntake||'?')+' kcal) — the suggested change (±'+d.suggestedCalChange+' kcal) is smaller than intake variance (±'+d.intakeVarianceKcal+' kcal/day), so do NOT prescribe a calorie change; advise keeping the goal and logging consistently':(d.recommendedIntake||'?')+' kcal/day'))+'\n'
     +'- Forecast (goal-engine): '+(d.forecast7d||'?')+' kg/week\n'
     +'- Log rate: '+(d.logRate!==undefined?Math.round(d.logRate*100)+'%':'?')+' of days in window\n'
     +'- Data Error: '+(d.dataError?'YES — duplicate meals detected on '+d.dupDays+' day(s)':'NO')+'\n'
