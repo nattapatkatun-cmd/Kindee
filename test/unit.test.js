@@ -110,6 +110,120 @@ test('buildGoalFromMode keeps calories and macros reconciled', () => {
   }
 });
 
+test('buildGoalFromMode caps proposed protein at 2.2 g/kg bodyweight', () => {
+  const ctx = load(
+    ['buildGoalFromMode', 'getGoalModeConfig', 'normalizeGoalMode', 'calcBMRFromProfile', 'getActivityMultiplier', 'calcFormulaTDEE'],
+    {
+      prelude: `
+        var MOCK = { weight: 63, bf: 11 };
+        var S = { profile: {}, goals: { cal: 2500 } };
+        function getLatestCheckinWeight(){ return MOCK.weight; }
+        function safeJSON(k, d){ return d; }
+        function getLatestBodyCompBySource(){ return MOCK.bf != null ? { bf: MOCK.bf } : null; }
+        function readAnalyzerContext(){ return null; }`,
+    }
+  );
+  // Very lean recomp user: LBM = 63×0.89 = 56.07, ×(2.2+0.4 g/kg LBM) = 146 g ≈ 2.32 g/kg BW,
+  // above the 2.2 g/kg BW ceiling. Pre-cap code prescribed the full 146 g ("lifted wholesale").
+  const profile = { age: 30, weight: 63, height: 172, gender: 'male', activity: 1.55, goalType: 'recomp' };
+  const g = ctx.buildGoalFromMode('recomp', profile, 2500);
+  const cap = Math.round(63 * 2.2); // 139
+  assert.ok(g.pro <= cap, `protein must not exceed 2.2 g/kg BW (${cap}g), got ${g.pro}g`);
+  assert.strictEqual(g.pro, cap, 'a lean LBM basis is trimmed to exactly the 2.2 g/kg BW ceiling');
+  assert.ok(/capped/.test(g.proteinBasis), 'the cap is reported honestly in proteinBasis');
+  // Macros must still reconcile (CLAUDE.md invariant).
+  assert.ok(Math.abs((g.pro * 4 + g.crb * 4 + g.fat * 9) - g.cal) <= 15, 'macros reconcile after the cap');
+
+  // A higher-%BF user is nowhere near the ceiling → untouched.
+  ctx.MOCK.weight = 90; ctx.MOCK.bf = 30;
+  const heavy = ctx.buildGoalFromMode('recomp', { age: 30, weight: 90, height: 178, gender: 'male', activity: 1.55 }, 2600);
+  assert.ok(!/capped/.test(heavy.proteinBasis), 'the cap only trims; it never binds a normal-%BF target');
+});
+
+// ── Goal-engine: smoothed weight for the maintenance/recomp trigger ──────────────
+function loadRecompTrigger() {
+  return load(
+    ['isRecompHoldState', 'getSmoothedRecentWeight', 'entriesWithinDays', 'getLatestCheckinWeight', 'normalizeGoalMode'],
+    {
+      prelude: `
+        var MOCK = { log: [], ft: null, today: '2026-09-03' };
+        function localDateStr(){ return MOCK.today; }
+        var WT = { get log(){ return MOCK.log; } };
+        var S = { profile: { goalType: 'recomp' } };
+        var window = { get _fitnessTarget(){ return MOCK.ft; } };
+        function safeJSON(k, d){ if (k === 'gd_weight') return MOCK.log; if (k === 'gd_profile') return S.profile; return d; }
+        function profileSafe(){ return S.profile; }`,
+    }
+  );
+}
+function buildWeightLog(priorW, lastW) {
+  const out = [];
+  for (let i = 12; i >= 0; i--) {
+    const d = new Date('2026-09-03T12:00:00');
+    d.setDate(d.getDate() - i);
+    out.push({ date: d.toISOString().slice(0, 10), time: '07:30', weight: i === 0 ? lastW : priorW });
+  }
+  return out;
+}
+
+test('getSmoothedRecentWeight is not dragged to a single low reading', () => {
+  const ctx = loadRecompTrigger();
+  ctx.MOCK.log = buildWeightLog(64.0, 62.9); // twelve days at 64.0, one 62.9 water dip
+  const smoothed = ctx.getSmoothedRecentWeight();
+  assert.ok(smoothed > 63.3, `a lone 62.9 must not pull the smoothed weight under 63.3, got ${smoothed.toFixed(2)}`);
+  assert.ok(smoothed < 64.05, 'still tracks the recent level, not stuck at the old mean');
+  assert.strictEqual(ctx.getLatestCheckinWeight(), 62.9, 'the raw last reading really is the 62.9 dip');
+});
+
+test('recomp/maintenance trigger judges goal-met on the smoothed weight, not one reading', () => {
+  const ctx = loadRecompTrigger();
+  ctx.MOCK.ft = { weight: 63, bf: 12, currBF: 15 }; // %BF still above goal → recomp candidate
+  // One 62.9 morning dips to/under the 63.3 tolerance, but the body is really ~63.8.
+  ctx.MOCK.log = buildWeightLog(64.0, 62.9);
+  assert.strictEqual(ctx.isRecompHoldState(), false,
+    'a single low reading must not declare the weight goal met (the "ถึงเป้าปลอม" bug)');
+
+  // Genuinely at target for a sustained stretch → the trigger fires as intended.
+  ctx.MOCK.log = buildWeightLog(63.0, 62.9);
+  assert.strictEqual(ctx.isRecompHoldState(), true,
+    'once the smoothed weight is actually at goal (and %BF still high) recomp-hold engages');
+});
+
+// ── Goal-engine: STATUS classifier runs on the smoothed trend ────────────────────
+test('classifyWeightStatus separates a mild EMA trend from a noisy raw slope', () => {
+  const { classifyWeightStatus } = load(['classifyWeightStatus']);
+  const reqLoss = -0.41; // fat-loss goal: on-track threshold = -0.246 kg/wk
+
+  // The smoothed 21d EMA (~-0.28) the ACTION/forecast already use → On Track.
+  const ema = classifyWeightStatus(-0.28, 'fat_loss', reqLoss);
+  assert.strictEqual(ema.label, 'On Track ✅');
+  assert.ok(ema.isOnTrack);
+
+  // The raw 7-day scale slope on the same day (~-1.01, a water drop) would read as the
+  // alarmist "Losing Fast" — the split the user saw between STATUS and ACTION.
+  const raw = classifyWeightStatus(-1.01, 'fat_loss', reqLoss);
+  assert.strictEqual(raw.label, 'Losing Fast ⚠️');
+  assert.ok(!raw.isOnTrack);
+
+  // Maintain and lean-gain keep their own bands.
+  assert.strictEqual(classifyWeightStatus(0.1, 'maintain', 0).label, 'On Track ✅');
+  assert.strictEqual(classifyWeightStatus(0.6, 'maintain', 0).label, 'Drifting ⚠️');
+  assert.strictEqual(classifyWeightStatus(0.0, 'lean_gain', 0).label, 'Not Gaining ⚠️');
+});
+
+test('isSuggestedChangeInNoise holds the goal when the change is inside intake variance', () => {
+  const { isSuggestedChangeInNoise } = load(['isSuggestedChangeInNoise']);
+  // The reported case: a +306 kcal suggestion under a ±394 kcal intake swing is noise → hold.
+  assert.strictEqual(isSuggestedChangeInNoise(306, 394), true, 'change < variance ⇒ in noise, hold');
+  // A change that clears the swing is a real signal → act on it.
+  assert.strictEqual(isSuggestedChangeInNoise(500, 394), false, 'change > variance ⇒ act');
+  assert.strictEqual(isSuggestedChangeInNoise(394, 394), false, 'equal is not "inside" the swing');
+  // No change / no variance data is never "in noise".
+  assert.strictEqual(isSuggestedChangeInNoise(0, 394), false, 'a zero suggestion is not a suppressed signal');
+  assert.strictEqual(isSuggestedChangeInNoise(null, 394), false);
+  assert.strictEqual(isSuggestedChangeInNoise(200, null), false, 'no variance sample ⇒ do not claim noise');
+});
+
 // ── Sleep ─────────────────────────────────────────────────────────────────────
 test('scoreDuration ranks oversleep below a solid night and grades short nights', () => {
   const { scoreDuration } = load(['scoreDuration']);
