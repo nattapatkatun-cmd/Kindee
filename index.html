@@ -5016,10 +5016,14 @@ function refreshCard(btn, fn) {
 // dominated by hydration noise). A >1.5% lean drop triggers a warning; if the
 // strength log's e1RM verdicts are also mostly regressing, the drop is treated
 // as real muscle loss rather than device noise.
-function checkLeanMassGuard() {
-  var mode = normalizeGoalMode(profileSafe().goalType);
-  if (mode !== 'fat_loss' && mode !== 'recomp') return null;
-  var logs = getBodyCompLogs().filter(function(x){ return x.source === 'inbody' && x.bf != null && x.weight; });
+// Lean-mass change between the two most recent InBody readings ≥14 days apart, MODE-AGNOSTIC.
+// dropPct is POSITIVE when lean mass fell (the direction the guards care about), negative when
+// it rose. Returns null when there isn't enough InBody data to judge. checkLeanMassGuard and
+// the composite verdict (compositionGuards) both read this ONE computation, so the "On Track"
+// label and the red lean-mass note beneath it can never disagree. (CLAUDE.md: one goal, many
+// readers — the lean-mass number had lived only inside the cut-only guard.)
+function getLeanMassChange() {
+  var logs = ((typeof getBodyCompLogs === 'function') ? getBodyCompLogs() : []).filter(function(x){ return x.source === 'inbody' && x.bf != null && x.weight; });
   if (logs.length < 2) return null;
   var last = logs[logs.length-1], prev = null;
   for (var i = logs.length-2; i >= 0; i--) {
@@ -5030,7 +5034,6 @@ function checkLeanMassGuard() {
   var leanLast = last.weight * (1 - last.bf/100);
   if (!leanPrev || leanPrev <= 0) return null;
   var dropPct = (leanPrev - leanLast) / leanPrev * 100;
-  if (dropPct < 1.5) return null;
   var verdicts = { up:0, down:0, plateau:0 };
   try {
     var ids = {};
@@ -5039,13 +5042,53 @@ function checkLeanMassGuard() {
   } catch(e) {}
   var checked = verdicts.up + verdicts.down + verdicts.plateau;
   var strengthConfirms = checked >= 3 && verdicts.down > verdicts.up;
+  return { dropPct:dropPct, leanPrev:leanPrev, leanLast:leanLast, prevDate:prev.date, lastDate:last.date, strengthConfirms:strengthConfirms };
+}
+
+function checkLeanMassGuard() {
+  var mode = normalizeGoalMode(profileSafe().goalType);
+  if (mode !== 'fat_loss' && mode !== 'recomp') return null;
+  var lm = getLeanMassChange();
+  if (!lm || lm.dropPct < 1.5) return null;
   return {
-    dropPct:+dropPct.toFixed(1), leanPrev:+leanPrev.toFixed(1), leanLast:+leanLast.toFixed(1),
-    prevDate:prev.date, lastDate:last.date, strengthConfirms:strengthConfirms,
-    msg:'Lean Mass ลด '+dropPct.toFixed(1)+'% ('+leanPrev.toFixed(1)+' → '+leanLast.toFixed(1)+' กก. จาก InBody '+prev.date+' → '+last.date+')'+
-      (strengthConfirms ? ' และ e1RM ส่วนใหญ่ถดถอยพร้อมกัน — มีแนวโน้มเสียกล้ามจริง' : ' — อาจเป็น noise ของเครื่องวัด แต่ควรจับตา')+
+    dropPct:+lm.dropPct.toFixed(1), leanPrev:+lm.leanPrev.toFixed(1), leanLast:+lm.leanLast.toFixed(1),
+    prevDate:lm.prevDate, lastDate:lm.lastDate, strengthConfirms:lm.strengthConfirms,
+    msg:'Lean Mass ลด '+lm.dropPct.toFixed(1)+'% ('+lm.leanPrev.toFixed(1)+' → '+lm.leanLast.toFixed(1)+' กก. จาก InBody '+lm.prevDate+' → '+lm.lastDate+')'+
+      (lm.strengthConfirms ? ' และ e1RM ส่วนใหญ่ถดถอยพร้อมกัน — มีแนวโน้มเสียกล้ามจริง' : ' — อาจเป็น noise ของเครื่องวัด แต่ควรจับตา')+
       ' → เพิ่มโปรตีนให้ถึงเป้า / ลด deficit ~150-200 kcal / คง volume ท่า compound หลัก'
   };
+}
+
+// Composition guardrails a scale-trend "On Track" must ALSO clear before it can read green.
+// Scale weight is blind to WHAT changed — muscle vs fat — so a green rate can sit on top of
+// muscle loss (cutting / maintaining) or a fat-only gain (lean gain), which is exactly the
+// "on track" verdict that misleads. Each guard fires ONLY when the data to judge it exists,
+// so a user with no InBody / no protein goal is never downgraded for missing data. Returns the
+// tripped guards (or []); the analyzer and the weekly summary card both call this so their two
+// verdicts stay in sync. ctx: { proGoal, avgPro, bfPerWeek }.
+function compositionGuards(goalMode, ctx) {
+  goalMode = (typeof normalizeGoalMode === 'function') ? normalizeGoalMode(goalMode) : goalMode;
+  ctx = ctx || {};
+  var guards = [];
+  // Lean mass falling — catabolism while cutting/maintaining; while lean-gaining it means the
+  // surplus isn't building muscle. 1.5% matches checkLeanMassGuard's own threshold.
+  var lm = (typeof getLeanMassChange === 'function') ? getLeanMassChange() : null;
+  if (lm && lm.dropPct >= 1.5) {
+    guards.push({ code:'lean', msg:'กล้ามลด '+lm.dropPct.toFixed(1)+'%'+(lm.strengthConfirms?' + แรงถดถอย':'') });
+  }
+  // Protein below the committed goal by a real margin — the lever that protects lean mass in a
+  // deficit and drives it in a surplus. Same committed-goal basis (S.goals.pro) the calorie
+  // verdict uses. Only when both numbers exist.
+  var proGoal = ctx.proGoal, avgPro = ctx.avgPro;
+  if (proGoal && avgPro != null && avgPro < proGoal * 0.85) {
+    guards.push({ code:'protein', msg:'โปรตีน '+Math.round(avgPro)+'/'+Math.round(proGoal)+'g' });
+  }
+  // Lean-gain only: %BF climbing fast means the surplus is going to fat, not lean — the
+  // opposite of a "lean" gain. Needs a %BF trend to judge.
+  if (goalMode === 'lean_gain' && ctx.bfPerWeek != null && ctx.bfPerWeek > 0.15) {
+    guards.push({ code:'bf', msg:'%BF ขึ้นเร็ว '+(+ctx.bfPerWeek).toFixed(2)+' จุด/สัปดาห์' });
+  }
+  return guards;
 }
 
 function detectAnomalies() {
@@ -5199,31 +5242,57 @@ function renderWeeklyReview() {
     wTrend=absW<0.1?'Plateau (~'+absW+' kg/wk)':(weightSlope<0?'↓ ':'↑ ')+absW+' kg/สัปดาห์';
   }
   var onTrackMsg='';
-  if(target&&weightSlope!==null){
-    // Required rate comes from ONE place: the feasibility engine. The old fallback
-    // (weight gap ÷ FULL duration) was a different quantity computed over a different
-    // window — for a user at week 6 of 12 the two answers differed by 2x while both were
-    // printed as "ต้องการ X กก./wk", flipping the on-track verdict depending purely on
-    // which branch happened to fire.
-    //
-    // Units: weeklyFatLoss is FAT kg/week, compared here against weightSlope, which is
-    // SCALE kg/week. That equivalence is exactly the engine's own lean-constant model
-    // (tgtW is derived holding lean mass fixed), so under the plan's own assumption the
-    // two coincide — and leanGainUnrealistic now flags targets that violate it.
-    // Recomputed live rather than read from the frozen save-time target.feasibility,
-    // so this reflects current %BF and the weeks actually remaining.
-    var reqRate=null;
-    var feasWR=(typeof calcTargetFeasibility==='function')?calcTargetFeasibility(target):null;
-    if(feasWR&&feasWR.direction==='loss'&&feasWR.weeklyFatLoss){
-      reqRate=-feasWR.weeklyFatLoss;
-    }
+  if(weightSlope!==null){
+    // Composition guardrails shared by EVERY mode's verdict — a green weight trend is
+    // downgraded to a warning when lean mass is falling / protein is short / (lean gain) %BF is
+    // climbing fast. Same helper the weight-trend analyzer uses, so the two cards tell the same
+    // composition story instead of one flashing ✅ while the other flags muscle loss.
+    // (CLAUDE.md: one goal, many readers — the verdict used to read scale weight alone.)
     var bfTrajWR=(typeof getBFTrajectory==='function')?getBFTrajectory(target):null;
-    var recompWR=Math.abs(weightSlope)<0.1&&bfTrajWR&&bfTrajWR.bfPerWeek!==null&&bfTrajWR.bfPerWeek<=-0.05;
-    if(recompWR){
-      onTrackMsg='<span style="color:var(--green)">✅ Recomp on track</span> — %BF ลด '+Math.abs(bfTrajWR.bfPerWeek).toFixed(2)+' จุด/สัปดาห์ แม้น้ำหนักนิ่ง';
-    } else if(reqRate!==null){
-      // On track when hitting ≥60% of the required rate (same tolerance as the analyzer)
-      onTrackMsg=weightSlope<=reqRate*0.6?'<span style="color:var(--green)">✅ On track</span> ต่อ Fitness Target (ต้องการ '+reqRate.toFixed(2)+' กก./wk)':'<span style="color:var(--yellow)">⚠️ ช้ากว่าแผน</span> — ต้องการ '+reqRate.toFixed(2)+' กก./wk (ตอนนี้ '+(weightSlope>=0?'+':'')+weightSlope+')';
+    var guardsWR=(typeof compositionGuards==='function')?compositionGuards(goalMode,{
+      proGoal:(S.goals&&S.goals.pro)||null, avgPro:avgPro,
+      bfPerWeek:(goalMode==='lean_gain'&&bfTrajWR)?bfTrajWR.bfPerWeek:null
+    }):[];
+    var guardTxtWR=guardsWR.length?' <span style="color:var(--yellow)">· ระวังสัดส่วน: '+guardsWR.map(function(g){return g.msg;}).join(' · ')+'</span>':'';
+    // green ✅ only when the rate is on track AND no guard tripped; otherwise ⚠️ with the reason.
+    var verdictWR=function(onRate, okMsg, slowMsg){
+      if(onRate && !guardsWR.length) return '<span style="color:var(--green)">✅ '+okMsg+'</span>';
+      if(onRate) return '<span style="color:var(--yellow)">⚠️ '+okMsg+' — แต่ระวังสัดส่วน: '+guardsWR.map(function(g){return g.msg;}).join(' · ')+'</span>';
+      return '<span style="color:var(--yellow)">⚠️ '+slowMsg+'</span>'+guardTxtWR;
+    };
+    if(wantLoss && target){
+      // Required rate comes from ONE place: the feasibility engine. The old fallback
+      // (weight gap ÷ FULL duration) was a different quantity computed over a different
+      // window — for a user at week 6 of 12 the two answers differed by 2x while both were
+      // printed as "ต้องการ X กก./wk", flipping the on-track verdict depending purely on
+      // which branch happened to fire.
+      //
+      // Units: weeklyFatLoss is FAT kg/week, compared here against weightSlope, which is
+      // SCALE kg/week. That equivalence is exactly the engine's own lean-constant model
+      // (tgtW is derived holding lean mass fixed), so under the plan's own assumption the
+      // two coincide — and leanGainUnrealistic now flags targets that violate it.
+      // Recomputed live rather than read from the frozen save-time target.feasibility,
+      // so this reflects current %BF and the weeks actually remaining.
+      var reqRate=null;
+      var feasWR=(typeof calcTargetFeasibility==='function')?calcTargetFeasibility(target):null;
+      if(feasWR&&feasWR.direction==='loss'&&feasWR.weeklyFatLoss){
+        reqRate=-feasWR.weeklyFatLoss;
+      }
+      var recompWR=Math.abs(weightSlope)<0.1&&bfTrajWR&&bfTrajWR.bfPerWeek!==null&&bfTrajWR.bfPerWeek<=-0.05;
+      if(recompWR){
+        onTrackMsg=verdictWR(true,'Recomp on track — %BF ลด '+Math.abs(bfTrajWR.bfPerWeek).toFixed(2)+' จุด/สัปดาห์ แม้น้ำหนักนิ่ง','');
+      } else if(reqRate!==null){
+        // On track when hitting ≥60% of the required rate (same tolerance as the analyzer)
+        onTrackMsg=weightSlope<=reqRate*0.6
+          ? verdictWR(true,'On track ต่อ Fitness Target (ต้องการ '+reqRate.toFixed(2)+' กก./wk)','')
+          : verdictWR(false,'','ช้ากว่าแผน — ต้องการ '+reqRate.toFixed(2)+' กก./wk (ตอนนี้ '+(weightSlope>=0?'+':'')+weightSlope+')');
+      }
+    } else if(goalMode==='maintain'){
+      // maintain: on track when the scale holds within ±0.25 kg/wk (same band as the analyzer).
+      onTrackMsg=verdictWR(Math.abs(weightSlope)<=0.25,'รักษาน้ำหนักได้ตามเป้า (±0.25 กก./wk)','น้ำหนักดริฟต์ '+(weightSlope>=0?'+':'')+weightSlope+' กก./wk');
+    } else if(goalMode==='lean_gain'){
+      // lean gain: on track in the 0.05–0.45 kg/wk band (same as the analyzer).
+      onTrackMsg=verdictWR(weightSlope>=0.05&&weightSlope<=0.45,'เพิ่มกล้ามแบบ lean ตามเป้า (0.05–0.45 กก./wk)',weightSlope<0.05?'ยังไม่ขึ้นน้ำหนัก (ตอนนี้ '+(weightSlope>=0?'+':'')+weightSlope+' กก./wk)':'ขึ้นเร็วเกิน (ตอนนี้ +'+weightSlope+' กก./wk)');
     }
   }
   // Water retention note: weight rising but net cal is in deficit
@@ -11880,7 +11949,7 @@ function isSuggestedChangeInNoise(suggestedCalChange, intakeVarianceKcal) {
 // TDEE — read the same signal instead of judging you on a noisy 7-day scale slope. The raw
 // scale trend is still shown separately as secondary context, never as the verdict.
 // requiredWeeklyLoss is negative for a loss goal. Returns { isOnTrack, label, color }.
-function classifyWeightStatus(trend, goalMode, requiredWeeklyLoss) {
+function classifyWeightStatus(trend, goalMode, requiredWeeklyLoss, guards) {
   var isOnTrack;
   if (goalMode === 'maintain') {
     isOnTrack = Math.abs(trend) <= 0.25;
@@ -11898,7 +11967,22 @@ function classifyWeightStatus(trend, goalMode, requiredWeeklyLoss) {
   else if (trend < -0.25) { label = 'Slow Progress ⚠️'; color = '#f59e0b'; }
   else if (trend <= 0.25) { label = 'Plateau ➡️'; color = '#f59e0b'; }
   else { label = 'Gaining ⬆️'; color = '#ef4444'; }
-  return { isOnTrack: isOnTrack, label: label, color: color };
+  var res = { isOnTrack: isOnTrack, label: label, color: color };
+  // Composite guard: a green scale-trend verdict that sits on top of a tripped composition
+  // guard (muscle loss, protein shortfall, fat-only gain) is misleading — the scale rate is
+  // fine but WHAT changed is wrong. Downgrade to a warning that keeps the rate context but
+  // names the risk, rather than showing a bare green. `guards` is the array from
+  // compositionGuards(); it is passed IN (never fetched here) so this function stays pure and
+  // the unit tests can extract it standalone. A tripped guard never UPGRADES a non-green
+  // verdict — it only demotes an otherwise-on-track one.
+  if (res.isOnTrack && guards && guards.length) {
+    res.isOnTrack = false;
+    res.guarded = true;
+    res.guardMsg = guards.map(function(g){ return g.msg; }).join(' · ');
+    res.label = 'On Track · ระวัง ⚠️';
+    res.color = '#f59e0b';
+  }
+  return res;
 }
 function buildAnalysisHTML(recent) {
   var n = recent.length;
@@ -12264,8 +12348,14 @@ function buildAnalysisHTML(recent) {
     currentPace7d=Math.max(-1.0, Math.min(1.0, -(actualDeficit*7/7700))).toFixed(2);
   }
 
+  // Avg daily protein over logged days — feeds the composition guard below (protein is the
+  // lever that protects lean mass in a deficit and drives it in a surplus).
+  var proSumStatus=0, proDaysStatus=0;
+  metricsDays.forEach(function(m){ if(m.meals&&m.meals.length){ proDaysStatus++; proSumStatus+=m.meals.reduce(function(s,x){return s+(parseFloat(x.protein)||0);},0); } });
+  var avgProteinDaily = proDaysStatus ? Math.round(proSumStatus/proDaysStatus) : null;
+
   // STATUS priority: DietBreak > DataError > WaterNoise/Retention/Recomp > Inconsistent > Limited > Classification-based
-  var statusLabel, statusColor, statusNote='';
+  var statusLabel, statusColor, statusNote='', statusOnTrack=false;
   var suppressRecommend=false;
   var dietBreakNow = (typeof getActiveDietBreak === 'function') ? getActiveDietBreak() : null;
   if(dietBreakNow){
@@ -12297,16 +12387,31 @@ function buildAnalysisHTML(recent) {
     // own tile as secondary context, never as the verdict. Falls back to the 7d trend only
     // when there is no EMA (too few points in 21 days).
     var trendForStatus = (ema21PerWeek !== null && ema21PerWeek !== undefined) ? ema21PerWeek : trendPerWeek;
-    var cls = classifyWeightStatus(trendForStatus, goalMode, requiredWeeklyLoss);
+    // Composition guardrails — scale weight alone can't tell muscle from fat, so an otherwise
+    // green rate is downgraded when lean mass is falling, protein is short, or (lean gain) %BF
+    // is climbing fast. bfPerWeek only matters for lean gain; the fat-loss/recomp %BF story is
+    // already handled by the lean-mass guard + recompHold.
+    var bfTrajStatus = (goalMode === 'lean_gain' && typeof getBFTrajectory === 'function') ? getBFTrajectory(window._fitnessTarget || {}) : null;
+    var statusGuards = (typeof compositionGuards === 'function') ? compositionGuards(goalMode, {
+      proGoal: (S.goals && S.goals.pro) || null,
+      avgPro: avgProteinDaily,
+      bfPerWeek: bfTrajStatus ? bfTrajStatus.bfPerWeek : null
+    }) : [];
+    var cls = classifyWeightStatus(trendForStatus, goalMode, requiredWeeklyLoss, statusGuards);
     if(recompHold){
-      // Weight target met → holding weight IS on-track for recomposition; losing
-      // further just drops below the weight target.
+      // Weight target met → holding weight IS on-track for recomposition; losing further just
+      // drops below the weight target. But muscle loss / protein shortfall still downgrades it —
+      // holding weight while shedding lean is the wrong kind of "hold".
       if(trendForStatus < -0.35){ statusLabel='Recomp · น้ำหนักหลุดต่ำ ⚠️'; statusColor='#f59e0b'; }
-      else { statusLabel='Recomp 🔄'; statusColor='#22c55e'; }
+      else if(statusGuards.length){ statusLabel='Recomp · ระวัง ⚠️'; statusColor='#f59e0b'; statusNote='สัดส่วนร่างกาย: '+statusGuards.map(function(g){return g.msg;}).join(' · '); }
+      else { statusLabel='Recomp 🔄'; statusColor='#22c55e'; statusOnTrack=true; }
     }
-    else { statusLabel=cls.label; statusColor=cls.color; }
+    else {
+      statusLabel=cls.label; statusColor=cls.color; statusOnTrack=cls.isOnTrack;
+      if(cls.guarded && cls.guardMsg) statusNote='สัดส่วนร่างกาย: '+cls.guardMsg+' — rate ถึงเป้าแต่ควรกันกล้าม (เพิ่มโปรตีน / ลด deficit / คง volume)';
+    }
   }
-  var isOnTrack = !suppressRecommend && (statusLabel.indexOf('On Track')>=0 || statusLabel==='Recomp 🔄');
+  var isOnTrack = !suppressRecommend && statusOnTrack;
 
   // [6] CONFIDENCE
   var confBase=50+Math.min(n,14)*2+Math.round(logRate*15)-Math.round(wVariance*6);

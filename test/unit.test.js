@@ -211,6 +211,61 @@ test('classifyWeightStatus separates a mild EMA trend from a noisy raw slope', (
   assert.strictEqual(classifyWeightStatus(0.0, 'lean_gain', 0).label, 'Not Gaining ⚠️');
 });
 
+// ── Composite verdict: scale trend is not the whole story ────────────────────────
+// "On Track" used to read the weight scale alone, so a green weight trend could sit on top of
+// muscle loss / a protein shortfall / a fat-only lean gain and still show ✅. These lock in the
+// worst-case downgrade so the verdict stops misleading.
+test('classifyWeightStatus downgrades a green verdict when a composition guard trips', () => {
+  const { classifyWeightStatus } = load(['classifyWeightStatus']);
+  const reqLoss = -0.41; // fat-loss on-track threshold = -0.246 kg/wk
+
+  // Baseline: on-rate loss with no guards → green (unchanged behavior).
+  const clean = classifyWeightStatus(-0.28, 'fat_loss', reqLoss, []);
+  assert.strictEqual(clean.label, 'On Track ✅');
+  assert.ok(clean.isOnTrack);
+
+  // Same on-track rate, but lean mass is falling → must NOT read green; demoted to a warning
+  // that names the reason. (Fails against the scale-only classifier, which ignored the guard.)
+  const guarded = classifyWeightStatus(-0.28, 'fat_loss', reqLoss, [{ msg: 'กล้ามลด 2.4%' }]);
+  assert.ok(!guarded.isOnTrack, 'guarded verdict is not on track');
+  assert.ok(guarded.guarded, 'flagged as guarded');
+  assert.strictEqual(guarded.color, '#f59e0b');
+  assert.ok(/กล้ามลด 2\.4%/.test(guarded.guardMsg));
+
+  // Holds for maintain and lean_gain too — not just fat loss (CLAUDE.md failure mode #1).
+  assert.ok(!classifyWeightStatus(0.1, 'maintain', 0, [{ msg: 'x' }]).isOnTrack);
+  assert.ok(!classifyWeightStatus(0.2, 'lean_gain', 0, [{ msg: 'x' }]).isOnTrack);
+
+  // A guard never UPGRADES a verdict that was already failing on rate.
+  const slow = classifyWeightStatus(-0.05, 'fat_loss', reqLoss, [{ msg: 'x' }]);
+  assert.ok(!slow.isOnTrack);
+  assert.strictEqual(slow.guarded, undefined);
+});
+
+test('compositionGuards flags lean loss, protein shortfall and fat-only lean gain', () => {
+  // Stub the DOM-backed collaborators so the pure guard logic runs in Node.
+  const noLean = { prelude: 'function normalizeGoalMode(m){return m;}\nfunction getLeanMassChange(){return null;}' };
+
+  // No InBody, protein on target → no guards, no false alarms on missing data.
+  assert.strictEqual(load(['compositionGuards'], noLean).compositionGuards('fat_loss', { proGoal: 160, avgPro: 155 }).length, 0);
+
+  // Protein well under the committed goal (< 85%) → protein guard.
+  let g = load(['compositionGuards'], noLean).compositionGuards('fat_loss', { proGoal: 160, avgPro: 120 });
+  assert.strictEqual(g.length, 1);
+  assert.strictEqual(g[0].code, 'protein');
+
+  // Lean mass falling ≥1.5% with strength regressing → lean guard.
+  g = load(['compositionGuards'], { prelude: 'function normalizeGoalMode(m){return m;}\nfunction getLeanMassChange(){return {dropPct:2.4,strengthConfirms:true};}' })
+    .compositionGuards('recomp', { proGoal: 160, avgPro: 155 });
+  assert.strictEqual(g[0].code, 'lean');
+  assert.ok(/แรงถดถอย/.test(g[0].msg));
+
+  // lean_gain with %BF climbing fast → bf guard; the same %BF is ignored for other modes.
+  g = load(['compositionGuards'], noLean).compositionGuards('lean_gain', { proGoal: 160, avgPro: 155, bfPerWeek: 0.3 });
+  assert.strictEqual(g[0].code, 'bf');
+  assert.strictEqual(load(['compositionGuards'], noLean).compositionGuards('fat_loss', { proGoal: 160, avgPro: 155, bfPerWeek: 0.3 }).length, 0);
+});
+
 test('isSuggestedChangeInNoise holds the goal when the change is inside intake variance', () => {
   const { isSuggestedChangeInNoise } = load(['isSuggestedChangeInNoise']);
   // The reported case: a +306 kcal suggestion under a ±394 kcal intake swing is noise → hold.
