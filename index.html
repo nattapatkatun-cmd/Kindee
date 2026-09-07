@@ -3883,7 +3883,7 @@ function generateMorningRecovery() {
   }
   // Use the same personalized need the debt engine uses — a hard-coded 8 here made the
   // bedtime target, the debt badge and the weak-pillar tip quote three different numbers.
-  var gradualBed = computeGradualBedtimeTarget(sd.wakeTime, today, computeSleepNeedHours(today), sd.bedtime);
+  var gradualBed = computeGradualBedtimeTarget(sd.wakeTime, today, computeSleepOpportunityHours(today), sd.bedtime);
   var bedtimeTrendLine = '';
   if (gradualBed) {
     bedtimeTrendLine = '- Bedtime เมื่อคืน: '+gradualBed.fromBedtime+
@@ -3903,10 +3903,10 @@ function generateMorningRecovery() {
     'SCORING RUBRIC (คำนวณ weighted average 0-100):\n' +
     '  Duration (25%): <4h->5, 4-4.9h->10, 5-5.9h->20, 6-6.9h->45, 7-7.9h->72, 8-8.9h->88, 9-9.5h->95, 9.5-10.5h->80, >10.5h->60\n' +
     '  Efficiency (20%): ถ้ามีข้อมูล TIB: <75%->20, 75-84%->55, 85-89%->85, >=90%->95. ถ้าไม่มี TIB: pillar นี้ถูกตัดออก (re-normalize) ห้ามพูดถึง Efficiency ในข้อความ\n' +
-    '  Stages (20%): ช่วงเหมาะสมของผู้ใหญ่คือ Deep 13-23% และ REM 18-28% ของเวลาหลับ — อยู่ในช่วง = ดีมาก, เกิน/ขาดไม่เกิน 4 จุด = พอใช้, ห่างกว่านั้น = ควรปรับ (สูงเกินช่วงก็ไม่ใช่เรื่องดี อย่าชมว่า Deep ยิ่งเยอะยิ่งดี). ถ้าไม่มี stage data: ประมาณ 50\n' +
-    '  Physio/HRV (20%): HRV vs baseline: >=+5%->25, 0-+4%->20, -1 to -4%->14, <=-5%->8. ไม่มี HRV: ใช้ RHR แทน\n' +
+    '  Stages (20%, สเกล 0-100): ช่วงเหมาะสมของผู้ใหญ่คือ Deep 13-23% และ REM 18-28% ของเวลาหลับ — อยู่ในช่วง = ดีมาก, เกิน/ขาดไม่เกิน 4 จุด = พอใช้, ห่างกว่านั้น = ควรปรับ (สูงเกินช่วงก็ไม่ใช่เรื่องดี อย่าชมว่า Deep ยิ่งเยอะยิ่งดี). ถ้าไม่มี stage data: ตัด pillar นี้ออก (re-normalize) ห้ามใส่ 50 หลอก และห้ามพูดถึง Sleep Stages ในข้อความ\n' +
+    '  Physio/HRV (20%, สเกล 0-100): HRV เทียบ baseline: >=+5%->100, -5%..+5%->88 (ความแปรปรวนรายวันปกติ), -10%..-5%->65, -15%..-10%->45, <-15%->30. ไม่มี HRV: ใช้ RHR เทียบ baseline ส่วนตัว (สูงกว่า baseline ไม่เกิน 0/3/6 bpm -> 85/68/50, เกินนั้น 32). ถ้าไม่มีทั้ง HRV และ RHR: ตัด pillar นี้ออก\n' +
     '  Consistency (15%): ใช้ค่า Sleep Consistency ที่ให้มาโดยตรง (0-100). ถ้า pillar ไหนไม่มีข้อมูล (Consistency หรือ Efficiency): ตัด pillar นั้นออกแล้ว re-normalize น้ำหนักของ pillar ที่เหลือให้รวมเป็น 100%\n' +
-    'Final Score (มี Consistency) = (Duration*0.25)+(Efficiency*0.20)+(Stages*0.20)+(Physio*0.20)+(Consistency*0.15). LABEL: 85-100=Peak, 66-84=Good, 34-65=Fair, 0-33=Poor\n' +
+    'Final Score (มี Consistency) = (Duration*0.25)+(Efficiency*0.20)+(Stages*0.20)+(Physio*0.20)+(Consistency*0.15) โดยแต่ละ pillar เป็นสเกล 0-100. LABEL: 85-100=Peak, 70-84=Good, 40-69=Fair, 0-39=Poor\n' +
     'Recovery Status: score>=70=Optimal, 40-69=Moderate, <40=Poor\n\n' +
     '[กฎสำคัญ] ห้ามพิมพ์ตัวเลขคะแนนรวม (sleepScore) ซ้ำในข้อความ headline/detail/strengths/improvements/recommendation_reason เด็ดขาด — แอปคำนวณและแสดงตัวเลขนี้เองแยกต่างหากจาก pillars ด้านล่าง (ไม่ได้ใช้เลขที่คุณพิมพ์ในข้อความ) ถ้าตัวเลขในข้อความคำนวณผิดหรือไม่ตรงกับที่แอปคำนวณ จะดูขัดแย้งกันในหน้าจอเดียวกัน ให้พูดถึงระดับคะแนนเชิงคุณภาพแทนเสมอ เช่น "อยู่ในระดับ Fair" หรือ "คะแนนโดยรวมปานกลาง" ห้ามเขียน "อยู่ที่ 47.3" หรือตัวเลขทศนิยม/จำนวนเต็มใด ๆ แทนคะแนนรวม\n\n' +
     'ข้อมูลการนอน (อุปกรณ์: Polar Loop / Huawei Watch 5 Pro / Galaxy Ring):\n' +
@@ -4212,7 +4212,7 @@ function generateDailySummary() {
       if (sd.hours < 6)       line += ' ⚠️ critically low';
       else if (sd.hours < 7)  line += ' ⚠️ below optimal';
       else if (sd.hours <= 9) line += ' ✅ optimal';
-      line += '\n• Sleep Quality: ' + sd.quality;
+      if (sd.scoreLabel) line += '\n• Sleep Quality: ' + sd.scoreLabel;
       if (sd.rhr) line += '\n• RHR: ' + sd.rhr + ' bpm';
       if (sd.hrv) {
         line += '\n• HRV: ' + sd.hrv + ' ms';
@@ -4530,20 +4530,26 @@ function getRecoveryAdjGoals() {
   // A Rest-day macro swap has delta 0 but nonzero carb/protein deltas — still real.
   if (!adj || adj.date !== today || !adj.confirmed) return null;
   if (!adj.delta && !adj.carbDelta && !adj.proDelta) return null;
-  // Layer the recovery delta ON TOP of the rest-day carb cut instead of rebuilding from
-  // the raw saved goal. Building from S.goals silently discarded the cut, so confirming a
-  // "Rest" recommendation on a planned rest day RAISED the day's target by the full cut
-  // (~150-250 kcal) while the banner said "คงแคลเท่าเดิม" — and the rest-day note vanished.
-  var base = (typeof getDayTypeAdjGoal === 'function' && getDayTypeAdjGoal()) || S.goals || {};
-  return {
-    cal: (base.cal||1800) + adj.delta,
-    pro: (base.pro||120) + (adj.proDelta||0),
-    crb: (base.crb||200) + (adj.carbDelta||0),
-    fat: base.fat||60,
-    _adj: adj,
-    _dayType: base._dayType, _carbCutKcal: base._carbCutKcal,
-    _carbCutPct: base._carbCutPct, _recompMild: base._recompMild
-  };
+  // Layer the recovery delta ON TOP of whatever the day's base target already is — following
+  // the same precedence getEffectiveGoalToday uses (diet break > rest-day carb cut >
+  // training-day EA bump > raw saved goal). Building from only the rest-day cut / S.goals
+  // silently discarded a Diet Break's maintenance target AND the training-day EA bump, so
+  // confirming a recovery tweak snapped the ring back to the raw goal while the Diet Break /
+  // EA note beside it still described the discarded target. Every base marker (_dayType,
+  // _carbCut*, _db*, _ea*, _recompMild) is copied through so those notes stay truthful.
+  var base = null;
+  if (typeof getDietBreakAdjGoal === 'function') base = getDietBreakAdjGoal();
+  if (!base && typeof getDayTypeAdjGoal === 'function') base = getDayTypeAdjGoal();
+  if (!base && typeof getEATrainingDayAdjGoal === 'function') base = getEATrainingDayAdjGoal();
+  if (!base) base = S.goals || {};
+  var g = {};
+  for (var k in base) { if (Object.prototype.hasOwnProperty.call(base, k)) g[k] = base[k]; }
+  g.cal = (base.cal||1800) + adj.delta;
+  g.pro = (base.pro||120) + (adj.proDelta||0);
+  g.crb = (base.crb||200) + (adj.carbDelta||0);
+  g.fat = base.fat||60;
+  g._adj = adj;
+  return g;
 }
 function updateRecoveryAdjBanner(adj) {
   var el = document.getElementById('recovery-adj-banner'); if (!el) return;
@@ -4984,7 +4990,26 @@ function getGoalForDate(dateStr) {
 function getEffectiveGoalToday() {
   // Diet break outranks the deficit-modifiers: during a planned maintenance phase you eat at
   // TDEE every day, so the rest-day cut and the training-day EA bump don't apply.
-  return getRecoveryAdjGoals() || getDietBreakAdjGoal() || getDayTypeAdjGoal() || getEATrainingDayAdjGoal() || S.goals;
+  var g = getRecoveryAdjGoals() || getDietBreakAdjGoal() || getDayTypeAdjGoal() || getEATrainingDayAdjGoal() || S.goals;
+  // Snapshot what today's ring actually shows, so once today becomes a PAST day the charts
+  // and reports compare that day's intake against the target that was really in force —
+  // not one recomputed from a later day's plan / rest-day state / recomp-hold (which drifts).
+  if (typeof recordEffectiveGoalSnapshot === 'function') recordEffectiveGoalSnapshot(g);
+  return g;
+}
+// Persist today's effective goal (cal + macros) under its date, idempotently. Trimmed to
+// ~120 days. Read back by getEffectiveGoalForDate for strictly-past dates.
+function recordEffectiveGoalSnapshot(g) {
+  if (!g || g.cal == null) return;
+  var today = localDateStr();
+  var log = safeJSON('gd_effective_goal_log', {}) || {};
+  var next = { cal: Math.round(g.cal), pro: Math.round(g.pro||0), crb: Math.round(g.crb||0), fat: Math.round(g.fat||0) };
+  var prev = log[today];
+  if (prev && prev.cal === next.cal && prev.pro === next.pro && prev.crb === next.crb && prev.fat === next.fat) return;
+  log[today] = next;
+  var cutoff = localDateStr(new Date(Date.now() - 120*86400000));
+  Object.keys(log).forEach(function(d){ if (d < cutoff) delete log[d]; });
+  try { localStorage.setItem('gd_effective_goal_log', JSON.stringify(log)); } catch(e) {}
 }
 // Same rest-day carb-cut logic as getEffectiveGoalToday(), but for a past date — used
 // by the Weekly Report, dashboard, fitness tab and trend charts to compare each day's
@@ -4993,6 +5018,14 @@ function getEffectiveGoalToday() {
 // replayed for past dates — the rest-day cut is the one that recurs predictably by
 // weekday and actually explains most of the week-to-week goal variation.
 function getEffectiveGoalForDate(dateStr) {
+  // For a strictly-past date, prefer the snapshot of what the ring ACTUALLY showed that day
+  // (recorded live by getEffectiveGoalToday). Recomputing from the current plan / rest-day
+  // state / recomp-hold drifts as those change, so an old "under goal" day could silently
+  // flip to "over goal". Days never snapshotted fall through to the deterministic recompute.
+  if (dateStr && dateStr !== localDateStr()) {
+    var snap = safeJSON('gd_effective_goal_log', {});
+    if (snap && snap[dateStr] && snap[dateStr].cal != null) return snap[dateStr];
+  }
   // The diet break is a declared window with fixed dates, so unlike the EA bump it CAN be
   // replayed for past dates — a break day genuinely was a maintenance day.
   return getDietBreakAdjGoal(dateStr) || getDayTypeAdjGoal(dateStr) || getGoalForDate(dateStr);
@@ -5226,7 +5259,7 @@ function renderWeeklyReview() {
   var weekWeights=weights.filter(function(w){return days.indexOf(w.date)>=0;});
   var weightSlope=null,wTrend='',wColor='var(--text2)';
   // Determine if goal is weight loss or gain
-  var goalMode = (S.profile && S.profile.goalType) || 'fat_loss';
+  var goalMode = (typeof normalizeGoalMode === 'function') ? normalizeGoalMode((S.profile && S.profile.goalType)) : ((S.profile && S.profile.goalType) || 'fat_loss');
   var wantLoss = (goalMode === 'fat_loss' || goalMode === 'recomp');
   if(weekWeights.length>=2){
     weekWeights.sort(function(a,b){return a.date>b.date?1:-1;});
@@ -5414,7 +5447,7 @@ function computeWeeklyReport(weekEndStr) {
   if (!t.daysWithMeals) return null; // nothing logged this week — not enough to report
   var p = computeWeekStats(prevDays);
 
-  var goalMode = (S.profile && S.profile.goalType) || 'fat_loss';
+  var goalMode = (typeof normalizeGoalMode === 'function') ? normalizeGoalMode((S.profile && S.profile.goalType)) : ((S.profile && S.profile.goalType) || 'fat_loss');
   var wantLoss = (goalMode === 'fat_loss' || goalMode === 'recomp');
 
   // PRs this week — read straight from the strength log's own isPR flags, nothing recomputed.
@@ -6447,6 +6480,15 @@ function readAnalyzerContext() {
   var today = localDateStr();
   var ctx = safeJSON('gd_calorie_context', null);
   if (ctx && ctx.date === today) return ctx;
+  // Adaptive TDEE is a slow-moving reverse-TDEE figure. A value cached within the last ~10
+  // days is far closer to the truth than snapping back to the population formula the instant
+  // the day rolls over — which silently jumped the Goal Engine target, the EA maintenance cap
+  // and the Diet-Break maintenance level by hundreds of kcal until the user happened to
+  // re-open the weight analyzer. Mode still comes from the profile in getOfficialCalorieContext,
+  // so reusing a slightly stale context can't resurrect an old goalMode.
+  if (ctx && ctx.date && typeof elapsedDaysSince === 'function' && elapsedDaysSince(ctx.date) <= 10) {
+    return ctx;
+  }
   if (window._wtAnalysisData && window._wtAnalysisData.trueTDEE) {
     return {
       date: today,
@@ -6473,7 +6515,13 @@ function buildGoalFromMode(mode, profile, tdee) {
   // available (clamped to a safe 200–600 band), otherwise fall back to the mode preset.
   var deficit = cfg.deficit, deficitSource = 'mode', deficitFeasibility = null, deficitCapped = false;
   var ftForGoal = safeJSON('gd_ft_target', null);
-  if ((mode === 'fat_loss' || mode === 'recomp') && ftForGoal && typeof calcTargetFeasibility === 'function') {
+  // Once the program window has fully elapsed, calcTargetFeasibility clamps the remaining
+  // duration to 2 weeks, which inflates requiredDeficit to the safety cap forever. A finished
+  // program is no longer a live timeline — fall back to the mode preset deficit instead of
+  // letting a stale target keep pinning the deficit at 600/25%-of-TDEE.
+  var ftProgramOver = ftForGoal && typeof getTargetProgramPosition === 'function' &&
+    (function(){ var pp = getTargetProgramPosition(ftForGoal); return pp && pp.isOver; })();
+  if ((mode === 'fat_loss' || mode === 'recomp') && ftForGoal && !ftProgramOver && typeof calcTargetFeasibility === 'function') {
     var feasG = calcTargetFeasibility(ftForGoal, profile);
     if (feasG && feasG.direction === 'loss' && feasG.requiredDeficit > 0) {
       var uncappedDeficit = Math.round(feasG.requiredDeficit);
@@ -6502,10 +6550,18 @@ function buildGoalFromMode(mode, profile, tdee) {
   // target overshoots what lean tissue needs; at normal %BF keep the higher of the two.
   var pro = Math.round(weight * cfg.proteinPerKg);
   var proteinBasis = 'bw';
-  var bfForPro = (ftForGoal && ftForGoal.currBF) ? parseFloat(ftForGoal.currBF) : null;
-  if (!bfForPro && typeof getLatestBodyCompBySource === 'function') {
-    var ibPro = getLatestBodyCompBySource('inbody');
-    if (ibPro && ibPro.bf) bfForPro = parseFloat(ibPro.bf);
+  // Resolve %BF from the SAME source EA uses (getCurrentBodyFatPct: Fitness-Target currBF →
+  // latest InBody → any latest body-comp), so a user with only a home-scale reading gets a
+  // lean-based protein target instead of protein falling back to bodyweight while EA quietly
+  // used the scale's %BF. Falls back to the old inline resolution when that helper isn't loaded
+  // (the pure-function unit sandbox), preserving the extracted-test behaviour.
+  var bfForPro = (typeof getCurrentBodyFatPct === 'function') ? getCurrentBodyFatPct() : null;
+  if (bfForPro == null) {
+    bfForPro = (ftForGoal && ftForGoal.currBF) ? parseFloat(ftForGoal.currBF) : null;
+    if (!bfForPro && typeof getLatestBodyCompBySource === 'function') {
+      var ibPro = getLatestBodyCompBySource('inbody');
+      if (ibPro && ibPro.bf) bfForPro = parseFloat(ibPro.bf);
+    }
   }
   if (bfForPro && bfForPro > 3 && bfForPro < 60) {
     // Protein need scales with LEAN mass, not scale weight — adipose tissue has
@@ -9354,11 +9410,15 @@ function calcTargetFeasibility(target, profile) {
   // the burn helper) skip it. This is the "will this plan repeatedly starve me on lifting
   // days" warning the raw deficit/floor check can't see — the floor never subtracts exercise.
   res.eaTrainingDay = null; res.eaExpectedBurn = null; res.eaLow = false;
-  if (leanCurr > 0 && typeof getExpectedTrainingBurnForDay === 'function') {
-    var eaBurnObj = getExpectedTrainingBurnForDay();
+  // Use the OVERALL training-day average, not a specific weekday's — this is a static plan
+  // property ("will this deficit repeatedly starve me on lifting days"), so it must read the
+  // same whether the tab is opened on leg day or a light-cardio day. getExpectedTrainingBurnForDay()
+  // with no date defaulted to today's weekday, making the banner's EA line flicker day to day.
+  if (leanCurr > 0 && typeof getAvgTrainingDayCreditedBurn === 'function') {
+    var eaBurnObj = getAvgTrainingDayCreditedBurn();
     if (eaBurnObj && eaBurnObj.burn > 0) {
       res.eaExpectedBurn = Math.round(eaBurnObj.burn);
-      res.eaExpectedBurnBasis = eaBurnObj.basis;
+      res.eaExpectedBurnBasis = 'overall';
       res.eaTrainingDay = +((res.intakeAtDeficit - eaBurnObj.burn) / leanCurr).toFixed(1);
       res.eaRestDay = +(res.intakeAtDeficit / leanCurr).toFixed(1);
       res.eaLow = res.eaTrainingDay < 30; // EA_DANGER
@@ -9874,6 +9934,14 @@ function renderTargetDashboard() {
       var lastEntry  = wtSince[wtSince.length-1];
       var daySpan = Math.max(1, Math.floor((new Date(lastEntry.date) - new Date(firstEntry.date)) / 86400000));
       weeklyRate = parseFloat(((lastEntry.weight - firstEntry.weight) / daySpan * 7).toFixed(2));
+      // Prefer the smoothed 21-day EMA slope — the SAME signal the Weight Analyzer and the
+      // Weekly Report judge by — so all three surfaces render one trend and one verdict. The
+      // raw endpoint slope over the whole program (a different window) is what let this card
+      // read "✅ ไปในทิศทางที่ถูก" while the analyzer one tab over said "Slow Progress".
+      if (typeof estimateEMATrend === 'function' && typeof entriesWithinDays === 'function') {
+        var emaTL = estimateEMATrend(entriesWithinDays(WT.log, 21), 21);
+        if (emaTL !== null && emaTL !== undefined) weeklyRate = parseFloat(emaTL.toFixed(2));
+      }
     }
 
     // Project: at current trend, when reach target?
@@ -9965,9 +10033,19 @@ function renderTargetDashboard() {
       html += '<span style="color:var(--text3);">อัตราเปลี่ยนแปลง</span>';
       html += '<span style="font-weight:700;color:'+trendColor+';">'+(weeklyRate > 0 ? '+' : '')+weeklyRate+' กก./สัปดาห์</span></div>';
 
-      // On-track check
+      // On-track check — same rule as the Weight Analyzer / Weekly Report: compare the
+      // smoothed rate against the feasibility engine's required rate at 60% tolerance, not a
+      // fixed ±0.1 threshold that disagreed with them. reqRate comes from ONE place (the
+      // feasibility engine), recomputed live off today's %BF and the weeks remaining.
+      var reqRateTL = null;
+      if (needDir === 'ลด') {
+        var feasTL = (typeof calcTargetFeasibility === 'function') ? calcTargetFeasibility(target) : null;
+        if (feasTL && feasTL.direction === 'loss' && feasTL.weeklyFatLoss) reqRateTL = -feasTL.weeklyFatLoss;
+      }
       if (needDir) {
-        var onTrack = (needDir === 'ลด' && weeklyRate < -0.1) || (needDir === 'เพิ่ม' && weeklyRate > 0.1);
+        var onTrack = (needDir === 'ลด')
+          ? (reqRateTL !== null ? weeklyRate <= reqRateTL * 0.6 : weeklyRate < -0.1)
+          : (weeklyRate > 0.1);
         var stagnant = Math.abs(weeklyRate) < 0.1;
         html += '<div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px;">';
         html += '<span style="color:var(--text3);">On-track?</span>';
@@ -10069,7 +10147,10 @@ function renderTargetDashboard() {
       // today's %BF and the duration remaining, so this always matches what
       // the Goal Engine deficit (Weight Trend Analyzer) is using right now.
       var fzLive = (typeof calcTargetFeasibility === 'function') ? calcTargetFeasibility(target) : null;
-      if (fzLive && fzLive.direction === 'loss') {
+      // Don't show the "required rate / ❌ too fast" line once the program window is over — the
+      // remaining-duration clamp makes it read unrealistic by construction, directly under the
+      // "🎉 ครบแล้ว" banner. A finished program should prompt a new target, not a speed warning.
+      if (fzLive && fzLive.direction === 'loss' && !isOver) {
         var fz = fzLive;
         var fzColor = fz.status==='unrealistic' ? 'var(--red)' : fz.status==='aggressive' ? '#eab308' : 'var(--green)';
         var fzLabel = fz.status==='unrealistic' ? '❌ เร็วเกินไป' : fz.status==='aggressive' ? '⚠️ ตึง' : '✅ สมเหตุสมผล';
@@ -11221,12 +11302,39 @@ function importSleepFromSheet() {
       }
     });
     log.sort(function(a,b){ return a.date < b.date ? -1 : 1; });
+    var importedDates = {};
+    incoming.forEach(function(d){ if (d.date) importedDates[d.date] = true; });
+    // Store once so computeConsistency (which reads gd_sleep_log) sees the merged data,
+    // then range-validate and (re)score every imported night. saveSleep does this for live
+    // entries; the sheet import used to push rows whole — no range check, no consistency
+    // recompute, and no sleepScore — so a bad value reached the score and the chart's stored
+    // score could disagree with the card's recomputed one. Bring both in line here.
+    localStorage.setItem('gd_sleep_log', JSON.stringify(log));
+    var _clampSleep = function(v, lo, hi){ v = parseFloat(v); return (isFinite(v) && v >= lo && v <= hi) ? v : null; };
+    log.forEach(function(entry){
+      if (!importedDates[entry.date]) return; // only touch what this import brought in
+      entry.hours = _clampSleep(entry.hours, 1, 14);
+      if (entry.timeInBed != null)   entry.timeInBed   = _clampSleep(entry.timeInBed, 0, 24);
+      if (entry.rhr != null)         entry.rhr         = _clampSleep(entry.rhr, 30, 120);
+      if (entry.hrv != null)         entry.hrv         = _clampSleep(entry.hrv, 10, 200);
+      if (entry.hrvBaseline != null) entry.hrvBaseline = _clampSleep(entry.hrvBaseline, 10, 200);
+      if (entry.respRate != null)    entry.respRate    = _clampSleep(entry.respRate, 5, 40);
+      if (entry.bedtime && entry.wakeTime && typeof computeConsistency === 'function') {
+        entry.consistency = computeConsistency(entry.bedtime, entry.wakeTime, entry.date);
+      }
+      if (entry.hours && typeof calculateSleepScoreFromData === 'function') {
+        try {
+          var calc = calculateSleepScoreFromData(entry);
+          entry.sleepScore = calc.sleepScore;
+          entry.scoreLabel = calc.scoreLabel;
+          if (!entry.recoveryScore) { entry.recoveryScore = calc.score; entry.recoveryEmoji = calc.emoji; }
+        } catch(e) {}
+      }
+    });
     localStorage.setItem('gd_sleep_log', JSON.stringify(log));
     // Push every imported/merged date up to Firestore so the Sheet import
     // reaches other devices too.
     if (window.FB_OK && window.FB && window.FB.saveSleepLogEntry) {
-      var importedDates = {};
-      incoming.forEach(function(d){ if (d.date) importedDates[d.date] = true; });
       log.forEach(function(entry){ if (importedDates[entry.date]) window.FB.saveSleepLogEntry(entry).catch(function(){}); });
     }
     showToast('นำเข้าสำเร็จ: เพิ่ม '+added+' รายการ, อัปเดต '+merged+' รายการ ✅','success');
@@ -11892,7 +12000,7 @@ function analyzeProgressPhotoAI(){
 function runWeightAnalysis() {
   var resultEl = document.getElementById('wt-analysis-result');
   var today = localDateStr();
-  var CACHE_VER = 'v23_ema_status_noise_gate'; // STATUS now runs on the smoothed EMA trend, the 21d tile/breakdown read one EMA figure, and the recommendation is noise-gated — bump forces recompute of any same-day cache built by the pre-fix card, which would otherwise be restored verbatim with the old numbers
+  var CACHE_VER = 'v24_deficit_note_status_floor'; // loss-mode status floors the on-track bar at a real deficit, and the "reduced for safety" note only shows when a cap actually fired — bump forces recompute of any same-day cache built by the pre-fix card, which would otherwise be restored verbatim with the old numbers
 
   // Restore from cache only if same day AND same version
   var cached = JSON.parse(localStorage.getItem('gd_wt_analysis') || 'null');
@@ -11956,7 +12064,11 @@ function classifyWeightStatus(trend, goalMode, requiredWeeklyLoss, guards) {
   } else if (goalMode === 'lean_gain') {
     isOnTrack = trend >= 0.05 && trend <= 0.45;
   } else {
-    var threshold = requiredWeeklyLoss * 0.6; // e.g. target -0.41/wk, on track if <= -0.25/wk
+    // Fat-loss / recomp. requiredWeeklyLoss is negative for a real loss target, but when the
+    // committed calorie goal sits at or above Adaptive TDEE the implied deficit is ≤0 and this
+    // went POSITIVE — making a slight weight GAIN read as "On Track" for a fat-loss goal. Floor
+    // the on-track bar at a small genuine loss so a loss goal always requires actually losing.
+    var threshold = Math.min(requiredWeeklyLoss * 0.6, -0.05);
     isOnTrack = trend <= threshold && trend >= -1.0;
   }
   var label, color;
@@ -12596,7 +12708,11 @@ function buildAnalysisHTML(recent) {
     }
   } else if(requiredDeficit!==null){
     var deficitFeasNote='';
-    if(goalDeficitCapped || (centralGoalForAnalysis && (centralGoalForAnalysis.deficitFeasibility==='aggressive' || centralGoalForAnalysis.deficitFeasibility==='unrealistic'))){
+    // Only claim a safety reduction when one actually happened: goalDeficitCapped (the
+    // user-goal path hit the 25%-of-TDEE cap) or the central goal's own deficitCapped flag.
+    // The old test fired on any 'aggressive'/'unrealistic' status even when the flat 600 clamp
+    // had already done the limiting and the 25% cap changed nothing (it only binds below TDEE 2400).
+    if(goalDeficitCapped || (centralGoalForAnalysis && centralGoalForAnalysis.deficitCapped)){
       deficitFeasNote=' <span style="color:#eab308;">(ปรับลดจาก target-timeline เพราะเกินเกณฑ์ปลอดภัย 25% ของ TDEE)</span>';
     }
     html+='• Deficit ที่ต้องการ (จากเป้าที่ตั้ง): <strong>'+requiredDeficit+' kcal/วัน</strong>'+deficitFeasNote;
@@ -12885,15 +13001,31 @@ function scoreStages(hours, deepMin, remMin) {
   }
   return Math.round((bandScore(deepPct, 13, 23) + bandScore(remPct, 18, 28)) / 2);
 }
-function scorePhysio(hrv, baseline, rhr) {
+function scorePhysio(hrv, baseline, rhr, rhrBaseline) {
   if (hrv && baseline) {
     var pct = ((hrv - baseline) / baseline) * 100;
+    // Day-to-day rMSSD swings of ±30% are normal in healthy adults (CV ≈ 0.30–0.37), so a
+    // reading within ~5% of baseline is not a dip worth penalising — the old bands scored a
+    // −4% night 56 and a −6% night 32, treating ordinary autonomic noise as poor recovery
+    // and flipping the Push/Rest recommendation (and the day's calorie target) with it.
     if (pct >= 5) return 100;
-    if (pct >= 0) return 80;
-    if (pct >= -5) return 56;
-    return 32;
+    if (pct >= -5) return 88;   // within normal day-to-day variation
+    if (pct >= -10) return 65;
+    if (pct >= -15) return 45;
+    return 30;
   }
   if (rhr) {
+    // Prefer the user's own rolling RHR baseline: an absolute RHR says as much about
+    // genetics/fitness as about last night's recovery, and overtraining shifts RHR only a
+    // few bpm — so a deviation from personal baseline is the honest signal (same +5 bpm
+    // threshold the anomaly detector uses). Fall back to absolute bands until a baseline exists.
+    if (rhrBaseline && rhrBaseline > 0) {
+      var d = rhr - rhrBaseline;
+      if (d <= 0) return 85;
+      if (d <= 3) return 68;
+      if (d <= 6) return 50;
+      return 32;
+    }
     if (rhr <= 55) return 80;
     if (rhr <= 65) return 65;
     if (rhr <= 75) return 50;
@@ -12913,7 +13045,12 @@ function calculateSleepScoreFromData(sd) {
   // RHR (physio 35) scored LOWER than leaving the field blank (placeholder 50). Leaving
   // them null lets the re-normalization below drop them, as the comment above always said.
   var stages = scoreStages(sd && sd.hours, sd && sd.deepSleep, sd && sd.remSleep);
-  var physio = scorePhysio(sd && sd.hrv, sd && sd.hrvBaseline, sd && sd.rhr);
+  // Personal RHR baseline (rolling, same engine as the HRV baseline) so Physio grades a
+  // deviation from the user's own resting rate, not an absolute number. typeof-guarded so
+  // the pure-function unit sandbox (no DOM/log) still scores against the absolute bands.
+  var rhrBaseForPhysio = (typeof computeAutoRHRBaseline === 'function' && sd && sd.date)
+    ? computeAutoRHRBaseline(sd.date) : null;
+  var physio = scorePhysio(sd && sd.hrv, sd && sd.hrvBaseline, sd && sd.rhr, rhrBaseForPhysio && rhrBaseForPhysio.value);
   var consistency = (sd && sd.consistency != null) ? sd.consistency : null;
   var parts = [
     { v: duration,    w: 0.25 },
@@ -12924,7 +13061,10 @@ function calculateSleepScoreFromData(sd) {
   ].filter(function(p){ return p.v != null; });
   var wSum = parts.reduce(function(s,p){ return s + p.w; }, 0);
   var total = Math.round(parts.reduce(function(s,p){ return s + p.v * p.w; }, 0) / wSum);
-  var label = total >= 85 ? 'Peak' : total >= 66 ? 'Good' : total >= 34 ? 'Fair' : 'Poor';
+  // Label bands are aligned with the recovery-status bands (≥70 / ≥40) so the two badges
+  // rendered side by side can never contradict — a "Good" label used to start at 66 while
+  // "Optimal" recovery started at 70, printing "Good 🟡 Moderate" together at 66–69.
+  var label = total >= 85 ? 'Peak' : total >= 70 ? 'Good' : total >= 40 ? 'Fair' : 'Poor';
   var recovery = total >= 70 ? 'Optimal' : total >= 40 ? 'Moderate' : 'Poor';
   var emoji = total >= 70 ? '🟢' : total >= 40 ? '🟡' : '🔴';
   return { sleepScore: total, scoreLabel: label, score: recovery, emoji: emoji, pillars: { duration: duration, efficiency: efficiency, stages: stages, physio: physio, consistency: consistency } };
@@ -12951,7 +13091,12 @@ function normalizeRecoveryResult(r, sd) {
   r.detail = r.detail || 'คะแนนนี้เป็นโมเดลภายในที่อิงหลักการเดียวกับ wearable recovery platform แต่ไม่ใช่สูตรทางการของ WHOOP';
   r.strengths = mdBold(r.strengths || '• **HRV / Physio** และระยะเวลานอนถูกนำมาคิดแบบ weighted score');
   r.improvements = mdBold(r.improvements || '• **Sleep consistency** รักษาเวลานอนและเวลาตื่นให้ใกล้เคียงเดิม');
-  r.recommendation = r.recommendation || (calc.score === 'Optimal' ? 'Push' : calc.score === 'Moderate' ? 'Maintain' : 'Rest');
+  // The recommendation drives a real calorie/macro change (Push +152, Rest carb→protein), so
+  // an off-enum value from the model must not slip through — fall back to the deterministic
+  // score-derived recommendation rather than storing e.g. "push hard" or a Thai phrase.
+  r.recommendation = (['Push','Maintain','Rest'].indexOf(r.recommendation) >= 0)
+    ? r.recommendation
+    : (calc.score === 'Optimal' ? 'Push' : calc.score === 'Moderate' ? 'Maintain' : 'Rest');
   r.recommendation_reason = r.recommendation_reason || 'อิงจาก Sleep Score และ Recovery Status วันนี้';
 
   // Sleep-action rows always reflect deterministic calcs — never whatever the
@@ -12959,7 +13104,7 @@ function normalizeRecoveryResult(r, sd) {
   // here is fully replaced on each call, so re-rendering is safe.)
   var sdRef = sd || S.sleepData || {};
   r.sleep_actions = r.sleep_actions || {};
-  var gradualBed = computeGradualBedtimeTarget(sdRef.wakeTime, sdRef.date, computeSleepNeedHours(sdRef.date), sdRef.bedtime);
+  var gradualBed = computeGradualBedtimeTarget(sdRef.wakeTime, sdRef.date, computeSleepOpportunityHours(sdRef.date), sdRef.bedtime);
   if (gradualBed) {
     var bedNotes = [];
     // Lead with the assumption the whole number rests on — without it the user cannot
@@ -13708,6 +13853,20 @@ function computeAutoHRVBaseline(forDate) {
   var avg = vals.reduce(function(a,b){ return a+b; }, 0) / vals.length;
   return { value: Math.round(avg), nights: vals.length, windowDays: HRV_BASELINE_WINDOW_DAYS };
 }
+// Rolling RESTING-HR baseline, mirroring computeAutoHRVBaseline — a slow-moving personal
+// reference the sleep score's Physio pillar grades today's RHR against, instead of an
+// absolute cutoff that mostly reflects fitness/genetics. Same window/minimum as HRV.
+function computeAutoRHRBaseline(forDate) {
+  if (!forDate) return null;
+  var log = []; try { log = JSON.parse(localStorage.getItem('gd_sleep_log') || '[]'); } catch(e) { return null; }
+  var cutoff = new Date(forDate); cutoff.setDate(cutoff.getDate() - HRV_BASELINE_WINDOW_DAYS);
+  var cutoffStr = localDateStr(cutoff);
+  var vals = log.filter(function(s){ return s.date < forDate && s.date >= cutoffStr && s.rhr > 0; })
+                .map(function(s){ return parseFloat(s.rhr); });
+  if (vals.length < HRV_BASELINE_MIN_NIGHTS) return null;
+  var avg = vals.reduce(function(a,b){ return a+b; }, 0) / vals.length;
+  return { value: Math.round(avg), nights: vals.length, windowDays: HRV_BASELINE_WINDOW_DAYS };
+}
 // Hint-only refresh — safe to call on every keystroke (oninput). Never writes
 // to the input itself, so it can't fight the user mid-edit (e.g. re-filling
 // the field the instant they clear it to type a different number).
@@ -13772,6 +13931,30 @@ function computeSleepNeedHours(forDate) {
   var median = hours.length % 2 ? hours[mid] : (hours[mid-1] + hours[mid]) / 2;
   return Math.max(SLEEP_NEED_FLOOR_HOURS, Math.round(median * 10) / 10);
 }
+// Time-in-BED target the bedtime recommendation is solved against. Sleeping `need` hours of
+// ACTUAL sleep requires MORE time in bed: sleep-onset latency (10–20 min) plus normal
+// wake-after-sleep-onset put healthy sleep efficiency at 85–95%, not 100%. Solving
+// bedtime = wake − need therefore prescribes a window ~30–45 min too short, so the Duration
+// pillar and Sleep Debt could never actually be satisfied by following the advice. Use the
+// user's own median efficiency when measured (≥5 nights), clamped to a sane band, else 0.90.
+function computeSleepOpportunityHours(forDate) {
+  var need = computeSleepNeedHours(forDate);
+  var eff = 0.90;
+  try {
+    var log = JSON.parse(localStorage.getItem('gd_sleep_log') || '[]');
+    var cutoff = new Date(forDate); cutoff.setDate(cutoff.getDate() - SLEEP_NEED_LOOKBACK_DAYS);
+    var cutoffStr = localDateStr(cutoff);
+    var effs = log.filter(function(s){ return s.date <= forDate && s.date > cutoffStr && s.hours > 0 && s.timeInBed > 0 && s.hours <= s.timeInBed; })
+                  .map(function(s){ return s.hours / s.timeInBed; });
+    if (effs.length >= 5) {
+      effs.sort(function(a,b){ return a-b; });
+      var mid = Math.floor(effs.length/2);
+      eff = effs.length % 2 ? effs[mid] : (effs[mid-1]+effs[mid])/2;
+    }
+  } catch(e) {}
+  eff = Math.max(0.80, Math.min(0.95, eff));
+  return Math.round((need / eff) * 10) / 10;
+}
 
 function computeSleepDebt(forDate) {
   if (!forDate) return null;
@@ -13810,6 +13993,11 @@ function buildWeakPillarAction(pillars, sd) {
     {k:'duration', v:pillars.duration}, {k:'efficiency', v:pillars.efficiency},
     {k:'stages', v:pillars.stages}, {k:'physio', v:pillars.physio}, {k:'consistency', v:pillars.consistency}
   ].filter(function(p){ return p.v != null; });
+  // Don't flag Duration as the fixable weak pillar when the user already slept at/above
+  // their personalized need: the score there is capped by the scoring curve, not by a
+  // shortfall they can act on tonight, so "เพื่อให้ถึง N ชม." would nag someone already at N.
+  var needForDur = (typeof computeSleepNeedHours === 'function' && sd.date) ? computeSleepNeedHours(sd.date) : SLEEP_NEED_DEFAULT_HOURS;
+  if ((sd.hours || 0) >= needForDur - 0.05) list = list.filter(function(p){ return p.k !== 'duration'; });
   if (!list.length) return null;
   list.sort(function(a,b){ return a.v - b.v; });
   var w = list[0];
@@ -14561,7 +14749,7 @@ function buildChatContext(){
     c += 'การนอน/Recovery (เช้านี้):\n';
     if (sd.recoveryScore) c += '  • Recovery Score: ' + sd.recoveryScore + '\n';
     if (sd.sleepScore)    c += '  • Sleep Score: ' + sd.sleepScore + (sd.scoreLabel ? ' (' + sd.scoreLabel + ')' : '') + '\n';
-    c += '  • ระยะเวลานอน: ' + (sd.displayStr || (sd.hours + 'h')) + ' | คุณภาพ: ' + (sd.quality||'-') + '\n';
+    c += '  • ระยะเวลานอน: ' + (sd.displayStr || (sd.hours + 'h')) + (sd.scoreLabel ? ' | คุณภาพ: ' + sd.scoreLabel : '') + '\n';
     if (sd.rhr) c += '  • RHR: ' + sd.rhr + ' bpm\n';
     if (sd.hrv) {
       c += '  • HRV: ' + sd.hrv + ' ms';

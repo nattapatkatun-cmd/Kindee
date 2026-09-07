@@ -847,7 +847,9 @@ test('calcTargetFeasibility flags a deficit that starves training days (low EA)'
       function profileSafe(){ return {}; }
       function localDateStr(){ return '2026-07-25'; }
       function readAnalyzerContext(){ return null; }
-      function getExpectedTrainingBurnForDay(){ return MOCK.expected; }`,
+      // The feasibility EA sanity check reads the OVERALL training-day average (a static plan
+      // property), not a specific weekday's, so it reads the same on any day the tab is opened.
+      function getAvgTrainingDayCreditedBurn(){ return MOCK.expected; }`,
   });
   const profile = { gender: 'male', weight: 75, age: 30, height: 175, activity: 1.55 };
   const target = { currBF: 22, bf: 18, weight: 72, duration: 12 };
