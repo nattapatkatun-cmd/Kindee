@@ -1140,3 +1140,180 @@ test('bodyCompMetricTrend returns a weekly rate and absolute delta, or null belo
 
   assert.strictEqual(ctx.bodyCompMetricTrend(rows.slice(0, 2), 'bf', 3), null, 'below minPts → null, never a guessed slope');
 });
+
+// ── Second-pass regressions (PR #93 follow-up) ────────────────────────────────
+// Each of these fails against the behaviour it replaced — that is the point of writing them.
+
+test('a finished program reports its original duration, not a 2-week floor', () => {
+  const ctx = load(['calcTargetFeasibility', 'elapsedDaysSince', 'calcBMRFromProfile', 'getActivityMultiplier', 'calcFormulaTDEE'], {
+    prelude: `
+      var S = { goals: { cal: 2000 } };
+      function getLatestCheckinWeight(){ return 75; }
+      function profileSafe(){ return {}; }
+      function localDateStr(){ return '2026-09-07'; }
+      function readAnalyzerContext(){ return null; }
+      function getAvgTrainingDayCreditedBurn(){ return null; }`,
+  });
+  const profile = { gender: 'male', weight: 75, age: 30, height: 175, activity: 1.55 };
+  const target = { currBF: 22, bf: 18, weight: 72, duration: 12 };
+
+  // Started 18 weeks ago on a 12-week plan: the window is long gone.
+  const over = ctx.calcTargetFeasibility(Object.assign({ startDate: '2026-05-04' }, target), profile);
+  assert.strictEqual(over.programOver, true, 'the elapsed window is reported');
+  assert.strictEqual(over.duration, 12, 'falls back to the original duration');
+  // The old Math.max(2, …) floor turned the same target into ~1,950 kcal/day forever, which
+  // leaked into the Goal Engine, the weekly review and both AI prompts.
+  assert.ok(over.requiredDeficit < 600, 'no inflated deficit, got ' + over.requiredDeficit);
+
+  // A program still running keeps planning on the weeks that remain.
+  const live = ctx.calcTargetFeasibility(Object.assign({ startDate: '2026-08-10' }, target), profile);
+  assert.strictEqual(live.programOver, false);
+  assert.ok(live.duration < 12, 'a live program still subtracts elapsed weeks');
+});
+
+test('a fat-loss goal that implies no deficit can never read "On Track"', () => {
+  const { classifyWeightStatus } = load(['classifyWeightStatus']);
+  // Committed goal at/above Adaptive TDEE ⇒ implied deficit ≤ 0 ⇒ requiredWeeklyLoss goes
+  // POSITIVE, and the old `trend <= reqLoss * 0.6` then blessed a weight GAIN as on-track.
+  const gaining = classifyWeightStatus(0.10, 'fat_loss', 0.2);
+  assert.ok(!gaining.isOnTrack, 'gaining 0.10 kg/wk is not on track for fat loss');
+  // A real loss target is unaffected.
+  assert.ok(classifyWeightStatus(-0.28, 'fat_loss', -0.41).isOnTrack);
+});
+
+test('the recovery adjustment layers on the day’s real base, not the raw goal', () => {
+  const ctx = load(['getRecoveryAdjGoals'], {
+    prelude: `
+      var MOCK = { db:null, rest:null, ea:null };
+      var S = { goals: { cal:1800, pro:140, crb:180, fat:60 } };
+      var LS = { gd_recovery_adj: JSON.stringify({ date:'2026-09-07', confirmed:true, delta:0, carbDelta:-20, proDelta:20, reason:'rest swap' }) };
+      var localStorage = { getItem: function(k){ return LS[k] || null; } };
+      function localDateStr(){ return '2026-09-07'; }
+      function getDietBreakAdjGoal(){ return MOCK.db; }
+      function getDayTypeAdjGoal(){ return MOCK.rest; }
+      function getEATrainingDayAdjGoal(){ return MOCK.ea; }`,
+  });
+
+  // Diet Break is maintenance: confirming a recovery tweak must not snap back to S.goals.
+  ctx.MOCK.db = { cal:2400, pro:140, crb:325, fat:60, _dayType:'diet_break', _dbDay:3, _dbTotal:14, _dbMaintenance:2400 };
+  let g = ctx.getRecoveryAdjGoals();
+  assert.strictEqual(g.cal, 2400, 'diet-break maintenance survives the recovery layer');
+  assert.strictEqual(g.crb, 305, 'the carb swap applies on top of it');
+  assert.strictEqual(g._dayType, 'diet_break', 'the marker driving the on-screen note is preserved');
+  assert.strictEqual(g._dbTotal, 14);
+
+  // Same for the training-day EA bump.
+  ctx.MOCK.db = null;
+  ctx.MOCK.ea = { cal:2050, pro:140, crb:230, fat:60, _dayType:'training_ea', _eaAddKcal:200 };
+  g = ctx.getRecoveryAdjGoals();
+  assert.strictEqual(g.cal, 2050, 'the EA floor survives the recovery layer');
+  assert.strictEqual(g._dayType, 'training_ea');
+});
+
+test('the per-day goal snapshot keeps the markers its readers branch on', () => {
+  const ctx = load(['recordEffectiveGoalSnapshot', 'clearEffectiveGoalSnapshot', 'getEffectiveGoalForDate'], {
+    consts: ['_egSnapLastKey'],
+    prelude: `
+      var LS = {};
+      var localStorage = { getItem:function(k){ return LS[k] || null; }, setItem:function(k,v){ LS[k] = v; } };
+      function safeJSON(k, d){ try { return LS[k] ? JSON.parse(LS[k]) : d; } catch(e) { return d; } }
+      var TODAY = '2026-09-07';
+      function localDateStr(d){ return d ? new Date(d.getTime()).toISOString().slice(0,10) : TODAY; }
+      function getDietBreakAdjGoal(){ return null; }
+      function getDayTypeAdjGoal(){ return null; }
+      function getGoalForDate(){ return { cal:1800, pro:140, crb:180, fat:60 }; }`,
+  });
+
+  ctx.recordEffectiveGoalSnapshot({ cal:1650, pro:140, crb:130, fat:60, _dayType:'rest', _carbCutKcal:200, _carbCutPct:0.25 });
+  ctx.TODAY = '2026-09-08'; // yesterday is now a past date
+
+  const past = ctx.getEffectiveGoalForDate('2026-09-07');
+  assert.strictEqual(past.cal, 1650, 'the calories that were actually shown');
+  // Storing cal/macros alone made computeWeekStats count "รest days: 0" and dropped the
+  // dashboard's rest-day note for every snapshotted day.
+  assert.strictEqual(past._dayType, 'rest', 'the day type is carried through');
+  assert.strictEqual(past._carbCutKcal, 200);
+
+  // Logging a workout on that day invalidates it, so the goal re-derives instead of staying frozen.
+  ctx.clearEffectiveGoalSnapshot('2026-09-07');
+  assert.strictEqual(ctx.getEffectiveGoalForDate('2026-09-07').cal, 1800, 'falls back to the recompute');
+});
+
+test('sleep consistency ignores nights logged AFTER the one being scored', () => {
+  const ctx = load(['computeConsistency', '_timeToMin', '_midpoint', '_std'], {
+    prelude: `var LS = {}; var localStorage = { getItem:function(k){ return LS[k] || null; } };`,
+  });
+  // Three steady nights up to 09-03, then a much later run on a totally different schedule.
+  ctx.LS['gd_sleep_log'] = JSON.stringify([
+    { date:'2026-09-01', bedtime:'23:00', wakeTime:'07:00' },
+    { date:'2026-09-02', bedtime:'23:00', wakeTime:'07:00' },
+    { date:'2026-09-10', bedtime:'03:00', wakeTime:'11:00' },
+    { date:'2026-09-11', bedtime:'03:00', wakeTime:'11:00' },
+    { date:'2026-09-12', bedtime:'03:00', wakeTime:'11:00' },
+  ]);
+  // Backdating / importing 09-03 used to score it against 09-10..12 — nights that had not
+  // happened yet relative to it — and the slice(-4) then dropped 09-03 itself.
+  assert.strictEqual(ctx.computeConsistency('23:00', '07:00', '2026-09-03'), 95,
+    'scored against its own neighbours, this is a perfectly regular night');
+});
+
+test('the bedtime window allows for onset latency and normal awakenings', () => {
+  const ctx = load(['computeSleepOpportunity', 'computeSleepOpportunityHours', 'computeSleepNeedHours'], {
+    consts: ['SLEEP_NEED_DEFAULT_HOURS', 'SLEEP_NEED_FLOOR_HOURS', 'SLEEP_NEED_LOOKBACK_DAYS', 'SLEEP_NEED_MIN_NIGHTS'],
+    prelude: `
+      var LS = {}; var localStorage = { getItem:function(k){ return LS[k] || null; } };
+      function localDateStr(d){ return d ? new Date(d.getTime()).toISOString().slice(0,10) : '2026-09-07'; }`,
+  });
+
+  // No history: default need 8 h of ACTUAL sleep needs more than 8 h in bed at 90% efficiency.
+  const bare = ctx.computeSleepOpportunity('2026-09-07');
+  assert.strictEqual(bare.need, 8);
+  assert.ok(bare.hours > bare.need, 'time in bed must exceed actual-sleep need');
+  assert.ok(Math.abs(bare.hours - 8 / 0.90) < 0.06, 'need ÷ default efficiency, got ' + bare.hours);
+  assert.ok(bare.bufferMin >= 30, 'the buffer is disclosed in minutes, got ' + bare.bufferMin);
+  assert.strictEqual(bare.measured, false);
+
+  // With ≥5 measured nights it uses the user's OWN efficiency (7 h asleep / 8 h in bed).
+  const nights = [];
+  for (let i = 1; i <= 12; i++) nights.push({ date: '2026-08-' + String(10 + i).padStart(2, '0'), hours: 7, timeInBed: 8 });
+  ctx.LS['gd_sleep_log'] = JSON.stringify(nights);
+  const measured = ctx.computeSleepOpportunity('2026-09-07');
+  assert.strictEqual(measured.measured, true);
+  assert.strictEqual(measured.effPct, 88, '7/8 = 87.5% rounds to 88');
+  assert.strictEqual(measured.need, 7, 'median actual sleep, floored at 7');
+  assert.strictEqual(measured.hours, 8, '7 h asleep at 87.5% efficiency needs 8 h in bed');
+  assert.strictEqual(ctx.computeSleepOpportunityHours('2026-09-07'), 8, 'the wrapper returns the same number');
+});
+
+test('the Physio pillar tracks a personal baseline, not absolute cutoffs', () => {
+  const { scorePhysio } = load(['scorePhysio']);
+  // Day-to-day rMSSD swings ~30% in healthy adults, so a few percent under baseline is normal
+  // variation. The old bands scored -3% as 56 and -6% as 32, flipping Push/Rest on noise.
+  assert.strictEqual(scorePhysio(57, 60), 88, 'exactly -5% is still normal variation');
+  assert.ok(scorePhysio(58, 60) >= 88, 'a -3.3% night is not a suppressed night');
+  assert.ok(scorePhysio(51, 60) < scorePhysio(58, 60), 'a genuine -15% drop still scores lower');
+  assert.strictEqual(scorePhysio(63, 60), 100, '+5% or better is a strong night');
+
+  // RHR is graded against the user's own rolling baseline when one exists...
+  assert.strictEqual(scorePhysio(null, null, 60, 60), 85, 'at baseline');
+  assert.strictEqual(scorePhysio(null, null, 68, 60), 32, '+8 bpm over baseline');
+  // ...and falls back to absolute bands until there is enough history for one.
+  assert.strictEqual(scorePhysio(null, null, 52), 80);
+  assert.strictEqual(scorePhysio(null, null, null), null, 'no physio data ⇒ pillar dropped');
+});
+
+test('goal-met is judged on the smoothed weight, not one low morning', () => {
+  const ctx = load(['isWeightGoalMet'], {
+    prelude: `
+      var MOCK = { smooth:null, latest:null };
+      function getSmoothedRecentWeight(){ return MOCK.smooth; }
+      function getLatestCheckinWeight(){ return MOCK.latest; }`,
+  });
+  // A single dehydrated morning dips under the target while the trend is still above it.
+  ctx.MOCK.smooth = 72.6; ctx.MOCK.latest = 71.8;
+  assert.strictEqual(ctx.isWeightGoalMet(72), false, 'one low reading does not reach the goal');
+  // Same 0.3 kg tolerance the analyzer's recompHold trigger uses.
+  ctx.MOCK.smooth = 72.2;
+  assert.strictEqual(ctx.isWeightGoalMet(72), true);
+  assert.strictEqual(ctx.isWeightGoalMet(null), false, 'no target ⇒ never "met"');
+});
