@@ -1195,6 +1195,7 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
           <label class="input-label">👟 ก้าวระหว่าง session นี้ (ไม่บังคับ)</label>
           <input class="input-field" type="number" id="ft-session-steps" placeholder="เช่น 6000" min="0"/>
           <div style="font-size:11px;color:var(--text3);margin-top:4px;">กรอกก้าวที่เกิดขึ้น<b>ระหว่าง</b>ออกกำลังกาย เพื่อไม่ให้นับซ้ำกับ step count ทั้งวัน</div>
+          <div style="font-size:11px;color:#eab308;margin-top:4px;display:none;" id="ft-session-steps-auto"></div>
         </div>
         <div class="input-group" id="ft-avghr-wrap">
           <label class="input-label">❤️ Avg HR ระหว่าง session (ไม่บังคับ)</label>
@@ -4665,23 +4666,6 @@ function isTrainingDayByPlan(dateStr) {
   var restTheme = !!(day.theme && day.theme.toLowerCase().indexOf('พัก') !== -1);
   return !!(day.exercises && day.exercises.length > 0) && !restTheme;
 }
-// Average gross workout burn over the training days in the recent window (rest days and
-// untrained days are excluded). Returns null when there is no training history to learn
-// from, so callers can fall back gracefully. Used to size the rest-day cut to how much
-// the user's training actually burns rather than a flat percentage.
-function getAvgTrainingDayBurn(windowDays) {
-  windowDays = windowDays || 28;
-  var total = 0, cnt = 0;
-  var today = new Date(localDateStr() + 'T12:00:00');
-  for (var i = 1; i <= windowDays; i++) {
-    var d = new Date(today); d.setDate(d.getDate() - i);
-    var ds = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
-    var ws = (typeof workoutsForDate === 'function') ? workoutsForDate(ds) : [];
-    var burn = ws.reduce(function(a,w){ return a + (parseFloat(w.calories_burned) || 0); }, 0);
-    if (burn > 0) { total += burn; cnt++; }
-  }
-  return cnt ? total / cnt : null;
-}
 // Rest-day carb cut is milder once the weight goal is met and we're recomping
 // (lean, holding weight to drive %BF down) — over-restricting carbs then just
 // hurts training/recovery. The standard cut still applies while actively losing.
@@ -4719,8 +4703,13 @@ function getDayTypeAdjGoal(dateStr) {
   // (B) Size the cut to what training actually burns. A rest day only needs to remove the
   // fuel a training day would have used, so someone who barely trains (low avg burn) gets a
   // small cut automatically instead of the full 25%. No effect when there is no history.
-  var avgBurn = getAvgTrainingDayBurn();
-  if (avgBurn !== null) carbCutKcal = Math.min(carbCutKcal, Math.round(avgBurn));
+  //
+  // CREDITED burn, like every other burn reader in the engine (netCal, EA, the analyzer). Using
+  // the GROSS figure here sized the rest-day cut against energy that includes the resting cost
+  // TDEE already covers, so the cut was consistently larger than the fuel the session actually
+  // used above resting — the one place still mixing the two conventions.
+  var avgBurnObj = (typeof getAvgTrainingDayCreditedBurn === 'function') ? getAvgTrainingDayCreditedBurn() : null;
+  if (avgBurnObj && avgBurnObj.burn > 0) carbCutKcal = Math.min(carbCutKcal, Math.round(avgBurnObj.burn));
 
   // (A) Floor so the rest-day target never drops too low. Prefer a BMR floor; if the profile
   // is incomplete (no BMR), fall back to a percentage cap of the day's own calories so the
@@ -5089,6 +5078,16 @@ function getEffectiveGoalForDate(dateStr) {
   // The diet break is a declared window with fixed dates, so unlike the EA bump it CAN be
   // replayed for past dates — a break day genuinely was a maintenance day.
   return getDietBreakAdjGoal(dateStr) || getDayTypeAdjGoal(dateStr) || getGoalForDate(dateStr);
+}
+
+// The calorie goal to compare a given day's intake against, for any surface that spans a range
+// of days (the 7-day charts). TODAY must read getEffectiveGoalToday() — the same value the
+// dashboard ring shows, including the recovery adjustment and the training-day EA bump — while
+// past days read their own snapshot/recompute. Mapping every day through getEffectiveGoalForDate
+// silently coloured today's bar against a target the ring never displayed.
+function goalCalForDay(dateStr) {
+  var g = (dateStr === localDateStr()) ? getEffectiveGoalToday() : getEffectiveGoalForDate(dateStr);
+  return (g && g.cal) || 1800;
 }
 
 // ── Anomaly Detection ─────────────────────────────────────────────
@@ -6687,7 +6686,10 @@ function buildGoalFromMode(mode, profile, tdee) {
   // case). Never below the per-mode intent, so this only ever trims, never raises.
   var proCapBW = Math.round(weight * 2.2);
   if (pro > proCapBW) { pro = proCapBW; proteinBasis = proteinBasis + '_capped'; }
-  var fat = Math.max(Math.round(weight * cfg.fatPerKg), Math.round(weight * 0.7));
+  // No max() against the 0.7 g/kg hard floor here: every mode's fatPerKg is 0.8-1.0, so that
+  // branch was unreachable. The floor still applies where it can actually bind — the carb-floor
+  // rebalance below, which is free to push fat down.
+  var fat = Math.round(weight * cfg.fatPerKg);
   var crb = Math.round((cal - (pro*4) - (fat*9)) / 4);
   if (crb < 80) {
     crb = 80;
@@ -6957,10 +6959,10 @@ var EA_AVG_MIN_TRAIN_DAYS = 3; // need at least this many training days for a st
 // being that if you train in the EVENING you can't top up calories after the fact, so the
 // plan has to assume the session before it happens, not react to it once logged.
 //
-// Distinct from getAvgTrainingDayBurn (rest-day carb-cut sizing): that one averages GROSS
-// calories_burned, this one averages the CREDITED burn so it stays consistent with the
-// same-day actual EA (which also uses credited burn) — otherwise plan-vs-actual would
-// compare a gross average against a discounted actual.
+// Averages the CREDITED burn, so it stays consistent with the same-day actual EA (which also
+// uses credited burn) — otherwise plan-vs-actual would compare a gross average against a
+// discounted actual. The rest-day carb cut reads this too, so both sides of the day-type
+// adjustment are now sized on the same convention.
 function getAvgTrainingDayCreditedBurn(refDate) {
   refDate = refDate || (typeof localDateStr === 'function' ? localDateStr() : null);
   if (!refDate) return null;
@@ -8732,6 +8734,35 @@ function calcBurnPreview() {
   var kcal = calcBurnKcal(FT.curPreset.met, min);
   document.getElementById('ft-cal-burn').value = kcal;
   document.getElementById('ft-met-info').textContent = 'MET = '+FT.curPreset.met+' | คาดการณ์ ~'+kcal+' kcal';
+  suggestSessionSteps(min);
+}
+// Typical cadence, steps/min. Walking uses the same 110 the app's own NEAT derivation assumes
+// for a 3.5-MET walk; running uses a conservative recreational cadence.
+var CADENCE_SPM = { walk: 110, run: 160 };
+// Prefill the session-steps field for a step-based preset. Only ever writes when the field is
+// empty or still holds the previous suggestion, so a typed value is never overwritten, and the
+// number is visible in the input for the user to correct before saving.
+function suggestSessionSteps(min) {
+  var input = document.getElementById('ft-session-steps');
+  var hint = document.getElementById('ft-session-steps-auto');
+  if (!input) return;
+  if (!FT.curPreset || !FT.curPreset.isStepBased || !(min > 0)) {
+    if (hint) { hint.style.display = 'none'; hint.textContent = ''; }
+    return;
+  }
+  var spm = /วิ่ง/.test(FT.curPreset.name || '') ? CADENCE_SPM.run : CADENCE_SPM.walk;
+  var suggested = Math.round(min * spm / 100) * 100;
+  var cur = input.value.trim();
+  var untouched = (cur === '' || (FT._autoSessionSteps != null && cur === String(FT._autoSessionSteps)));
+  if (untouched && document.activeElement !== input) {
+    input.value = suggested;
+    FT._autoSessionSteps = suggested;
+  }
+  if (hint) {
+    hint.style.display = 'block';
+    hint.textContent = 'กิจกรรมนี้สร้างก้าวที่นับซ้ำกับ step ทั้งวัน — ประมาณให้จาก cadence ~' + spm +
+      ' ก้าว/นาที (' + suggested + ' ก้าว) แก้เป็นค่าจริงจากนาฬิกาได้เลย';
+  }
 }
 
 // Update HR zone label (reference-only, does not affect burn kcal)
@@ -8820,6 +8851,9 @@ function addWorkout() {
   document.getElementById('ft-min').value = '';
   document.getElementById('ft-cal-burn').value = '';
   document.getElementById('ft-session-steps').value = '';
+  FT._autoSessionSteps = null;
+  var stepsAutoHint = document.getElementById('ft-session-steps-auto');
+  if (stepsAutoHint) { stepsAutoHint.style.display = 'none'; stepsAutoHint.textContent = ''; }
   document.getElementById('ft-avg-hr').value = '';
   var hrInfo = document.getElementById('ft-hr-zone-info'); if(hrInfo) hrInfo.textContent = 'กรอก avg HR เพื่อบอกโซนความหนัก (context ให้ AI Coach เท่านั้น ไม่กระทบ kcal ที่บันทึก)';
   document.getElementById('ft-met-info').textContent = '';
@@ -9188,7 +9222,7 @@ function renderFitnessCharts() {
 
   // Per-day, not a flat number — if the calorie goal changed mid-week, each day
   // compares against the goal that was actually in force on that day, not today's.
-  var goalCalByDay = days.map(function(d) { return getEffectiveGoalForDate(d).cal || 1800; });
+  var goalCalByDay = days.map(function(d) { return goalCalForDay(d); });
   var goalCal = goalCalByDay[goalCalByDay.length - 1]; // today's/most recent value, for display text only
 
   // Shared scale options
@@ -11154,7 +11188,7 @@ function renderWeightCalChart() {
 
   // Per-day, not a flat number — if the calorie goal changed mid-week, each day
   // compares against the goal that was actually in force on that day, not today's.
-  var goalCalByDay = days.map(function(d) { return getEffectiveGoalForDate(d).cal || 1800; });
+  var goalCalByDay = days.map(function(d) { return goalCalForDay(d); });
 
   // Intake per day (null if no meals logged)
   var intakeData = days.map(function(d) {
@@ -12164,7 +12198,7 @@ function analyzeProgressPhotoAI(){
 function runWeightAnalysis() {
   var resultEl = document.getElementById('wt-analysis-result');
   var today = localDateStr();
-  var CACHE_VER = 'v25_program_over_feasibility'; // a finished Fitness Target no longer inflates the required deficit, and the FT-vs-goal shortfall warning is suppressed once the program window has elapsed — bump forces recompute of any same-day cache built by the pre-fix card, which would otherwise be restored verbatim with the old numbers
+  var CACHE_VER = 'v26_carryover_cleanup'; // the status chip now names a loss-mode goal that sits at/above TDEE instead of reporting a gain target, and the TDEE-bounds BMR reads the latest check-in weight — bump forces recompute of any same-day cache built by the pre-fix card
 
   // Restore from cache only if same day AND same version
   var cached = JSON.parse(localStorage.getItem('gd_wt_analysis') || 'null');
@@ -12376,10 +12410,14 @@ function buildAnalysisHTML(recent) {
   //   a realistic activity-adjusted baseline for a user who trains regularly.
   var p=S.profile||{};
   var bmr=null, minTDEE=null, maxTDEE=null, activityMult=1.45;
-  if(p.weight&&p.height&&p.age&&p.gender){
-    bmr=p.gender==='male'
-      ?10*parseFloat(p.weight)+6.25*parseFloat(p.height)-5*parseFloat(p.age)+5
-      :10*parseFloat(p.weight)+6.25*parseFloat(p.height)-5*parseFloat(p.age)-161;
+  // Same inputs the rest of the engine uses: the latest CHECK-IN weight (profile.weight can lag
+  // behind it) and a male default when gender was never set — buildGoalFromMode already defaults
+  // that way, and requiring it here meant an incomplete profile got no TDEE bounds at all.
+  var bmrW=parseFloat((typeof getLatestCheckinWeight==='function' && getLatestCheckinWeight()) || p.weight);
+  if(bmrW&&p.height&&p.age){
+    bmr=(p.gender==='female')
+      ?10*bmrW+6.25*parseFloat(p.height)-5*parseFloat(p.age)-161
+      :10*bmrW+6.25*parseFloat(p.height)-5*parseFloat(p.age)+5;
 
     // S.profile.activity is stored as numeric string from settings (1.2, 1.375, 1.55, 1.725, 1.9)
     // fallback to moderate because this app is mainly for active fat-loss tracking.
@@ -12761,7 +12799,17 @@ function buildAnalysisHTML(recent) {
   html+='<div style="font-size:12px;color:var(--text3);font-weight:600;">STATUS</div>';
   html+='<div style="font-size:18px;font-weight:800;color:'+statusColor+';">'+statusLabel+'</div>';
   if(statusNote)html+='<div style="font-size:11px;color:var(--text3);margin-top:3px;">'+statusNote+'</div>';
-  if(requiredWeeklyLoss!==null&&!suppressRecommend)html+='<div style="font-size:11px;color:var(--text3);margin-top:2px;">Goal Engine: '+(requiredWeeklyLoss<0?'ลด ':'เพิ่ม ')+Math.abs(requiredWeeklyLoss).toFixed(2)+' กก./สัปดาห์ <span style="opacity:0.75;">(จากเป้าแคลที่ตั้งไว้ '+(userGoalCal||'—')+' kcal)</span></div>';
+  if(requiredWeeklyLoss!==null&&!suppressRecommend){
+    // A fat-loss/recomp goal set at or above TDEE implies no deficit, which used to print as
+    // "Goal Engine: เพิ่ม X กก./สัปดาห์" — the opposite of the mode the user selected. Name the
+    // real problem (the goal itself) instead of reporting a gain target under a loss mode.
+    var wantsLoss = (goalMode==='fat_loss'||goalMode==='recomp');
+    if(wantsLoss && requiredWeeklyLoss > 0){
+      html+='<div style="font-size:11px;color:#eab308;margin-top:2px;">⚠️ เป้าแคลที่ตั้งไว้ '+(userGoalCal||'—')+' kcal ไม่ต่ำกว่า TDEE ('+(trueTDEE||'—')+') — โหมดนี้ตั้งใจลดไขมัน แต่เป้านี้จะไม่เกิด deficit</div>';
+    } else {
+      html+='<div style="font-size:11px;color:var(--text3);margin-top:2px;">Goal Engine: '+(requiredWeeklyLoss<0?'ลด ':'เพิ่ม ')+Math.abs(requiredWeeklyLoss).toFixed(2)+' กก./สัปดาห์ <span style="opacity:0.75;">(จากเป้าแคลที่ตั้งไว้ '+(userGoalCal||'—')+' kcal)</span></div>';
+    }
+  }
   // Reconcile the Fitness Target against the calorie goal actually in force.
   // requiredDeficit above is deliberately derived from the USER'S committed calorie goal
   // (trueTDEE − userGoalCal), NOT from the Fitness Target — so editing the target weight
@@ -12998,7 +13046,7 @@ function syncRecommendedCalToGoal(cal) {
   // 0.7 g/kg hard floor). Using the bare 0.7 here let the sync button write a fat target below
   // the "Fat 0.9g/kg" the Settings hint promises for the very same mode.
   var syncW = parseFloat(getLatestCheckinWeight() || profile.weight) || 65;
-  var syncFatFloor = Math.max(Math.round(syncW * getGoalModeConfig(mode).fatPerKg), Math.round(syncW * 0.7));
+  var syncFatFloor = Math.round(syncW * getGoalModeConfig(mode).fatPerKg);   // >= the 0.7 g/kg floor for every mode
   goal.fat = Math.max(syncFatFloor,
                       Math.min(goal.fat, Math.round((goal.cal - (goal.pro*4) - (goal.crb*4)) / 9)));
   goal.cal = Math.max(goal.cal, goal.pro*4 + goal.crb*4 + goal.fat*9);
