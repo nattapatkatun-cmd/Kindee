@@ -1317,3 +1317,47 @@ test('goal-met is judged on the smoothed weight, not one low morning', () => {
   assert.strictEqual(ctx.isWeightGoalMet(72), true);
   assert.strictEqual(ctx.isWeightGoalMet(null), false, 'no target ⇒ never "met"');
 });
+
+// ── Carry-over cleanup (PR #96) ───────────────────────────────────────────────
+
+test('the rest-day carb cut is sized on CREDITED burn, like every other burn reader', () => {
+  const ctx = load(['getDayTypeAdjGoal'], {
+    consts: ['REST_DAY_CARB_CUT_PCT', 'RECOMP_REST_DAY_CARB_CUT_PCT', 'REST_DAY_MAX_CUT_FRAC'],
+    prelude: `
+      var MOCK = { credited: null };
+      var S = { profile: {}, goals: { cal:2000, pro:150, crb:200, fat:60 } };
+      function isTodayRestDayByPlan(){ return true; }
+      function todayWorkouts(){ return []; }
+      function workoutsForDate(){ return []; }
+      function getGoalForDate(){ return S.goals; }
+      function isRecompHoldState(){ return false; }
+      function calcBMRFromProfile(){ return 1600; }
+      function getAvgTrainingDayCreditedBurn(){ return MOCK.credited; }`,
+  });
+
+  // A typical session burns 250 gross but only 150 credited (the "true active" figure netCal and
+  // EA use). A rest day only needs to remove the fuel that credited burn represents — sizing the
+  // cut on the gross number removed energy the TDEE baseline already covers.
+  ctx.MOCK.credited = { burn: 150, days: 5 };
+  const cut = ctx.getDayTypeAdjGoal();
+  assert.strictEqual(cut._carbCutKcal, 150, 'cut is capped at the credited training-day burn');
+  assert.strictEqual(cut.cal, 1850);
+  assert.strictEqual(cut._dayType, 'rest');
+
+  // With too little history to average, the flat percentage still applies (25% of 200 g carbs).
+  ctx.MOCK.credited = null;
+  assert.strictEqual(ctx.getDayTypeAdjGoal()._carbCutKcal, 200, 'falls back to the flat cut');
+});
+
+test("a range chart reads TODAY's goal from the same source as the dashboard ring", () => {
+  const ctx = load(['goalCalForDay'], {
+    prelude: `
+      function localDateStr(){ return '2026-09-08'; }
+      // The ring shows the EA-bumped target; the past-date resolver deliberately never replays it.
+      function getEffectiveGoalToday(){ return { cal: 2150, _dayType: 'training_ea' }; }
+      function getEffectiveGoalForDate(){ return { cal: 1950 }; }`,
+  });
+  assert.strictEqual(ctx.goalCalForDay('2026-09-08'), 2150,
+    "today's bar must be judged against the number the ring actually shows");
+  assert.strictEqual(ctx.goalCalForDay('2026-09-07'), 1950, 'past days keep their own goal');
+});
