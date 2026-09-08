@@ -1361,3 +1361,65 @@ test("a range chart reads TODAY's goal from the same source as the dashboard rin
     "today's bar must be judged against the number the ring actually shows");
   assert.strictEqual(ctx.goalCalForDay('2026-09-07'), 1950, 'past days keep their own goal');
 });
+
+// ── Recovery-adjusted goal (PR #97) ───────────────────────────────────────────
+// This decides a real change to today's calorie + macro targets and used to live inside the
+// Morning Recovery network callback, untested.
+
+test('the Push bump is capped at maintenance for every non-surplus mode', () => {
+  const { computeRecoveryAdjustment } = load(['computeRecoveryAdjustment']);
+
+  // Normal fat-loss training day with room under TDEE — the full bump applies.
+  const room = computeRecoveryAdjustment('Push', { base: { cal: 1900 }, tdee: 2400, mode: 'fat_loss' });
+  assert.strictEqual(room.delta, 152);
+  assert.strictEqual(room.carbDelta, 38);
+  assert.strictEqual(room.delta, room.carbDelta * 4, 'calories stay derived from the carb grams');
+
+  // 'maintain' has deficit 0, so its target already sits AT maintenance: +152 every training
+  // day is a real surplus. This mode used to be exempt from the cap along with lean_gain.
+  const maintain = computeRecoveryAdjustment('Push', { base: { cal: 2380 }, tdee: 2400, mode: 'maintain' });
+  assert.strictEqual(maintain.delta, 20, 'trimmed to the remaining room under TDEE');
+  assert.strictEqual(maintain.carbDelta, 5);
+
+  // A lean-gain phase is *supposed* to run a surplus — it stays uncapped.
+  const gain = computeRecoveryAdjustment('Push', { base: { cal: 2380 }, tdee: 2400, mode: 'lean_gain' });
+  assert.strictEqual(gain.delta, 152, 'lean gain is not capped at maintenance');
+
+  // Already at/above maintenance ⇒ nothing to add, and the banner says so instead of "+0 kcal".
+  const atCap = computeRecoveryAdjustment('Push', { base: { cal: 2400, _dayType: 'training_ea' }, tdee: 2400, mode: 'recomp' });
+  assert.strictEqual(atCap.delta, 0);
+  assert.match(atCap.reason, /แตะ maintenance/);
+});
+
+test('the recovery banner states what the delta layers on and where it lands', () => {
+  const { computeRecoveryAdjustment } = load(['computeRecoveryAdjustment']);
+
+  // "+152 kcal" alone never told the user the number the ring would show.
+  const plain = computeRecoveryAdjustment('Push', { base: { cal: 1900 }, tdee: 2400, mode: 'fat_loss' });
+  assert.match(plain.reason, /1900 → 2052 kcal/, 'names the resulting target');
+  assert.match(plain.reason, /เป้าที่ตั้งไว้/);
+
+  // On a day whose base is NOT the raw saved goal, name which base it started from.
+  const onEA = computeRecoveryAdjustment('Push', { base: { cal: 2050, _dayType: 'training_ea' }, tdee: 2600, mode: 'recomp' });
+  assert.match(onEA.reason, /ฐานวันเทรน \(EA bump\) 2050 → 2202 kcal/);
+
+  // A macro-only swap must not read as a calorie change.
+  const rest = computeRecoveryAdjustment('Rest', { base: { cal: 1900 }, tdee: 2400, mode: 'fat_loss' });
+  assert.strictEqual(rest.delta, 0);
+  assert.strictEqual(rest.carbDelta, -20);
+  assert.strictEqual(rest.proDelta, 20, 'gram-for-gram, both macros are 4 kcal/g');
+  assert.match(rest.reason, /แคลคงเดิม 1900 kcal/);
+});
+
+test('Push adds nothing on a planned rest day or during a diet break', () => {
+  const { computeRecoveryAdjustment } = load(['computeRecoveryAdjustment']);
+
+  const restDay = computeRecoveryAdjustment('Push', { base: { cal: 1700, _dayType: 'rest' }, tdee: 2400, mode: 'fat_loss', restDayPlan: true });
+  assert.strictEqual(restDay.delta, 0, 'no session to fuel');
+  assert.strictEqual(restDay.carbDelta, 0);
+  assert.match(restDay.reason, /วันพักตามแผน/);
+
+  const onBreak = computeRecoveryAdjustment('Push', { base: { cal: 2400, _dayType: 'diet_break' }, tdee: 2400, mode: 'fat_loss', dietBreak: true });
+  assert.strictEqual(onBreak.delta, 0, 'a diet break already eats at maintenance');
+  assert.match(onBreak.reason, /Diet Break/);
+});

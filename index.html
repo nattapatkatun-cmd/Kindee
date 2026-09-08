@@ -3980,48 +3980,23 @@ function generateMorningRecovery() {
       // same dashboard number.
       var restDayPlan = (typeof isTodayRestDayByPlan === 'function') && isTodayRestDayByPlan() &&
                         !((typeof todayWorkouts === 'function') && todayWorkouts().length);
-      // The recovery delta now LAYERS on top of the day's base target, so a Push has to respect
-      // what that base already did: a Diet Break is maintenance by definition, and the
-      // training-day EA bump has already restored intake to (at most) maintenance.
-      var dbActivePush = (typeof getActiveDietBreak === 'function') ? getActiveDietBreak() : null;
-      if (rec === 'Push' && restDayPlan) {
-        reason = 'Recovery ดี แต่วันนี้เป็นวันพักตามแผน — คงเป้าปกติ เก็บแรงไว้ซ้อมเต็มที่พรุ่งนี้';
-      } else if (rec === 'Push' && dbActivePush) {
-        reason = 'Recovery ดี แต่วันนี้อยู่ช่วง Diet Break — กินที่ maintenance อยู่แล้ว ไม่ต้องเพิ่มอีก';
-      } else if (rec === 'Push') {
-        // Derive the kcal bump FROM the carb grams so the calorie target and the macro
-        // targets stay reconcilable. The old pair (+150 kcal but only +30g carb = +120)
-        // left 30 kcal unaccounted for — enough to trip the app's own macro-vs-calorie
-        // validator (updateMacroKcalHint flags any gap > 15 kcal in red).
-        carbDelta = 38; delta = carbDelta * 4; // 152 kcal, all from carbs
-        // Cap at maintenance while cutting: on a day the EA floor already lifted intake to
-        // TDEE, adding the full bump on top would tip a fat-loss day into a surplus — exactly
-        // what getEATrainingDayAdjGoal caps against ("never a surplus while cutting").
-        var pushBase = (typeof getDayTypeAdjGoal === 'function' && getDayTypeAdjGoal()) ||
-                       (typeof getEATrainingDayAdjGoal === 'function' && getEATrainingDayAdjGoal()) ||
-                       S.goals || {};
-        var pushAnalyzer = (typeof readAnalyzerContext === 'function') ? readAnalyzerContext() : null;
-        var pushTDEE = (pushAnalyzer && pushAnalyzer.adaptiveTDEE) ||
-                       (typeof calcFormulaTDEE === 'function' ? calcFormulaTDEE(S.profile) : null);
-        var pushMode = (typeof normalizeGoalMode === 'function') ? normalizeGoalMode((S.profile || {}).goalType) : null;
-        if (pushTDEE && pushBase.cal && (pushMode === 'fat_loss' || pushMode === 'recomp') &&
-            pushBase.cal + delta > pushTDEE) {
-          carbDelta = Math.max(0, Math.floor((pushTDEE - pushBase.cal) / 4));
-          delta = carbDelta * 4;
-        }
-        reason = delta > 0
-          ? 'Recovery ดี — เพิ่ม +' + delta + ' kcal (+' + carbDelta + 'g carbs) เพื่อ fuel training'
-          : 'Recovery ดี แต่เป้าวันนี้อยู่ที่ maintenance แล้ว (EA bump) — ไม่เพิ่มแคลเพิ่มเติม';
-      } else if (rec === 'Rest') {
-        // Poor recovery is the worst day to deepen the deficit — keep calories,
-        // shift carbs→protein (isocaloric) to support repair instead. Both are 4 kcal/g,
-        // so the swap must be gram-for-gram; the old -20/+15 pair quietly cut 20 kcal
-        // while the banner claimed calories were unchanged.
-        carbDelta = -20; proDelta = 20;
-        reason = 'Recovery ต่ำ — คงแคลเท่าเดิม สลับคาร์บ ' + carbDelta + 'g เป็นโปรตีน +' + proDelta + 'g เพื่อซ่อมกล้ามเนื้อ (ไม่ลดแคลในวันที่ร่างกายฟื้นตัวแย่)';
-      } else {
-        reason = 'Maintain — เป้าหมายแคลปกติ';
-      }
+      // The delta LAYERS on top of the day's base target, so resolve that base here (same
+      // precedence getEffectiveGoalToday uses) and hand it to the pure decision function.
+      var adjBase = (typeof getDietBreakAdjGoal === 'function' && getDietBreakAdjGoal()) ||
+                    (typeof getDayTypeAdjGoal === 'function' && getDayTypeAdjGoal()) ||
+                    (typeof getEATrainingDayAdjGoal === 'function' && getEATrainingDayAdjGoal()) ||
+                    S.goals || {};
+      var adjAnalyzer = (typeof readAnalyzerContext === 'function') ? readAnalyzerContext() : null;
+      var adjTDEE = (adjAnalyzer && adjAnalyzer.adaptiveTDEE) ||
+                    (typeof calcFormulaTDEE === 'function' ? calcFormulaTDEE(S.profile) : null);
+      var recAdj = computeRecoveryAdjustment(rec, {
+        restDayPlan: restDayPlan,
+        dietBreak: !!((typeof getActiveDietBreak === 'function') && getActiveDietBreak()),
+        base: adjBase,
+        tdee: adjTDEE,
+        mode: (typeof normalizeGoalMode === 'function') ? normalizeGoalMode((S.profile || {}).goalType) : null
+      });
+      delta = recAdj.delta; carbDelta = recAdj.carbDelta; proDelta = recAdj.proDelta; reason = recAdj.reason;
       var adj = { date: today, rec: rec, delta: delta, carbDelta: carbDelta, proDelta: proDelta, reason: reason };
       localStorage.setItem('gd_recovery_adj', JSON.stringify(adj));
       if (window.FB_OK && window.FB) window.FB.saveSetting('recoveryAdj', adj).catch(function(){});
@@ -4632,6 +4607,71 @@ function restoreRecoveryAdj() {
   var today = localDateStr();
   var adj = null; try { adj = JSON.parse(localStorage.getItem('gd_recovery_adj') || 'null'); } catch(e) {}
   if (adj && adj.date === today) updateRecoveryAdjBanner(adj);
+}
+
+// ── Recovery-Adjusted Goal: the decision ──────────────────────────────
+// Pure function: given this morning's recommendation and the day's already-resolved context,
+// return the calorie/macro delta and the sentence shown on the banner. Lifted out of the
+// Morning Recovery AI callback — it decides a real change to today's calorie and macro targets
+// and, being buried in a network callback, had no test coverage at all.
+//
+// ctx: { restDayPlan, dietBreak, base, tdee, mode }
+//   base = the day's target BEFORE this adjustment (diet break > rest-day cut > EA bump > saved
+//   goal), because the delta layers on top of it rather than replacing it.
+function computeRecoveryAdjustment(rec, ctx) {
+  ctx = ctx || {};
+  var base = ctx.base || {};
+  var baseCal = Math.round(parseFloat(base.cal) || 0);
+  var out = { delta: 0, carbDelta: 0, proDelta: 0, reason: '' };
+  var label = base._dayType === 'diet_break' ? 'ฐาน Diet Break'
+            : base._dayType === 'rest' ? 'ฐานวันพัก'
+            : base._dayType === 'training_ea' ? 'ฐานวันเทรน (EA bump)'
+            : 'เป้าที่ตั้งไว้';
+  // State what the delta starts from and lands on. "+152 kcal" alone never told the user the
+  // number the ring would show — and on a rest-day / diet-break / EA-bumped day the base is
+  // not the raw saved goal, so the result was genuinely unguessable before tapping Apply.
+  function withResult(text) {
+    if (!baseCal) return text;
+    if (out.delta > 0) return text + ' · ' + label + ' ' + baseCal + ' → ' + (baseCal + out.delta) + ' kcal';
+    if (out.carbDelta || out.proDelta) return text + ' · แคลคงเดิม ' + baseCal + ' kcal (ปรับเฉพาะมาโคร)';
+    return text + ' · คงเป้าเดิม ' + baseCal + ' kcal';
+  }
+  if (rec === 'Push' && ctx.restDayPlan) {
+    out.reason = withResult('Recovery ดี แต่วันนี้เป็นวันพักตามแผน — คงเป้าปกติ เก็บแรงไว้ซ้อมเต็มที่พรุ่งนี้');
+    return out;
+  }
+  if (rec === 'Push' && ctx.dietBreak) {
+    out.reason = withResult('Recovery ดี แต่วันนี้อยู่ช่วง Diet Break — กินที่ maintenance อยู่แล้ว ไม่ต้องเพิ่มอีก');
+    return out;
+  }
+  if (rec === 'Push') {
+    // Derive the kcal bump FROM the carb grams so the calorie target and the macro targets stay
+    // reconcilable. The old pair (+150 kcal but only +30g carb = +120) left 30 kcal unaccounted
+    // for — enough to trip the app's own validator (updateMacroKcalHint flags a gap > 15 kcal).
+    out.carbDelta = 38; out.delta = out.carbDelta * 4;
+    // Cap at maintenance for every mode that isn't deliberately building in a surplus. On a day
+    // the EA floor already lifted intake to TDEE, the full bump on top tips the day into a
+    // surplus — what getEATrainingDayAdjGoal caps against ("never a surplus while cutting").
+    // 'maintain' belongs here too: its deficit is 0, so its target already sits AT maintenance
+    // and +152 every training day is a real ~0.08 kg/wk drift away from the mode's whole point.
+    if (ctx.tdee && baseCal && ctx.mode !== 'lean_gain' && baseCal + out.delta > ctx.tdee) {
+      out.carbDelta = Math.max(0, Math.floor((ctx.tdee - baseCal) / 4));
+      out.delta = out.carbDelta * 4;
+    }
+    out.reason = withResult(out.delta > 0
+      ? 'Recovery ดี — เพิ่ม +' + out.delta + ' kcal (+' + out.carbDelta + 'g carbs) เพื่อ fuel training'
+      : 'Recovery ดี แต่เป้าวันนี้แตะ maintenance แล้ว — ไม่เพิ่มแคลเพิ่มเติม');
+    return out;
+  }
+  if (rec === 'Rest') {
+    // Poor recovery is the worst day to deepen the deficit — keep calories, shift carbs→protein
+    // (isocaloric) to support repair instead. Both are 4 kcal/g, so the swap is gram-for-gram.
+    out.carbDelta = -20; out.proDelta = 20;
+    out.reason = withResult('Recovery ต่ำ — คงแคลเท่าเดิม สลับคาร์บ ' + out.carbDelta + 'g เป็นโปรตีน +' + out.proDelta + 'g เพื่อซ่อมกล้ามเนื้อ (ไม่ลดแคลในวันที่ร่างกายฟื้นตัวแย่)');
+    return out;
+  }
+  out.reason = withResult('Maintain — เป้าหมายแคลปกติ');
+  return out;
 }
 
 // ── Day-Type Adjusted Goal (rest day vs training day, from the AI Workout Plan) ──
