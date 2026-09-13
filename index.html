@@ -1458,7 +1458,7 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
           <div id="sleep-saved-badge" style="display:none;font-size:11px;color:var(--green);font-weight:600;background:rgba(34,197,94,0.1);border:1px solid rgba(34,197,94,0.3);border-radius:20px;padding:3px 10px;">✓ บันทึกแล้ว</div>
         </div>
         <div class="input-group" style="margin-bottom:14px;">
-          <label class="input-label">คืนของวันที่ (เปลี่ยนได้ถ้าบันทึกย้อนหลัง)</label>
+          <label class="input-label">คืนของวันที่ (เลือกวันย้อนหลังเพื่อกรอกคืนที่ยังไม่ได้บันทึก)</label>
           <input class="input-field" type="date" id="sleep-date" onchange="onSleepDateChange(this.value)"/>
         </div>
         <div class="input-group" style="margin-bottom:14px;">
@@ -1510,7 +1510,7 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
           <div><label class="input-label">HRV Baseline</label><div style="position:relative;"><input class="input-field" type="number" id="sleep-hrv-baseline" min="10" max="200" placeholder="36" oninput="onHRVBaselineFieldInput()"/><span style="position:absolute;right:8px;top:50%;transform:translateY(-50%);font-size:11px;color:var(--text3);pointer-events:none;">ms</span></div></div>
         </div>
         <div id="hrv-baseline-hint" style="font-size:10px;color:var(--text3);margin:-10px 0 14px;line-height:1.4;"></div>
-        <div id="sleep-view-banner" style="display:none;background:rgba(99,102,241,0.1);border:1px solid rgba(99,102,241,0.3);border-radius:10px;padding:8px 12px;font-size:12px;color:#818cf8;margin-bottom:10px;">โหมดดูย้อนหลัง — แก้ไขไม่ได้ <button onclick="onSleepDateChange(localDateStr())" style="background:none;border:none;color:#818cf8;font-size:12px;cursor:pointer;text-decoration:underline;padding:0;margin-left:6px;">กลับวันนี้</button></div>
+        <div id="sleep-view-banner" style="display:none;background:rgba(99,102,241,0.1);border:1px solid rgba(99,102,241,0.3);border-radius:10px;padding:8px 12px;font-size:12px;color:#818cf8;margin-bottom:10px;">คืนนี้บันทึกไว้แล้ว — ดูอย่างเดียว แก้ไขไม่ได้ <button onclick="onSleepDateChange(localDateStr())" style="background:none;border:none;color:#818cf8;font-size:12px;cursor:pointer;text-decoration:underline;padding:0;margin-left:6px;">กลับวันนี้</button></div>
         <button class="btn-primary" id="sleep-save-btn" onclick="saveSleep()">บันทึก Sleep Data</button>
         <div style="font-size:11px;color:var(--text3);text-align:center;margin-top:10px;">ดูผลวิเคราะห์ Recovery ได้ที่ <a href="#" onclick="event.preventDefault();showFitnessTab('insights');" style="color:var(--accent);font-weight:600;">Insights</a> หลังบันทึก Sleep วันนี้</div>
       </div>
@@ -13597,16 +13597,29 @@ function saveSleep() {
       data.recoveryEmoji = calcNow.emoji;
     } catch(e) {}
   }
-  S.sleepData=data;
-  localStorage.setItem('gd_sleep',JSON.stringify(data));
+  // Backfilling a past night must NOT clobber the live "today" sleep. S.sleepData,
+  // gd_sleep and the FB settings/sleep doc all mean *today's* entry — getRHR, the HRV
+  // fallback and the recovery ring read them without a date guard — so a past night
+  // belongs only in the date-keyed log via syncSleepLog. See CLAUDE.md failure mode #1.
+  var realToday=localDateStr();
+  var isBackfill=(data.date!==realToday);
+  if(!isBackfill){
+    S.sleepData=data;
+    localStorage.setItem('gd_sleep',JSON.stringify(data));
+    if(window.FB_OK&&window.FB&&window.FB.saveSleepDoc){window.FB.saveSleepDoc(data).catch(function(){});}
+  }
   syncSleepLog(data);
-  if(window.FB_OK&&window.FB&&window.FB.saveSleepDoc){window.FB.saveSleepDoc(data).catch(function(){});}
   // หมายเหตุ: ไม่ส่ง webhook ที่นี่ — ส่งหลังวิเคราะห์ recovery แล้วเท่านั้น (มี recovery fields ครบ)
   document.getElementById('sleep-saved-badge').style.display='block';
-  var msg='✅ บันทึก Sleep '+displayStr;
+  var msg=(isBackfill?'✅ บันทึกย้อนหลัง Sleep '+displayStr+' ('+data.date+')':'✅ บันทึก Sleep '+displayStr);
   if(hrv&&hrvBaseline){var diff=((hrv-hrvBaseline)/hrvBaseline*100).toFixed(1);msg+=' | HRV '+(diff>=0?'+':'')+diff+'% vs baseline';}
   showToast(msg,'success');
-  initLogDate('sleep-date');
+  if(isBackfill){
+    // This date now has an entry → re-render it as the read-only saved view (confirms the save).
+    onSleepDateChange(data.date);
+  } else {
+    initLogDate('sleep-date');
+  }
 }
 
 function _fillSleepForm(d) {
@@ -13801,8 +13814,11 @@ function onSleepDateChange(dateStr) {
     if(pastHTML&&recovEl){recovEl.style.display='block';recovEl.innerHTML=pastHTML;}
     _setSleepReadOnly(true);
   } else {
+    // No entry for this past date → let the user backfill a night they missed.
+    // Already-saved past nights (the if-branch above) stay read-only.
     _fillSleepForm(null);
-    _setSleepReadOnly(true);
+    _setSleepReadOnly(false);
+    try{ applyAutoHRVBaseline(dateStr); }catch(e){}
   }
 }
 function loadSleepUI() {
