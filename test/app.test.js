@@ -614,3 +614,63 @@ test('the deload "consecutive weeks" count is the real streak, not a fixed 6-wee
 
   await noErrors(page, 'the deload week-streak count');
 });
+
+test('food photos: in-app camera and gallery cap at 3, all go in one AI request, none are persisted', async () => {
+  const page = await openApp(browser, buildSeed());
+
+  const r = await page.evaluate(async () => {
+    showPage('analyze');
+    // Fake camera: a canvas stream stands in for getUserMedia.
+    const src = document.createElement('canvas');
+    src.width = 640; src.height = 480;
+    const ctx = src.getContext('2d');
+    const paint = setInterval(() => { ctx.fillStyle = '#c84'; ctx.fillRect(0, 0, 640, 480); }, 30);
+    let stream;
+    navigator.mediaDevices.getUserMedia = async () => (stream = src.captureStream(30));
+    const tick = (ms) => new Promise((res) => setTimeout(res, ms));
+
+    openFoodCamera();
+    for (let i = 0; i < 20 && !document.getElementById('foodCamVideo').videoWidth; i++) await tick(50);
+    const opened = document.getElementById('foodCam').classList.contains('open');
+    captureFoodFrame();
+    captureFoodFrame();
+    const afterTwo = curImgs.length;
+    captureFoodFrame(); // third fills the meal and closes the camera
+    const closedAtMax = !document.getElementById('foodCam').classList.contains('open');
+    const tracksStopped = stream.getTracks().every((t) => t.readyState === 'ended');
+    clearInterval(paint);
+
+    // Gallery multi-select beyond the cap is trimmed, not appended.
+    removeFoodPhoto(0);
+    const blob = await new Promise((res) => src.toBlob(res, 'image/jpeg'));
+    const files = [1, 2, 3].map((i) => new File([blob], 'f' + i + '.jpg', { type: 'image/jpeg' }));
+    handleFile({ target: { files, value: '' } });
+    for (let i = 0; i < 40 && curImgs.length < 3; i++) await tick(50);
+    await tick(200);
+    const afterGallery = curImgs.length;
+
+    let body = null;
+    window.aiAvailable = () => true;
+    window.geminiCall = (key, b) => { body = b; return new Promise(() => {}); };
+    analyzePhoto('');
+    const parts = body.contents[0].parts;
+
+    const stored = Object.keys(localStorage).some((k) => /\/9j\//.test(localStorage.getItem(k) || ''));
+    return {
+      opened, afterTwo, closedAtMax, tracksStopped, afterGallery, stored,
+      imageParts: parts.filter((p) => p.inline_data).length,
+      dedupeRule: /ห้ามนับซ้ำ/.test(parts[0].text),
+    };
+  });
+
+  assert.ok(r.opened, 'the in-app camera opens');
+  assert.strictEqual(r.afterTwo, 2);
+  assert.ok(r.closedAtMax, 'the camera closes once the 3rd photo is taken');
+  assert.ok(r.tracksStopped, 'closing the camera stops the stream');
+  assert.strictEqual(r.afterGallery, 3, 'gallery picks are trimmed to the 3-photo cap');
+  assert.strictEqual(r.imageParts, 3, 'every photo goes into the single AI request');
+  assert.ok(r.dedupeRule, 'a multi-photo prompt tells the model not to double-count');
+  assert.strictEqual(r.stored, false, 'no photo is written to localStorage');
+  await noErrors(page, 'multi-photo food capture');
+  await page.close();
+});

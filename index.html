@@ -264,6 +264,22 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
 .upload-area{border:2px dashed var(--border-md);border-radius:16px;padding:16px 20px;text-align:center;cursor:pointer;background:var(--surface2);transition:border-color 0.2s,background 0.2s;}
 .upload-area:hover{border-color:var(--accent);background:var(--accent-dim);}
 .preview-img{width:100%;border-radius:14px;margin-bottom:12px;max-height:220px;object-fit:cover;display:none;}
+.food-thumbs{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px;}
+.food-thumb{position:relative;aspect-ratio:1;border-radius:12px;overflow:hidden;background:var(--surface2);}
+.food-thumb img{width:100%;height:100%;object-fit:cover;display:block;}
+.food-thumb-del{position:absolute;top:4px;right:4px;width:24px;height:24px;border-radius:50%;border:none;background:rgba(0,0,0,0.6);color:#fff;font-size:12px;cursor:pointer;display:flex;align-items:center;justify-content:center;}
+.food-photo-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+.food-photo-actions .upload-area{display:flex;flex-direction:column;align-items:center;gap:4px;padding:14px 8px;}
+.food-cam{display:none;position:fixed;inset:0;background:#000;z-index:1100;flex-direction:column;}
+.food-cam.open{display:flex;}
+.food-cam video{flex:1;width:100%;min-height:0;object-fit:cover;background:#000;}
+.food-cam-top{position:absolute;top:0;left:0;right:0;display:flex;justify-content:space-between;align-items:center;padding:calc(env(safe-area-inset-top,0px) + 12px) 16px 12px;color:#fff;font-size:13px;font-weight:600;background:linear-gradient(rgba(0,0,0,0.55),transparent);}
+.food-cam-bar{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:16px 20px calc(env(safe-area-inset-bottom,0px) + 20px);background:#000;}
+.food-cam-shutter{width:68px;height:68px;border-radius:50%;border:4px solid #fff;background:rgba(255,255,255,0.25);cursor:pointer;flex-shrink:0;}
+.food-cam-shutter:disabled{opacity:0.35;}
+.food-cam-btn{min-width:72px;padding:10px 14px;border-radius:12px;border:none;background:rgba(255,255,255,0.15);color:#fff;font-size:14px;font-weight:600;cursor:pointer;}
+.food-cam-thumbs{display:flex;gap:6px;min-width:72px;}
+.food-cam-thumbs img{width:34px;height:34px;border-radius:8px;object-fit:cover;border:1px solid rgba(255,255,255,0.5);}
 
 /* ── Loading ── */
 .loading{display:none;text-align:center;padding:24px;}
@@ -981,7 +997,7 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
       </div>
     </div>
     <div class="tab-row" style="margin-bottom:2px;">
-      <button class="tab-pill active" id="modePhotoBtn" onclick="switchMode('photo')">อัปโหลดรูป</button>
+      <button class="tab-pill active" id="modePhotoBtn" onclick="switchMode('photo')">ถ่าย/อัปโหลดรูป</button>
       <button class="tab-pill" id="modeTextBtn" onclick="switchMode('text')">พิมพ์ชื่อเมนู</button>
       <button class="tab-pill" id="modeManualBtn" onclick="switchMode('manual')">ป้อนเอง</button>
     </div>
@@ -990,23 +1006,39 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
     </div>
     <div id="photoMode">
       <div class="card">
-        <div class="card-title">อัปโหลดรูปอาหาร</div>
-        <img id="previewImg" class="preview-img" src="" alt="preview"/>
-        <button class="btn-secondary" id="changePhotoBtn" type="button" onclick="document.getElementById('fileInput').click()" style="display:none;margin-bottom:12px;">🔄 เปลี่ยนรูป</button>
-        <div class="upload-area" id="uploadArea" onclick="document.getElementById('fileInput').click()" style="display:flex;align-items:center;gap:12px;text-align:left;">
-          <div style="font-size:26px;flex-shrink:0;">📷</div>
-          <div>
-            <div style="font-size:14px;font-weight:600;">แตะเพื่ออัปโหลดรูปภาพ</div>
-            <div style="font-size:11px;color:var(--text3);margin-top:2px;">รองรับ JPG, PNG, HEIC</div>
+        <div class="card-title">รูปอาหาร <span id="foodPhotoCount" style="font-weight:500;color:var(--text3);">(0/3)</span></div>
+        <div class="food-thumbs" id="foodThumbs" style="display:none;"></div>
+        <div class="food-photo-actions" id="uploadArea">
+          <div class="upload-area" onclick="openFoodCamera()">
+            <div style="font-size:24px;">📸</div>
+            <div style="font-size:13px;font-weight:600;">ถ่ายรูป</div>
+          </div>
+          <div class="upload-area" onclick="document.getElementById('fileInput').click()">
+            <div style="font-size:24px;">🖼️</div>
+            <div style="font-size:13px;font-weight:600;">เลือกจากเครื่อง</div>
           </div>
         </div>
-        <input type="file" id="fileInput" accept="image/*,.heic,.heif" style="display:none" onchange="handleFile(event)"/>
+        <div style="font-size:11px;color:var(--text3);margin-top:8px;line-height:1.5;">ได้สูงสุด 3 รูปต่อมื้อ แนะนำ: มุมบน + มุมเฉียง 45° (เห็นความสูงของอาหาร) + จานเคียง/เครื่องดื่ม · รูปไม่ถูกบันทึกลงเครื่องหรือ cloud</div>
+        <input type="file" id="fileInput" accept="image/*,.heic,.heif" multiple style="display:none" onchange="handleFile(event)"/>
+        <input type="file" id="cameraInput" accept="image/*" capture="environment" style="display:none" onchange="handleFile(event)"/>
         <div style="margin-top:12px;">
           <label style="font-size:12px;color:var(--text2);display:block;margin-bottom:6px;">คำอธิบายเพิ่มเติม <span style="color:var(--text3);">(ไม่บังคับ) — เช่น ปริมาณ, วิธีปรุง, ส่วนประกอบ</span></label>
           <textarea id="photoDesc" rows="2" class="input-field" placeholder="เช่น ข้าวผัดหมู 1 จาน น้ำมันน้อย ไม่ใส่ไข่" style="resize:none;font-size:16px;"></textarea>
         </div>
       </div>
       <button class="btn-primary" id="analyzeBtn" onclick="analyzePhoto(document.getElementById('photoDesc').value.trim())" disabled>🔍 วิเคราะห์จากรูป</button>
+    </div>
+    <div class="food-cam" id="foodCam">
+      <video id="foodCamVideo" autoplay playsinline muted></video>
+      <div class="food-cam-top">
+        <span id="foodCamHint">มุมบน</span>
+        <span id="foodCamCount">0/3</span>
+      </div>
+      <div class="food-cam-bar">
+        <div class="food-cam-thumbs" id="foodCamThumbs"></div>
+        <button class="food-cam-shutter" id="foodCamShutter" type="button" aria-label="ถ่ายรูป" onclick="captureFoodFrame()"></button>
+        <button class="food-cam-btn" type="button" onclick="closeFoodCamera()">เสร็จ</button>
+      </div>
     </div>
     <div id="textMode" style="display:none;">
       <div class="card">
@@ -2624,7 +2656,7 @@ var S = {
   get apiKey(){ return this.apiKeys[0] || ''; },
   sleepData: JSON.parse(localStorage.getItem('gd_sleep') || 'null')
 };
-var curImg = null, curImgType = 'image/jpeg', curLabel = '', curResult = null, curMode = 'photo';
+var curImgs = [], curLabel = '', curResult = null, curMode = 'photo';
 var menuItems = [], menuId = 0;
 
 // Goal-centered sync version: clears stale cached AI text when logic changes
@@ -3019,6 +3051,7 @@ function showPage(id) {
   // 'history' is a legacy alias — page-history was merged into page-log
   // (toggled via setLogViewMode) so it always resolves to the same page.
   var targetId = (id === 'history') ? 'log' : id;
+  if (targetId !== 'analyze') closeFoodCamera();
   document.querySelectorAll('.page').forEach(function(p){p.classList.remove('active');});
   document.querySelectorAll('.nav-btn').forEach(function(b){b.classList.remove('active');});
   document.getElementById('page-'+targetId).classList.add('active');
@@ -3090,36 +3123,127 @@ function convertHeicIfNeeded(file, callback) {
   });
 }
 
-// File upload
-function handleFile(e) {
-  if(!e.target.files[0]) return;
-  var file = e.target.files[0];
-  convertHeicIfNeeded(file, function(converted, err){
-    if (err || !converted) {
-      showToast('แปลงไฟล์ HEIC ไม่สำเร็จ กรุณาลองใหม่หรือใช้รูปแบบ JPEG/PNG', 'error');
-      e.target.value = '';
-      return;
-    }
-    var reader = new FileReader();
-    reader.onload = function(ev){
-      // Compress before it ever touches curImg/the Gemini payload — full camera
-      // resolution (often 10+MB) was previously sent as-is, which was both slow
-      // and wasteful for a task that only needs enough detail to estimate macros.
-      compressPhoto(ev.target.result, 1024, 0.8, function(compressed){
-        curImgType = 'image/jpeg'; // always jpeg after compress
-        curImg = compressed.split(',')[1];
-        curResult = null;
-        var img = document.getElementById('previewImg');
-        img.src = compressed; img.style.display = 'block';
-        document.getElementById('uploadArea').style.display = 'none';
-        document.getElementById('changePhotoBtn').style.display = 'block';
-        document.getElementById('analyzeBtn').disabled = false;
-        document.getElementById('resultCard').style.display = 'none';
-        document.getElementById('clarifyBox').style.display = 'none';
-      });
-    };
-    reader.readAsDataURL(converted);
+// Food photos — held in memory only (curImgs, base64 JPEG). They go to the AI
+// in one request and are never written to localStorage, Firebase, or the
+// device: the in-app camera draws video frames to a canvas, so nothing ever
+// reaches the camera roll the way a native camera app's shot can on Android.
+// 3 covers a top view + a 45° view (portion depth) + a side dish/drink; more
+// views of one meal mostly invite the model to count the same dish twice.
+var FOOD_PHOTO_MAX = 3;
+var FOOD_PHOTO_HINTS = ['มุมบน', 'มุมเฉียง 45°', 'จานเคียง / เครื่องดื่ม'];
+var _foodCamStream = null;
+
+function addFoodPhoto(dataUrl) {
+  if (curImgs.length >= FOOD_PHOTO_MAX) return false;
+  curImgs.push(dataUrl.split(',')[1]);
+  curResult = null;
+  renderFoodPhotos();
+  return true;
+}
+function removeFoodPhoto(idx) {
+  curImgs.splice(idx, 1);
+  renderFoodPhotos();
+}
+function renderFoodPhotos() {
+  var n = curImgs.length;
+  var grid = document.getElementById('foodThumbs');
+  grid.innerHTML = curImgs.map(function(b64, i){
+    return '<div class="food-thumb"><img src="data:image/jpeg;base64,' + b64 + '" alt="รูปที่ ' + (i+1) + '"/>' +
+      '<button class="food-thumb-del" type="button" aria-label="ลบรูป" onclick="removeFoodPhoto(' + i + ')">✕</button></div>';
+  }).join('');
+  grid.style.display = n ? 'grid' : 'none';
+  document.getElementById('foodPhotoCount').textContent = '(' + n + '/' + FOOD_PHOTO_MAX + ')';
+  document.getElementById('uploadArea').style.display = n >= FOOD_PHOTO_MAX ? 'none' : 'grid';
+  document.getElementById('analyzeBtn').disabled = !n;
+  document.getElementById('resultCard').style.display = 'none';
+  document.getElementById('clarifyBox').style.display = 'none';
+  var cam = document.getElementById('foodCam');
+  if (cam && cam.classList.contains('open')) {
+    document.getElementById('foodCamCount').textContent = n + '/' + FOOD_PHOTO_MAX;
+    document.getElementById('foodCamHint').textContent = FOOD_PHOTO_HINTS[n] || 'ครบแล้ว';
+    document.getElementById('foodCamShutter').disabled = n >= FOOD_PHOTO_MAX;
+    document.getElementById('foodCamThumbs').innerHTML = curImgs.map(function(b64){
+      return '<img src="data:image/jpeg;base64,' + b64 + '" alt=""/>';
+    }).join('');
+  }
+}
+
+function openFoodCamera() {
+  if (curImgs.length >= FOOD_PHOTO_MAX) { showToast('ครบ ' + FOOD_PHOTO_MAX + ' รูปแล้ว — ลบรูปก่อนถ่ายใหม่', 'error'); return; }
+  // No getUserMedia (http://, old WebView) → the OS camera via capture=.
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    document.getElementById('cameraInput').click();
+    return;
+  }
+  navigator.mediaDevices.getUserMedia({
+    video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } },
+    audio: false
+  }).then(function(stream){
+    _foodCamStream = stream;
+    var video = document.getElementById('foodCamVideo');
+    video.srcObject = stream;
+    var p = video.play(); if (p && p.catch) p.catch(function(){});
+    document.getElementById('foodCam').classList.add('open');
+    renderFoodPhotos();
+  }).catch(function(err){
+    var denied = err && (err.name === 'NotAllowedError' || err.name === 'SecurityError');
+    showToast(denied ? 'ไม่ได้รับสิทธิ์ใช้กล้อง — เปิดกล้องของเครื่องแทน' : 'เปิดกล้องไม่สำเร็จ — เปิดกล้องของเครื่องแทน', 'info');
+    document.getElementById('cameraInput').click();
   });
+}
+function closeFoodCamera() {
+  if (_foodCamStream) {
+    _foodCamStream.getTracks().forEach(function(t){ t.stop(); });
+    _foodCamStream = null;
+  }
+  var video = document.getElementById('foodCamVideo');
+  if (video) video.srcObject = null;
+  var cam = document.getElementById('foodCam');
+  if (cam) cam.classList.remove('open');
+}
+function captureFoodFrame() {
+  var video = document.getElementById('foodCamVideo');
+  if (!_foodCamStream || !video.videoWidth) return;
+  var maxDim = 1024, w = video.videoWidth, h = video.videoHeight;
+  var scale = Math.min(1, maxDim / Math.max(w, h));
+  var canvas = document.createElement('canvas');
+  canvas.width = Math.round(w * scale); canvas.height = Math.round(h * scale);
+  canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
+  addFoodPhoto(canvas.toDataURL('image/jpeg', 0.8));
+  if (curImgs.length >= FOOD_PHOTO_MAX) closeFoodCamera();
+}
+// Never leave the camera light on behind the user's back.
+document.addEventListener('visibilitychange', function(){ if (document.hidden) closeFoodCamera(); });
+
+// File upload (gallery, multi-select) and the OS-camera fallback
+function handleFile(e) {
+  var files = Array.prototype.slice.call(e.target.files || []);
+  e.target.value = '';
+  if (!files.length) return;
+  var room = FOOD_PHOTO_MAX - curImgs.length;
+  if (files.length > room) showToast('ใช้ได้สูงสุด ' + FOOD_PHOTO_MAX + ' รูป — เพิ่มเฉพาะ ' + Math.max(room, 0) + ' รูปแรก', 'info');
+  files = files.slice(0, Math.max(room, 0));
+  (function next(i){
+    if (i >= files.length) return;
+    convertHeicIfNeeded(files[i], function(converted, err){
+      if (err || !converted) {
+        showToast('แปลงไฟล์ HEIC ไม่สำเร็จ กรุณาลองใหม่หรือใช้รูปแบบ JPEG/PNG', 'error');
+        next(i + 1);
+        return;
+      }
+      var reader = new FileReader();
+      reader.onload = function(ev){
+        // Compress before it ever touches curImgs/the Gemini payload — full camera
+        // resolution (often 10+MB) was previously sent as-is, which was both slow
+        // and wasteful for a task that only needs enough detail to estimate macros.
+        compressPhoto(ev.target.result, 1024, 0.8, function(compressed){
+          addFoodPhoto(compressed);
+          next(i + 1);
+        });
+      };
+      reader.readAsDataURL(converted);
+    });
+  })(0);
 }
 
 // Menu items
@@ -3172,20 +3296,21 @@ function analyzePhoto(extra) {
   extra = extra || '';
   var key = S.apiKeys[S.currentKeyIndex] || S.apiKeys[0] || "";
   if(!aiAvailable()){showToast('ฟีเจอร์ AI ยังไม่พร้อม — กรุณา login ก่อน','error');return;}
-  if(!curImg){showToast('กรุณาอัปโหลดรูปก่อน','error');return;}
+  if(!curImgs.length){showToast('กรุณาถ่ายหรือเลือกรูปก่อน','error');return;}
   document.getElementById('analyzeBtn').disabled = true;
   document.getElementById('loadingDiv').style.display = 'block';
   document.getElementById('resultCard').style.display = 'none';
   document.getElementById('clarifyBox').style.display = 'none';
   var sys = 'คุณคือผู้เชี่ยวชาญด้านโภชนาการที่เชี่ยวชาญอาหารไทย ญี่ปุ่น เกาหลี และ Fusion\nตอบด้วย JSON เท่านั้น รูปแบบ: {"needClarify":false,"clarifyQuestion":"","foodName":"","description":"","calories":0,"protein":0,"carbs":0,"fat":0,"fiber":0,"sodiumFlag":"low|medium|high","carbLoadFlag":"low|normal|high","mealContext":"normal|buffet|fried|soup|processed|sweet|alcohol|other","retentionRisk":0,"analysisConfidence":0,"disclaimer":""}\nfiber คือใยอาหาร (กรัม) ซึ่งเป็นส่วนหนึ่งของ carbs (ไม่บวกเพิ่มเป็น kcal ต่างหาก) — ประเมินจากผัก/ผลไม้/ธัญพืชในเมนู ถ้าไม่มีเลยให้ใส่ 0\nให้ประเมิน sodiumFlag/carbLoadFlag/retentionRisk จากชนิดอาหาร วิธีปรุง น้ำซุป/ซอส ปริมาณคาร์บ และอาหารแปรรูป; ถ้าไม่แน่ใจให้ใช้ medium/normal และ confidence ต่ำลง\nถ้ารูปไม่ชัดให้ needClarify=true และถามใน clarifyQuestion' + NUTRITION_ESTIMATE_GUIDE;
+  if (curImgs.length > 1) {
+    sys += '\nมี ' + curImgs.length + ' รูป เป็นมื้อเดียวกันถ่ายต่างมุม/ต่างจาน: ใช้ทุกรูปประกอบกันเพื่อประเมินปริมาณ (มุมบนดูพื้นที่ มุมเฉียงดูความสูง) — จานที่ปรากฏในหลายรูปให้นับครั้งเดียว ห้ามนับซ้ำ; ตัวเลขทั้งหมดคือผลรวมของทั้งมื้อ';
+  }
   var userText = extra ? 'วิเคราะห์อาหารในรูป ข้อมูลเพิ่มเติม: '+extra : 'วิเคราะห์อาหารในรูปนี้';
-  // Detect image type
-  var mimeType = curImgType || 'image/jpeg';
+  var reqParts = [{text: sys + '\n\n' + userText}].concat(curImgs.map(function(b64){
+    return {inline_data:{mime_type: 'image/jpeg', data: b64}};
+  }));
   geminiCall(key, {
-      contents:[{parts:[
-        {text: sys + '\n\n' + userText},
-        {inline_data:{mime_type: mimeType, data: curImg}}
-      ]}],
+      contents:[{parts: reqParts}],
       generationConfig:{temperature:0.1}
     }, 30000, function(msg){ showToast(msg, 'info'); })
   .then(function(data){
@@ -3252,7 +3377,7 @@ function analyzeText(extra) {
       document.getElementById('clarifyBox').style.display = 'block';
       document.getElementById('clarifyText').textContent = result.clarifyQuestion;
       document.getElementById('clarifyInput').value = '';
-    } else { curImg=null; curResult=result; showResult(result); }
+    } else { curImgs=[]; renderFoodPhotos(); curResult=result; showResult(result); }
   }).catch(function(e){
     document.getElementById('loadingDiv').style.display = 'none';
     document.getElementById('analyzeTextBtn').disabled = false;
@@ -3462,11 +3587,9 @@ function saveMeal() {
 }
 
 function resetAnalyze() {
-  curImg=null; curResult=null;
-  document.getElementById('previewImg').style.display = 'none';
-  document.getElementById('changePhotoBtn').style.display = 'none';
-  document.getElementById('uploadArea').style.display = 'block';
-  document.getElementById('analyzeBtn').disabled = true;
+  closeFoodCamera();
+  curImgs=[]; curResult=null;
+  renderFoodPhotos();
   document.getElementById('resultCard').style.display = 'none';
   document.getElementById('clarifyBox').style.display = 'none';
   document.getElementById('loadingDiv').style.display = 'none';
