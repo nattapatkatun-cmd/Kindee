@@ -1423,3 +1423,29 @@ test('Push adds nothing on a planned rest day or during a diet break', () => {
   assert.strictEqual(onBreak.delta, 0, 'a diet break already eats at maintenance');
   assert.match(onBreak.reason, /Diet Break/);
 });
+
+test('sleep look-back windows do not shift a day outside UTC+4 and beyond', () => {
+  // new Date('YYYY-MM-DD') is UTC midnight; in London that is 01:00 local, which the
+  // 04:00 day boundary in localDateStr() files under the PREVIOUS day — so a 30-day
+  // window silently became 31. Bangkok (07:00) hid it.
+  const prevTZ = process.env.TZ;
+  try {
+    for (const tz of ['Europe/London', 'America/New_York', 'Asia/Bangkok']) {
+      process.env.TZ = tz;
+      const nights = ['2026-10-12', '2026-10-13', '2026-10-14', '2026-10-15', '2026-10-16']
+        .map((date) => ({ date, hrv: 50 }));
+      nights.push({ date: '2026-09-16', hrv: 110 }); // 31 days back: outside the 30-day window
+      const store = { gd_sleep_log: JSON.stringify(nights) };
+      const ctx = load(['localDateStr', 'computeAutoHRVBaseline'], {
+        consts: ['HRV_BASELINE_WINDOW_DAYS', 'HRV_BASELINE_MIN_NIGHTS'],
+        prelude: 'var localStorage = { getItem: function(k){ return STORE[k] || null; } };',
+      });
+      ctx.STORE = store;
+      const b = ctx.computeAutoHRVBaseline('2026-10-17');
+      assert.strictEqual(b.nights, 5, tz + ': the night 31 days back is outside the window');
+      assert.strictEqual(b.value, 50, tz);
+    }
+  } finally {
+    if (prevTZ === undefined) delete process.env.TZ; else process.env.TZ = prevTZ;
+  }
+});

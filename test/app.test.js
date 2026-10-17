@@ -674,3 +674,127 @@ test('food photos: in-app camera and gallery cap at 3, all go in one AI request,
   await noErrors(page, 'multi-photo food capture');
   await page.close();
 });
+
+test('a weight or body-comp change clears the cached AI Deep-Dive, not just the analysis card', async () => {
+  const page = await openApp(browser, buildSeed());
+
+  const r = await page.evaluate(() => {
+    showPage('weight');
+    if (typeof initWeightTab === 'function') initWeightTab();
+    const stale = () => localStorage.setItem('gd_wt_ai_result',
+      JSON.stringify({ html: '<p>STALE-DEEP-DIVE</p>', date: localDateStr() }));
+    const cleared = () => localStorage.getItem('gd_wt_ai_result') === null;
+    const out = {};
+
+    stale();
+    document.getElementById('wt-input').value = '71.3';
+    handleSaveWeight();
+    out.save = cleared();
+    runWeightAnalysis();
+    out.notRestored = !/STALE-DEEP-DIVE/.test((document.getElementById('wt-ai-result') || {}).innerHTML || '');
+
+    stale();
+    handleDeleteWeight(WT.log[0].id);
+    out.del = cleared();
+
+    stale();
+    deleteBodyCompLogEntry(getBodyCompLogs()[0].id);
+    out.bodyComp = cleared();
+    return out;
+  });
+
+  assert.ok(r.save, 'saving a weight clears gd_wt_ai_result');
+  assert.ok(r.notRestored, 'the re-run analysis does not restore the old Deep-Dive text');
+  assert.ok(r.del, 'deleting a weight clears gd_wt_ai_result');
+  assert.ok(r.bodyComp, 'deleting a body-comp entry clears gd_wt_ai_result');
+  await page.close();
+});
+
+test('logging or editing a meal through the favorite modal reconciles kcal with macros', async () => {
+  const page = await openApp(browser, buildSeed());
+
+  const r = await page.evaluate(() => {
+    showPage('log');
+    const fill = (cal) => {
+      // kcal typed independently: P20/C30/F15 = 335 kcal by 4-4-9.
+      document.getElementById('favUseCal').value = cal;
+      document.getElementById('favUsePro').value = 20;
+      document.getElementById('favUseCrb').value = 30;
+      document.getElementById('favUseFat').value = 15;
+      document.getElementById('favUseFib').value = 0;
+    };
+    openUseFavoriteModal(S.favorites[0].id);
+    fill(800);
+    confirmUseFavorite();
+    const added = S.meals[S.meals.length - 1];
+
+    editMeal(added.id);
+    fill(900);
+    confirmUseFavorite();
+    const edited = S.meals.find((m) => m.id === added.id);
+    const k = (m) => m.protein * 4 + m.carbs * 4 + m.fat * 9;
+    return { addCal: added.calories, addMacro: k(added), editCal: edited.calories, editMacro: k(edited) };
+  });
+
+  assert.strictEqual(r.addCal, r.addMacro, 'a new meal from a favorite is internally consistent');
+  assert.strictEqual(r.editCal, r.editMacro, 'an edited meal is internally consistent');
+  await noErrors(page, 'the favorite modal');
+  await page.close();
+});
+
+test('the in-app camera ignores a double tap and never opens after the user has left', async () => {
+  const page = await openApp(browser, buildSeed());
+
+  const r = await page.evaluate(async () => {
+    showPage('analyze');
+    const src = document.createElement('canvas');
+    src.width = 64; src.height = 48;
+    src.getContext('2d').fillRect(0, 0, 64, 48);
+    const streams = [], pending = [];
+    navigator.mediaDevices.getUserMedia = () => new Promise((res) => {
+      pending.push(() => { const s = src.captureStream(5); streams.push(s); res(s); });
+    });
+    const tick = (ms) => new Promise((res) => setTimeout(res, ms));
+
+    openFoodCamera();
+    openFoodCamera(); // double tap while the permission prompt is up
+    const requests = pending.length;
+    showPage('log'); // user leaves before granting
+    pending.forEach((grant) => grant());
+    await tick(100);
+    return {
+      requests,
+      opened: document.getElementById('foodCam').classList.contains('open'),
+      stopped: streams.every((s) => s.getTracks().every((t) => t.readyState === 'ended')),
+      held: _foodCamStream !== null,
+    };
+  });
+
+  assert.strictEqual(r.requests, 1, 'a second tap does not start a second stream');
+  assert.strictEqual(r.opened, false, 'the camera does not pop up over another page');
+  assert.ok(r.stopped, 'the late stream is stopped (camera light off)');
+  assert.strictEqual(r.held, false);
+  await noErrors(page, 'cancelled camera open');
+  await page.close();
+});
+
+test('answering the photo clarify question keeps the description typed with the photos', async () => {
+  const page = await openApp(browser, buildSeed());
+
+  const text = await page.evaluate(() => {
+    showPage('analyze');
+    switchMode('photo');
+    curImgs = ['/9j/AAAA'];
+    document.getElementById('photoDesc').value = 'น้ำมันน้อย ไม่ใส่ไข่';
+    document.getElementById('clarifyInput').value = 'จานใหญ่';
+    let body = null;
+    window.aiAvailable = () => true;
+    window.geminiCall = (key, b) => { body = b; return new Promise(() => {}); };
+    reanalyze();
+    return body.contents[0].parts[0].text;
+  });
+
+  assert.match(text, /น้ำมันน้อย ไม่ใส่ไข่/, 'the original description is still sent');
+  assert.match(text, /จานใหญ่/, 'the clarify answer is sent');
+  await page.close();
+});
