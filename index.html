@@ -972,7 +972,7 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
       </div>
     </div>
 
-    <!-- WEEKLY REPORT CARD (auto-generated every Sunday, rolling) -->
+    <!-- WEEKLY REPORT CARD (auto-generated for the last complete Mon–Sun week, rolling) -->
     <div class="card" id="weekly-report-card" style="display:none;">
       <div id="weekly-report-body"></div>
     </div>
@@ -2243,9 +2243,21 @@ function onAuthChanged(user, db, storage) {
 function checkUserAllowed(user, db) {
   var email = (user.email || '').toLowerCase();
   if (!email) return Promise.resolve(false);
+  var cacheKey = 'gd_allowed_' + user.uid;
   return db.collection('allowedEmails').doc(email).get()
-    .then(function(snap){ return snap.exists; })
-    .catch(function(){ return false; }); // security-rules denial reads as "not allowed"
+    .then(function(snap){
+      try { if (snap.exists) localStorage.setItem(cacheKey, '1'); else localStorage.removeItem(cacheKey); } catch(e){}
+      return snap.exists;
+    })
+    .catch(function(err){
+      // A security-rules denial reads as "not allowed". Anything else — above all
+      // 'unavailable' ("client is offline": no persistence, so the read cannot be served
+      // from cache) — is a network problem, not a verdict: an account confirmed allowed
+      // on this device before keeps working offline instead of hitting the
+      // "not authorized" screen. Firestore rules still guard the data itself.
+      if (err && err.code === 'permission-denied') return false;
+      try { return localStorage.getItem(cacheKey) === '1'; } catch(e) { return false; }
+    });
 }
 
 function clearLocalDataForAccountSwitch(newUid) {
@@ -2431,9 +2443,10 @@ function runLegacyMigration(db, newUid) {
 // ─────────────────────────────────────────────
 function queueFBWrite(type, op, data) {
   var q = JSON.parse(localStorage.getItem('gd_pending_fb') || '[]');
-  // Dedup: a newer save for the same id supersedes the old one
+  // Dedup: a newer save for the same id supersedes the old one — and any pending delete
+  // of it, since the queue drains in parallel and a del/save pair could land in either order.
   if (op === 'save' && data && data.id != null) {
-    q = q.filter(function(item){ return !(item.type===type && item.op==='save' && item.data && item.data.id===data.id); });
+    q = q.filter(function(item){ return !(item.type===type && item.data != null && (item.data===data.id || item.data.id===data.id)); });
   }
   // A delete supersedes any pending save for the same id, and dedupes itself
   if (op === 'del') {
@@ -2443,30 +2456,88 @@ function queueFBWrite(type, op, data) {
   localStorage.setItem('gd_pending_fb', JSON.stringify(q));
 }
 
-function drainFBQueue() {
-  if (!window.FB_OK || !window.FB) return;
-  var q = JSON.parse(localStorage.getItem('gd_pending_fb') || '[]');
-  if (!q.length) return;
-  localStorage.removeItem('gd_pending_fb');
-  var count = 0;
-  q.forEach(function(item) {
+// Settings stored remote-wins on load (goals, profile, fitnessTarget, dietBreak) must not be
+// dropped while Firebase isn't ready — offline, or the first seconds before auth resolves —
+// or the next loadRemoteData() overwrites the edit with the older cloud copy. Write through
+// when possible; otherwise (or if the write fails) queue it, and loadRemoteData() keeps the
+// local value while a queued write for that key is still pending.
+function fbSaveSettingOrQueue(key, value) {
+  var queueIt = function(){ queueFBWrite('setting', 'save', { id: 'setting:' + key, key: key, v: value }); };
+  if (window.FB_OK && window.FB) {
+    // A newer direct write supersedes any older queued value for this key — otherwise a
+    // later drain would replay the stale one on top of it.
+    var q = safeJSON('gd_pending_fb', []);
+    var rest = q.filter(function(item){ return !(item.type === 'setting' && item.data && item.data.key === key); });
+    if (rest.length !== q.length) localStorage.setItem('gd_pending_fb', JSON.stringify(rest));
     try {
-      if (item.type === 'meal') {
-        if (item.op === 'save') { window.FB.saveMeal(item.data); count++; }
-        else if (item.op === 'del') { window.FB.delMeal(item.data); count++; }
-      } else if (item.type === 'workout') {
-        if (item.op === 'save' && window.FB.saveWorkout) { window.FB.saveWorkout(item.data); count++; }
-        else if (item.op === 'del' && window.FB.delWorkout) { window.FB.delWorkout(item.data); count++; }
-      } else if (item.type === 'weight') {
-        if (item.op === 'save' && window.FB.saveWeight) { window.FB.saveWeight(item.data); count++; }
-        else if (item.op === 'del' && window.FB.delWeight) { window.FB.delWeight(item.data); count++; }
-      } else if (item.type === 'bodycomp') {
-        if (item.op === 'save' && window.FB.saveBodyComp) { window.FB.saveBodyComp(item.data); count++; }
-        else if (item.op === 'del' && window.FB.delBodyComp) { window.FB.delBodyComp(item.data); count++; }
-      }
-    } catch(e) { console.warn('drainFBQueue error:', e); }
+      var p = window.FB.saveSetting(key, value);
+      if (p && p.catch) p.catch(queueIt);
+    } catch(e) { queueIt(); }
+  } else {
+    queueIt();
+  }
+}
+function hasPendingFBSetting(key) {
+  return safeJSON('gd_pending_fb', []).some(function(item){
+    return item.type === 'setting' && item.data && item.data.key === key;
   });
-  if (count) showToast('ซิงค์ข้อมูลที่ค้างไว้ ' + count + ' รายการ ✅', 'success');
+}
+// Replay queued (not yet uploaded) saves/deletes of one type onto a list fetched from
+// Firestore, so entries logged or deleted offline neither vanish nor resurrect when the
+// remote copy is loaded. The queue itself still drains afterwards.
+function applyPendingFBQueue(type, list) {
+  var out = (list || []).slice();
+  safeJSON('gd_pending_fb', []).forEach(function(item){
+    if (item.type !== type) return;
+    if (item.op === 'save' && item.data && item.data.id != null) {
+      out = out.filter(function(e){ return !(e && e.id === item.data.id); });
+      out.push(item.data);
+    } else if (item.op === 'del') {
+      out = out.filter(function(e){ return !(e && e.id === item.data); });
+    }
+  });
+  return out;
+}
+
+function _fbQueueOp(item) {
+  var FB = window.FB, d = item.data;
+  var save = item.op === 'save', del = item.op === 'del';
+  switch (item.type) {
+    case 'meal':     return save ? FB.saveMeal(d) : del ? FB.delMeal(d) : null;
+    case 'workout':  return save ? FB.saveWorkout(d) : del ? FB.delWorkout(d) : null;
+    case 'weight':   return save ? FB.saveWeight(d) : del ? FB.delWeight(d) : null;
+    case 'bodycomp': return save ? FB.saveBodyComp(d) : del ? FB.delBodyComp(d) : null;
+    case 'favorite': return save ? FB.saveFavorite(d) : del ? FB.delFavorite(d) : null;
+    case 'strength': return save ? FB.saveStrengthEntry(d) : del ? FB.delStrengthEntry(d) : null;
+    case 'setting':  return save ? FB.saveSetting(d.key, d.v) : null;
+  }
+  return null;
+}
+function _fbQueueKey(item) { return item.type + '|' + item.op + '|' + item.ts + '|' + JSON.stringify(item.data && item.data.id != null ? item.data.id : item.data); }
+var _fbDraining = false;
+// An item leaves the queue only once its write has actually succeeded. The queue used to be
+// removed up front with the writes fired and forgotten, so a write that failed (still offline,
+// a transient error) was lost for good. Items queued while a drain is running are kept.
+function drainFBQueue() {
+  if (!window.FB_OK || !window.FB || _fbDraining) return;
+  var q = safeJSON('gd_pending_fb', []);
+  if (!q.length) return;
+  _fbDraining = true;
+  var done = {};
+  return Promise.all(q.map(function(item){
+    var p = null;
+    try { p = _fbQueueOp(item); } catch(e) { console.warn('drainFBQueue error:', e); return; }
+    if (!p) { done[_fbQueueKey(item)] = true; return; } // unknown type/op — nothing to replay
+    return Promise.resolve(p).then(function(){ done[_fbQueueKey(item)] = true; },
+                                   function(e){ console.warn('drainFBQueue write failed, kept for retry:', e); });
+  })).then(function(){
+    var rest = safeJSON('gd_pending_fb', []).filter(function(item){ return !done[_fbQueueKey(item)]; });
+    if (rest.length) localStorage.setItem('gd_pending_fb', JSON.stringify(rest));
+    else localStorage.removeItem('gd_pending_fb');
+    _fbDraining = false;
+    var count = Object.keys(done).length;
+    if (count) showToast('ซิงค์ข้อมูลที่ค้างไว้ ' + count + ' รายการ ✅', 'success');
+  });
 }
 
 window.addEventListener('online', function() { if (window.FB_OK) drainFBQueue(); });
@@ -2654,7 +2725,8 @@ var S = {
   })(),
   currentKeyIndex: 0,
   get apiKey(){ return this.apiKeys[0] || ''; },
-  sleepData: JSON.parse(localStorage.getItem('gd_sleep') || 'null')
+  // Guarded like the fields above: a corrupt gd_sleep used to throw here and stop the whole app.
+  sleepData: (function(){ try { return JSON.parse(localStorage.getItem('gd_sleep') || 'null'); } catch(e){ return null; } })()
 };
 var curImgs = [], curLabel = '', curResult = null, curMode = 'photo';
 var menuItems = [], menuId = 0;
@@ -2798,12 +2870,17 @@ function loadRemoteData() {
     window.FB.loadSetting('calorieContext', null).catch(function(){ return null; }),
     window.FB.loadSetting('summaryLog', null).catch(function(){ return null; }),
     window.FB.loadSetting('goalsHistory', null).catch(function(){ return null; }),
-    window.FB.loadSetting('workoutPlan', null).catch(function(){ return null; })
+    window.FB.loadSetting('workoutPlan', null).catch(function(){ return null; }),
+    window.FB.loadSetting('dietBreak', null).catch(function(){ return null; })
   ]).then(function(r){
-    S.meals = r[0] || [];
-    S.goals = r[1] || S.goals;
-    S.profile = r[2] || null;
-    S.favorites = r[3] || S.favorites;
+    // Remote is the source of truth, but anything still waiting in the offline queue is
+    // replayed on top so it neither vanishes (an offline log) nor resurrects (an offline delete).
+    S.meals = applyPendingFBQueue('meal', r[0] || []).sort(function(a,b){ return a.id - b.id; });
+    try { localStorage.setItem('gd_meals', JSON.stringify(S.meals)); } catch(e){}
+    // Remote-wins settings keep the local value while an edit to them is still queued.
+    if (!hasPendingFBSetting('goals')) S.goals = r[1] || S.goals;
+    if (!hasPendingFBSetting('profile')) S.profile = r[2] || null;
+    S.favorites = applyPendingFBQueue('favorite', r[3] || S.favorites).sort(function(a,b){ return b.id - a.id; });
     var fbBodyComps = r[4] || [];
     if(r[5]) localStorage.setItem('gd_behaviors', JSON.stringify(r[5]));
     if(r[6]) localStorage.setItem('gd_behavior_log', JSON.stringify(r[6]));
@@ -2813,8 +2890,11 @@ function loadRemoteData() {
       try { localStorage.setItem('gd_wh', S.webhook); } catch(e){}
       var whEl = document.getElementById('webhookUrl'); if (whEl) whEl.value = S.webhook;
     }
-    if (r[8]) { FT.workouts = r[8]; localStorage.setItem('gd_workouts', JSON.stringify(FT.workouts)); }
-    if (r[9]) { WT.log = r[9]; }
+    if (r[8]) { FT.workouts = applyPendingFBQueue('workout', r[8]).sort(function(a,b){ return a.id - b.id; }); localStorage.setItem('gd_workouts', JSON.stringify(FT.workouts)); }
+    if (r[9]) {
+      WT.log = applyPendingFBQueue('weight', r[9]).sort(function(a,b){ return ((a.date||'')+(a.time||'')).localeCompare((b.date||'')+(b.time||'')); });
+      localStorage.setItem('gd_weight', JSON.stringify(WT.log));
+    }
     localStorage.setItem('gd_favorites', JSON.stringify(S.favorites));
     if(fbBodyComps.length){
       var local = safeJSON('gd_body_comp_logs', []);
@@ -2830,9 +2910,21 @@ function loadRemoteData() {
     // ── Hydrate the rest of the user-entered data ──
     // Fitness target: remote wins, same convention as goals/profile.
     // loadFitnessTarget() re-merges the latest InBody values afterwards.
-    if (r[10]) {
+    if (r[10] && !hasPendingFBSetting('fitnessTarget')) {
       localStorage.setItem('gd_ft_target', JSON.stringify(r[10]));
       window._fitnessTarget = r[10];
+    }
+    // Diet break: saved to Firestore but never read back before, so a second device (or a
+    // fresh one) had no break at all. Newest updatedAt wins; a queued local edit wins outright.
+    var localDb = safeJSON('gd_diet_break', null);
+    if (r[24] && !hasPendingFBSetting('dietBreak') &&
+        (!localDb || (r[24].updatedAt || 0) > (localDb.updatedAt || 0))) {
+      if (JSON.stringify(r[24]) !== JSON.stringify(localDb)) {
+        localStorage.setItem('gd_diet_break', JSON.stringify(r[24]));
+        clearGoalDependentCaches();
+      }
+    } else if (localDb && (!r[24] || (localDb.updatedAt || 0) > (r[24].updatedAt || 0))) {
+      fbSaveSettingOrQueue('dietBreak', localDb);
     }
     // Steps / water: per-date maps — merge with local winning per date (local
     // may hold a just-typed value), then push the merge back so days logged
@@ -2865,7 +2957,7 @@ function loadRemoteData() {
     if (r[15] && r[15].length) {
       var bySt = {};
       r[15].concat(getStrengthLog()).forEach(function(e){ if (e && e.id != null) bySt[e.id] = e; });
-      var mergedSt = Object.keys(bySt).map(function(k){ return bySt[k]; })
+      var mergedSt = applyPendingFBQueue('strength', Object.keys(bySt).map(function(k){ return bySt[k]; }))
         .sort(function(a,b){ return String(a.date||'').localeCompare(String(b.date||'')) || (a.id - b.id); });
       saveStrengthLog(mergedSt);
     }
@@ -2886,18 +2978,25 @@ function loadRemoteData() {
       try { setProgressPhotos(mergedPh); } catch(e){}
       if (typeof renderProgressPhotoSummary === 'function') renderProgressPhotoSummary();
     }
-    // Sleep history: merge by date, local wins; upload dates Firestore lacks.
+    // Sleep history: merge by date — remote wins except nights edited here since the last
+    // upload; upload those and any dates Firestore lacks.
     var localSl = safeJSON('gd_sleep_log', []);
     if ((r[17] && r[17].length) || localSl.length) {
-      var bySlDate = {}, remoteSlDates = {};
+      var bySlDate = {}, remoteSlDates = {}, slDirty = getSyncDirty('gd_sleep_log');
       (r[17] || []).forEach(function(s){ if (s && s.date) { bySlDate[s.date] = s; remoteSlDates[s.date] = true; } });
-      localSl.forEach(function(s){ if (s && s.date) bySlDate[s.date] = s; });
+      // Local wins only for nights edited here since the last upload, or that Firestore lacks.
+      localSl.forEach(function(s){ if (s && s.date && (slDirty[s.date] != null || !remoteSlDates[s.date])) bySlDate[s.date] = s; });
       var slCutoff = new Date(); slCutoff.setDate(slCutoff.getDate() - 120);
       var slCutoffStr = localDateStr(slCutoff);
       var mergedSl = Object.keys(bySlDate).sort().filter(function(d){ return d >= slCutoffStr; })
         .map(function(d){ return bySlDate[d]; });
       localStorage.setItem('gd_sleep_log', JSON.stringify(mergedSl));
-      mergedSl.forEach(function(s){ if (!remoteSlDates[s.date]) window.FB.saveSleepLogEntry(s).catch(function(){}); });
+      var slStampLoad = Date.now();
+      mergedSl.forEach(function(s){
+        if (!remoteSlDates[s.date] || slDirty[s.date] != null) {
+          window.FB.saveSleepLogEntry(s).then(function(){ clearSyncDirty('gd_sleep_log', [s.date], slStampLoad); }).catch(function(){});
+        }
+      });
       if (typeof renderSleepTrendChart === 'function') renderSleepTrendChart();
     }
     // Today's sleep doc → dashboard recovery card on a fresh device.
@@ -2943,18 +3042,22 @@ function loadRemoteData() {
       localStorage.setItem('gd_summary_log', JSON.stringify(mergedSum));
       if (mergedSum.length !== (r[21] || []).length) window.FB.saveSetting('summaryLog', mergedSum).catch(function(){});
     }
-    // Goal history (point-in-time calorie/macro targets): merge by date, local wins
-    // per date (a just-saved local edit), then push the merge back if Firestore
-    // was missing or behind on any date. Keeps getGoalForDate() accurate on every
+    // Goal history (point-in-time calorie/macro targets): merge by date — remote wins
+    // except dates edited here since the last upload (see mergeByDateDirty), then push
+    // the merge back if Firestore was missing or behind on any date. Keeps getGoalForDate() accurate on every
     // device instead of only the one where the goal was actually changed.
     var localGoalHist = safeJSON('gd_goals_history', []);
     if ((r[22] && r[22].length) || localGoalHist.length) {
-      var byGoalDate = {};
-      (r[22] || []).forEach(function(e){ if (e && e.date) byGoalDate[e.date] = e; });
-      localGoalHist.forEach(function(e){ if (e && e.date) byGoalDate[e.date] = e; });
+      var remoteGH = {}, localGH = {};
+      (r[22] || []).forEach(function(e){ if (e && e.date) remoteGH[e.date] = e; });
+      localGoalHist.forEach(function(e){ if (e && e.date) localGH[e.date] = e; });
+      var byGoalDate = mergeByDateDirty(r[22] ? remoteGH : null, localGH, getSyncDirty('gd_goals_history'));
       var mergedGoalHist = Object.keys(byGoalDate).sort().map(function(d){ return byGoalDate[d]; });
       localStorage.setItem('gd_goals_history', JSON.stringify(mergedGoalHist));
-      if (mergedGoalHist.length !== (r[22] || []).length) window.FB.saveSetting('goalsHistory', mergedGoalHist).catch(function(){});
+      if (JSON.stringify(mergedGoalHist) !== JSON.stringify((r[22] || []).slice().sort(function(a,b){ return String(a.date).localeCompare(String(b.date)); }))) {
+        var ghLoadStamp = Date.now();
+        window.FB.saveSetting('goalsHistory', mergedGoalHist).then(function(){ clearSyncDirty('gd_goals_history', null, ghLoadStamp); }).catch(function(){});
+      }
     }
     if(S.profile) loadProfile();
     loadGoalInputs(); syncProfileWeightFromLatestCheckin(); render();
@@ -2968,16 +3071,51 @@ function loadRemoteData() {
   });
 }
 
-// Merge a {date: value} map (steps, water) with its Firestore copy: local wins
-// per date, then the merged map is pushed back up if Firestore was missing or
-// behind on any date.
+// ── Per-date sync: remote wins unless THIS device edited the date since its last upload ──
+// Steps, water, the sleep log and the goal history are keyed by date. Merging them "local
+// wins per date" let a device holding an OLD value overwrite a newer one from another device
+// on its next load (and push it back up). Each local edit now marks its date dirty; a date
+// is taken from local only while dirty (or when Firestore doesn't have it at all), and the
+// mark is cleared once an upload that included it succeeds.
+function markSyncDirty(kind, key) {
+  var d = safeJSON('gd_dirty_' + kind, {}) || {};
+  d[key] = Date.now();
+  try { localStorage.setItem('gd_dirty_' + kind, JSON.stringify(d)); } catch(e){}
+}
+function getSyncDirty(kind) { return safeJSON('gd_dirty_' + kind, {}) || {}; }
+// Clear only marks made at/before `stamp` (when the upload started) — an edit made while
+// the upload was in flight stays dirty for the next one.
+function clearSyncDirty(kind, keys, stamp) {
+  var d = getSyncDirty(kind), changed = false;
+  (keys || Object.keys(d)).forEach(function(k){ if (d[k] != null && d[k] <= stamp) { delete d[k]; changed = true; } });
+  if (changed) { try { localStorage.setItem('gd_dirty_' + kind, JSON.stringify(d)); } catch(e){} }
+}
+// Merge rule shared by every per-date collection: start from remote; take the local value
+// for dates that are dirty here or that remote lacks.
+function mergeByDateDirty(remoteMap, localMap, dirty) {
+  var merged = Object.assign({}, remoteMap || {});
+  Object.keys(localMap || {}).forEach(function(k){
+    if (dirty[k] != null || !remoteMap || !(k in remoteMap)) merged[k] = localMap[k];
+  });
+  return merged;
+}
+// Upload a whole {date: value} setting and clear the dirty marks it carried.
+function pushDateMapSetting(localKey, settingKey) {
+  if (!window.FB_OK || !window.FB) return;
+  var stamp = Date.now();
+  window.FB.saveSetting(settingKey, safeJSON(localKey, {}) || {})
+    .then(function(){ clearSyncDirty(localKey, null, stamp); })
+    .catch(function(){});
+}
+// Merge a {date: value} map (steps, water) with its Firestore copy (see the rule above), then
+// push the merge back up if Firestore was missing or behind on any date.
 function mergeDateMapSetting(localKey, remote, settingKey) {
   var local = safeJSON(localKey, {}) || {};
   if (!remote && !Object.keys(local).length) return;
-  var merged = Object.assign({}, remote || {}, local);
+  var merged = mergeByDateDirty(remote, local, getSyncDirty(localKey));
   try { localStorage.setItem(localKey, JSON.stringify(merged)); } catch(e){}
   var behind = Object.keys(merged).some(function(k){ return !remote || remote[k] !== merged[k]; });
-  if (behind && window.FB_OK && window.FB) window.FB.saveSetting(settingKey, merged).catch(function(){});
+  if (behind) pushDateMapSetting(localKey, settingKey);
 }
 
 function render() { updateDash(); renderWeightCalChart(); renderLog(); renderFavorites(); updateSyncDot(); restoreDailySummary(); restoreOrGenerateWeeklySummary(); restoreRecoveryAdj(); detectAnomalies(); renderFitnessCharts(); }
@@ -3132,6 +3270,11 @@ function convertHeicIfNeeded(file, callback) {
 var FOOD_PHOTO_MAX = 3;
 var FOOD_PHOTO_HINTS = ['มุมบน', 'มุมเฉียง 45°', 'จานเคียง / เครื่องดื่ม'];
 var _foodCamStream = null;
+// Bumped by every open and close: a getUserMedia that resolves after the user closed the
+// camera, left the page, or tapped 📸 twice belongs to a stale request and is stopped, so
+// it can neither pop the camera over another page nor leave an orphaned stream (and the
+// camera light) running.
+var _foodCamReq = 0, _foodCamPending = false;
 
 function addFoodPhoto(dataUrl) {
   if (curImgs.length >= FOOD_PHOTO_MAX) return false;
@@ -3175,23 +3318,33 @@ function openFoodCamera() {
     document.getElementById('cameraInput').click();
     return;
   }
+  if (_foodCamStream || _foodCamPending) return;
+  var req = ++_foodCamReq;
+  _foodCamPending = true;
   navigator.mediaDevices.getUserMedia({
     video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } },
     audio: false
   }).then(function(stream){
+    if (req !== _foodCamReq) { stream.getTracks().forEach(function(t){ t.stop(); }); return; }
+    _foodCamPending = false;
     _foodCamStream = stream;
+    if (document.hidden) { closeFoodCamera(); return; }
     var video = document.getElementById('foodCamVideo');
     video.srcObject = stream;
     var p = video.play(); if (p && p.catch) p.catch(function(){});
     document.getElementById('foodCam').classList.add('open');
     renderFoodPhotos();
   }).catch(function(err){
+    if (req !== _foodCamReq) return;
+    _foodCamPending = false;
     var denied = err && (err.name === 'NotAllowedError' || err.name === 'SecurityError');
     showToast(denied ? 'ไม่ได้รับสิทธิ์ใช้กล้อง — เปิดกล้องของเครื่องแทน' : 'เปิดกล้องไม่สำเร็จ — เปิดกล้องของเครื่องแทน', 'info');
     document.getElementById('cameraInput').click();
   });
 }
 function closeFoodCamera() {
+  _foodCamReq++;
+  _foodCamPending = false;
   if (_foodCamStream) {
     _foodCamStream.getTracks().forEach(function(t){ t.stop(); });
     _foodCamStream = null;
@@ -3213,7 +3366,9 @@ function captureFoodFrame() {
   if (curImgs.length >= FOOD_PHOTO_MAX) closeFoodCamera();
 }
 // Never leave the camera light on behind the user's back.
-document.addEventListener('visibilitychange', function(){ if (document.hidden) closeFoodCamera(); });
+// A pending permission prompt is left alone (some browsers hide the page while asking);
+// a stream granted while hidden is stopped on arrival instead.
+document.addEventListener('visibilitychange', function(){ if (document.hidden && !_foodCamPending) closeFoodCamera(); });
 
 // File upload (gallery, multi-select) and the OS-camera fallback
 function handleFile(e) {
@@ -3389,7 +3544,11 @@ function reanalyze() {
   var extra = document.getElementById('clarifyInput').value.trim();
   if(!extra){showToast('กรุณาใส่คำอธิบายก่อน','error');return;}
   document.getElementById('clarifyBox').style.display = 'none';
-  if(curMode==='photo') analyzePhoto(extra); else analyzeText(extra);
+  // Photo mode: the answer adds to the description typed with the photos, it doesn't replace it.
+  if(curMode==='photo') {
+    var desc = document.getElementById('photoDesc').value.trim();
+    analyzePhoto(desc ? desc + '\n' + extra : extra);
+  } else analyzeText(extra);
 }
 
 function normalizeMealContext(r) {
@@ -3757,7 +3916,7 @@ function saveFavorite() {
   if(dup){ showToast('มีเมนูนี้ในโปรดแล้ว ⭐','info'); closeFavSaveModal(); return; }
   S.favorites.unshift(fav);
   localStorage.setItem('gd_favorites', JSON.stringify(S.favorites));
-  if(window.FB_OK) window.FB.saveFavorite(fav);
+  if(window.FB_OK) window.FB.saveFavorite(fav); else queueFBWrite('favorite','save',fav);
   closeFavSaveModal();
   renderFavorites();
   showToast('บันทึกเมนูโปรดสำเร็จ ⭐','success');
@@ -3810,6 +3969,10 @@ function confirmUseFavorite() {
   var fat = parseFloat(document.getElementById('favUseFat').value) || 0;
   var fib = parseFloat(document.getElementById('favUseFib').value) || 0;
   if (cal <= 0) { showToast('กรุณาใส่แคลอรี่', 'error'); return; }
+  // kcal is typed independently of the macros here — same last gate as saveMeal().
+  var rec = reconcileMealMacros({ calories: cal, protein: pro, carbs: crb, fat: fat, fiber: fib });
+  cal = rec.calories; pro = rec.protein; crb = rec.carbs; fat = rec.fat; fib = rec.fiber;
+  if (rec._calAdjustedFrom) showToast('ปรับแคลอรี่ ' + rec._calAdjustedFrom + ' → ' + Math.round(cal) + ' kcal ให้ตรงกับ macro', 'info');
 
   // โหมดแก้ไข — อัปเดตมื้อเดิม (id เดิม) แทนการสร้างมื้อใหม่
   if (_favUseMode === 'edit' && _favUseEditId != null) {
@@ -3866,7 +4029,7 @@ function confirmUseFavorite() {
 function deleteFavorite(id) {
   S.favorites = S.favorites.filter(function(f){ return f.id !== id; });
   localStorage.setItem('gd_favorites', JSON.stringify(S.favorites));
-  if(window.FB_OK) window.FB.delFavorite(id);
+  if(window.FB_OK) window.FB.delFavorite(id); else queueFBWrite('favorite','del',id);
   renderFavorites();
   showToast('ลบเมนูโปรดแล้ว','info');
 }
@@ -4705,8 +4868,7 @@ function applyRecoveryAdj() {
   if (!adj || adj.date !== today) return;
   adj.confirmed = true;
   localStorage.setItem('gd_recovery_adj', JSON.stringify(adj));
-  localStorage.removeItem('gd_daily_summary'); // today's effective goal just changed
-  localStorage.removeItem('gd_weekly_summary');
+  clearGoalDependentCaches(); // today's effective goal just changed
   if (window.FB_OK && window.FB) window.FB.saveSetting('recoveryAdj', adj).catch(function(){});
   updateRecoveryAdjBanner(adj);
   updateDash();
@@ -4720,8 +4882,7 @@ function cancelRecoveryAdj() {
   if (!adj || adj.date !== today) return;
   adj.confirmed = false;
   localStorage.setItem('gd_recovery_adj', JSON.stringify(adj));
-  localStorage.removeItem('gd_daily_summary'); // today's effective goal just changed
-  localStorage.removeItem('gd_weekly_summary');
+  clearGoalDependentCaches(); // today's effective goal just changed
   if (window.FB_OK && window.FB) window.FB.saveSetting('recoveryAdj', adj).catch(function(){});
   updateRecoveryAdjBanner(adj);
   updateDash();
@@ -4986,19 +5147,20 @@ function getDietBreakAdjGoal(dateStr) {
 }
 function startDietBreak(days) {
   days = parseInt(days) || 14;
-  var db = { active: true, startDate: localDateStr(), days: days };
+  var db = { active: true, startDate: localDateStr(), days: days, updatedAt: Date.now() };
   localStorage.setItem('gd_diet_break', JSON.stringify(db));
   clearGoalDependentCaches();
-  if (window.FB_OK && window.FB) window.FB.saveSetting('dietBreak', db).catch(function(){});
+  fbSaveSettingOrQueue('dietBreak', db);
   if (typeof showToast === 'function') showToast('เริ่ม Diet Break — กินที่ maintenance ' + days + ' วัน', 'success');
   if (typeof updateDash === 'function') updateDash();
 }
 function endDietBreak() {
   var db = safeJSON('gd_diet_break', null) || {};
   db.active = false;
+  db.updatedAt = Date.now();
   localStorage.setItem('gd_diet_break', JSON.stringify(db));
   clearGoalDependentCaches();
-  if (window.FB_OK && window.FB) window.FB.saveSetting('dietBreak', db).catch(function(){});
+  fbSaveSettingOrQueue('dietBreak', db);
   if (typeof showToast === 'function') showToast('จบ Diet Break — กลับไปลดไขมันต่อ', 'success');
   if (typeof updateDash === 'function') updateDash();
 }
@@ -5153,7 +5315,11 @@ function recordGoalHistory(goals) {
   if (hist.length && hist[hist.length - 1].date === today) hist[hist.length - 1] = entry; // same-day re-edit overwrites, doesn't stack
   else hist.push(entry);
   try { localStorage.setItem('gd_goals_history', JSON.stringify(hist)); } catch(e){}
-  if (window.FB_OK && window.FB) window.FB.saveSetting('goalsHistory', hist).catch(function(){});
+  markSyncDirty('gd_goals_history', today);
+  if (window.FB_OK && window.FB) {
+    var ghStamp = Date.now();
+    window.FB.saveSetting('goalsHistory', hist).then(function(){ clearSyncDirty('gd_goals_history', [today], ghStamp); }).catch(function(){});
+  }
 }
 // The goal actually in force on dateStr — the last recorded change on or
 // before that date. Falls back to the earliest known entry for dates before
@@ -5248,8 +5414,14 @@ function getEffectiveGoalForDate(dateStr) {
 // dashboard ring shows, including the recovery adjustment and the training-day EA bump — while
 // past days read their own snapshot/recompute. Mapping every day through getEffectiveGoalForDate
 // silently coloured today's bar against a target the ring never displayed.
-function goalCalForDay(dateStr) {
+// The goal a given day was actually held to — today's live effective goal, or a past day's
+// snapshot/recomputation. Every per-day reader (weekly cards, correlations, anomalies) uses it.
+function effectiveGoalForDay(dateStr) {
   var g = (dateStr === localDateStr()) ? getEffectiveGoalToday() : getEffectiveGoalForDate(dateStr);
+  return g || S.goals || {};
+}
+function goalCalForDay(dateStr) {
+  var g = effectiveGoalForDay(dateStr);
   return (g && g.cal) || 1800;
 }
 
@@ -5364,7 +5536,7 @@ function detectAnomalies() {
   var weights  = (typeof WT !== 'undefined' && WT.log && WT.log.length) ? WT.log : JSON.parse(localStorage.getItem('gd_weight') || '[]');
   var sleepLog = []; try { sleepLog = JSON.parse(localStorage.getItem('gd_sleep_log') || '[]'); } catch(e) {}
   var sd = S.sleepData;
-  var goalPro = S.goals.pro || 120;
+  var goalPro = effectiveGoalForDay(today).pro || S.goals.pro || 120;
 
   var flags = [];
 
@@ -5437,9 +5609,9 @@ function detectAnomalies() {
     var dm = meals.filter(function(m){ return m.date === date; });
     if (!dm.length) return false;
     var pro = dm.reduce(function(s,m){ return s+(parseFloat(m.protein)||0); },0);
-    return pro < goalPro * 0.6;
+    return pro < (effectiveGoalForDay(date).pro || goalPro) * 0.6;
   });
-  if (lowProDays.length >= 3) flags.push('🥩 โปรตีนต่ำกว่า 60% ของเป้า ' + lowProDays.length + ' วันติดกัน — ' + Math.round(goalPro*0.6) + 'g+ ต่อวันสำคัญต่อการรักษากล้ามเนื้อ');
+  if (lowProDays.length >= 3) flags.push('🥩 โปรตีนต่ำกว่า 60% ของเป้า ' + lowProDays.length + ' วันใน 7 วันล่าสุด — ' + Math.round(goalPro*0.6) + 'g+ ต่อวันสำคัญต่อการรักษากล้ามเนื้อ');
 
   // Flag 5: lean mass dropping during a cut (InBody + strength-log cross-check)
   var lmGuard = (typeof checkLeanMassGuard === 'function') ? checkLeanMassGuard() : null;
@@ -5464,12 +5636,15 @@ function renderWeeklyReview() {
   var meals    = S.meals || JSON.parse(localStorage.getItem('gd_meals')||'[]');
   var workouts = (typeof FT!=='undefined'&&FT.workouts)?FT.workouts:JSON.parse(localStorage.getItem('gd_workouts')||'[]');
   var weights  = (typeof WT!=='undefined'&&WT.log&&WT.log.length)?WT.log:JSON.parse(localStorage.getItem('gd_weight')||'[]');
-  var calGoal  = S.goals.cal||1800, target = JSON.parse(localStorage.getItem('gd_ft_target')||'null');
+  var target = JSON.parse(localStorage.getItem('gd_ft_target')||'null');
   var totalCal=0,totalPro=0,totalNet=0,daysWithMeals=0,daysWithNet=0,totalBurn=0,totalDuration=0,workoutDays=0;
+  // Each logged day is compared with the goal it was actually held to (rest-day cut, diet
+  // break, EA bump, recovery tweak) — not the raw saved goal.
+  var totalCalGoal=0,totalProGoal=0;
   var totalWater=0,daysWithWater=0;
   days.forEach(function(date) {
     var dm=meals.filter(function(m){return m.date===date;});
-    if(dm.length)daysWithMeals++;
+    if(dm.length){daysWithMeals++;var dg=effectiveGoalForDay(date);totalCalGoal+=(dg.cal||1800);totalProGoal+=(dg.pro||S.goals.pro||120);}
     var intake=dm.reduce(function(s,m){return s+(parseFloat(m.calories)||0);},0);
     totalCal+=intake; totalPro+=dm.reduce(function(s,m){return s+(parseFloat(m.protein)||0);},0);
     var dw=workouts.filter(function(w){return w.date===date;});
@@ -5489,6 +5664,8 @@ function renderWeeklyReview() {
   var avgPro=daysWithMeals?Math.round(totalPro/daysWithMeals):0;
   var avgNet=daysWithNet?Math.round(totalNet/daysWithNet):0;
   var avgWater=daysWithWater?Math.round(totalWater/daysWithWater):0;
+  var calGoal=daysWithMeals?Math.round(totalCalGoal/daysWithMeals):(S.goals.cal||1800);
+  var avgProGoal=daysWithMeals?Math.round(totalProGoal/daysWithMeals):(S.goals.pro||null);
   // Bug fix: compare gross intake (avgCal) vs goal — not net. Adaptive TDEE already includes activity.
   var intakeDiff=avgCal-calGoal, netColor=intakeDiff<=0?'var(--green)':'var(--red)';
   var netLabel=intakeDiff<=0?('−'+Math.abs(intakeDiff)+' kcal vs goal'):('+'+intakeDiff+' kcal vs goal');
@@ -5497,12 +5674,8 @@ function renderWeeklyReview() {
   // Determine if goal is weight loss or gain
   var goalMode = (typeof normalizeGoalMode === 'function') ? normalizeGoalMode((S.profile && S.profile.goalType)) : ((S.profile && S.profile.goalType) || 'fat_loss');
   var wantLoss = (goalMode === 'fat_loss' || goalMode === 'recomp');
-  if(weekWeights.length>=2){
-    weekWeights.sort(function(a,b){return a.date>b.date?1:-1;});
-    var n=weekWeights.length,sx=0,sy=0,sxy=0,sxx=0;
-    weekWeights.forEach(function(w,i){sx+=i;sy+=w.weight;sxy+=i*w.weight;sxx+=i*i;});
-    var slope=(n*sxy-sx*sy)/(n*sxx-sx*sx);
-    weightSlope=Math.round(slope*7*100)/100;
+  weightSlope=weeklyWeightSlope(weekWeights);
+  if(weightSlope!==null){
     var absW=Math.abs(weightSlope);
     // Color based on goal: losing → green if ↓, red if ↑; gaining → opposite
     if(absW<0.1){ wColor='var(--text2)'; }
@@ -5519,7 +5692,7 @@ function renderWeeklyReview() {
     // (CLAUDE.md: one goal, many readers — the verdict used to read scale weight alone.)
     var bfTrajWR=(typeof getBFTrajectory==='function')?getBFTrajectory(target):null;
     var guardsWR=(typeof compositionGuards==='function')?compositionGuards(goalMode,{
-      proGoal:(S.goals&&S.goals.pro)||null, avgPro:avgPro,
+      proGoal:avgProGoal, avgPro:avgPro,
       bfPerWeek:(goalMode==='lean_gain'&&bfTrajWR)?bfTrajWR.bfPerWeek:null
     }):[];
     var guardTxtWR=guardsWR.length?' <span style="color:var(--yellow)">· ระวังสัดส่วน: '+guardsWR.map(function(g){return g.msg;}).join(' · ')+'</span>':'';
@@ -5593,14 +5766,30 @@ function renderWeeklyReview() {
   el.innerHTML=html;
 }
 
-// ── Weekly Report (auto-generated every Sunday, rolling display) ──────────
+// ── Weekly Report (auto-generated for the last COMPLETE Mon–Sun week, rolling display) ──
 var _weeklyGenInFlight = false;
+// Bump when a stored report must be regenerated rather than restored.
+var WEEKLY_REPORT_VER = 2;
 
-// Most recent Sunday on/before dateStr (local-noon anchored — see CLAUDE.md "Dates").
+// kg/week over a week's weigh-ins, regressed on the DATE (via _linReg, like the analyzer).
+// Both weekly cards used to regress on the entry's index and multiply by 7, so two weigh-ins
+// six days apart read as one day apart: a 0.6 kg drop showed as −4.2 kg/wk instead of −0.7.
+// Weigh-ins all on one date carry no slope → null.
+function weeklyWeightSlope(entries) {
+  var pts = (entries || []).filter(function(w){ return w && w.date && isFinite(parseFloat(w.weight)); })
+    .map(function(w){ return { date: w.date, weight: parseFloat(w.weight) }; })
+    .sort(function(a,b){ return a.date.localeCompare(b.date); });
+  if (pts.length < 2 || pts[0].date === pts[pts.length-1].date) return null;
+  return Math.round(_linReg(pts) * 100) / 100;
+}
+// Most recent COMPLETED week's Sunday strictly before dateStr (local-noon anchored — see
+// CLAUDE.md "Dates"). On a Sunday that is the PREVIOUS Sunday: the report used to be built at
+// the first app open on Sunday morning for the week ending that same day, then restored all
+// week, so Sunday's meals, weigh-in and workouts were never in it.
 function weeklyReportWeekEnd(dateStr) {
   var d = new Date(dateStr + 'T12:00:00');
   var day = d.getDay(); // 0=Sun..6=Sat
-  if (day !== 0) d.setDate(d.getDate() - day);
+  d.setDate(d.getDate() - (day === 0 ? 7 : day));
   return localDateStr(d);
 }
 // Monday..Sunday date strings ending on weekEndStr.
@@ -5625,31 +5814,27 @@ function computeWeekStats(days) {
   // flat proGoal is correct. Calories DO change (rest-day carb cut) — averaging a week that
   // mixes rest and training days against one flat number is what made the card confusing,
   // so each day is compared against its OWN effective goal instead.
-  var proGoal = S.goals.pro||120;
-  var totalCal=0,totalPro=0,totalCalGoal=0,daysWithMeals=0,onGoalDays=0,proHitDays=0,proPips=[],restDayCount=0;
+  var totalCal=0,totalPro=0,totalCalGoal=0,totalProGoal=0,daysWithMeals=0,onGoalDays=0,proHitDays=0,proPips=[],restDayCount=0;
   days.forEach(function(date){
     var dm = meals.filter(function(m){ return m.date===date; });
     var cal = dm.reduce(function(s,m){ return s+(parseFloat(m.calories)||0); },0);
     var pro = dm.reduce(function(s,m){ return s+(parseFloat(m.protein)||0); },0);
-    var dayGoal = (typeof getEffectiveGoalForDate === 'function') ? getEffectiveGoalForDate(date) : S.goals;
+    var dayGoal = effectiveGoalForDay(date);
     var dayCalGoal = (dayGoal && dayGoal.cal) || 1800;
+    // The pip caption promises "≥90% of THAT day's goal" — a Recovery Rest day raises protein.
+    var dayProGoal = (dayGoal && dayGoal.pro) || S.goals.pro || 120;
     if (dayGoal && dayGoal._dayType === 'rest') restDayCount++;
     if (dm.length) {
-      daysWithMeals++; totalCal+=cal; totalPro+=pro; totalCalGoal+=dayCalGoal;
+      daysWithMeals++; totalCal+=cal; totalPro+=pro; totalCalGoal+=dayCalGoal; totalProGoal+=dayProGoal;
       if (Math.abs(cal-dayCalGoal) <= dayCalGoal*0.1) onGoalDays++;
-      var proHit = pro >= proGoal*0.9;
+      var proHit = pro >= dayProGoal*0.9;
       if (proHit) proHitDays++;
       proPips.push(proHit);
     } else { proPips.push(false); }
   });
   var weekWeights = weights.filter(function(w){ return days.indexOf(w.date)>=0; }).sort(function(a,b){ return a.date>b.date?1:-1; });
   var weightSlope = null;
-  if (weekWeights.length>=2) {
-    var n=weekWeights.length,sx=0,sy=0,sxy=0,sxx=0;
-    weekWeights.forEach(function(w,i){ sx+=i;sy+=w.weight;sxy+=i*w.weight;sxx+=i*i; });
-    var slope=(n*sxy-sx*sy)/(n*sxx-sx*sx);
-    weightSlope = Math.round(slope*7*100)/100;
-  }
+  weightSlope = weeklyWeightSlope(weekWeights);
   var weekWorkouts = workouts.filter(function(w){ return days.indexOf(w.date)>=0; });
   var workoutMinutes = weekWorkouts.reduce(function(s,w){ return s+(parseFloat(w.duration_min)||0); },0);
   var workoutDayCount = {}; weekWorkouts.forEach(function(w){ workoutDayCount[w.date]=true; });
@@ -5664,7 +5849,7 @@ function computeWeekStats(days) {
     avgPro: daysWithMeals ? Math.round(totalPro/daysWithMeals) : 0,
     daysWithMeals: daysWithMeals, onGoalDays: onGoalDays, proHitDays: proHitDays, proPips: proPips,
     calGoal: daysWithMeals ? Math.round(totalCalGoal/daysWithMeals) : (S.goals.cal||1800),
-    proGoal: proGoal, restDayCount: restDayCount, weightSlope: weightSlope,
+    proGoal: daysWithMeals ? Math.round(totalProGoal/daysWithMeals) : (S.goals.pro||120), restDayCount: restDayCount, weightSlope: weightSlope,
     workoutSessions: weekWorkouts.length, workoutDays: Object.keys(workoutDayCount).length, workoutMinutes: Math.round(workoutMinutes),
     avgSleepHours: weekNights.length ? Math.round(totalSleepHours/weekNights.length*10)/10 : null,
     sleepNights: weekNights.length, avgSleepNeedHours: days.length ? Math.round(needSum/days.length*10)/10 : null
@@ -5801,6 +5986,7 @@ function computeWeeklyReport(weekEndStr) {
     // loading after this was generated) can detect the mismatch and regenerate — see
     // restoreOrGenerateWeeklySummary().
     goalSnapshot: { cal: S.goals.cal, pro: S.goals.pro },
+    v: WEEKLY_REPORT_VER,
     generatedAt: Date.now()
   };
 }
@@ -5916,7 +6102,7 @@ function buildWeeklyNarrativePrompt(report) {
   lines.push('สัปดาห์นี้ ('+report.weekStart+' ถึง '+report.weekEnd+') เทียบสัปดาห์ก่อน ('+report.prevWeekStart+' ถึง '+report.prevWeekEnd+'):');
   lines.push('- แคลอรี่เฉลี่ย: '+t.avgCal+' kcal/วัน (เป้าเฉลี่ยของสัปดาห์ '+t.calGoal+' kcal — ผสมวันพัก '+t.restDayCount+' วันกับวันฝึก, เป้าจะต่ำกว่าวันฝึกในวันพัก) เข้าเป้า '+t.onGoalDays+'/7 วัน | สัปดาห์ก่อน '+p.avgCal+' kcal (เป้าเฉลี่ย '+p.calGoal+'), เข้าเป้า '+p.onGoalDays+'/7 วัน');
   lines.push('- โปรตีนเฉลี่ย: '+t.avgPro+'g (เป้า '+t.proGoal+'g) ถึงเป้า '+t.proHitDays+'/7 วัน | สัปดาห์ก่อน '+p.avgPro+'g, ถึงเป้า '+p.proHitDays+'/7 วัน');
-  lines.push('- น้ำหนักเทรนด์ (regression 7 จุด): '+(t.weightSlope!=null?t.weightSlope+' kg/สัปดาห์':'ไม่มีข้อมูลพอ')+' | สัปดาห์ก่อน '+(p.weightSlope!=null?p.weightSlope+' kg/สัปดาห์':'ไม่มีข้อมูล')+' | เป้าหมาย: '+(report.wantLoss?'ลดน้ำหนัก':'เพิ่มน้ำหนัก/กล้ามเนื้อ')+' (ลบ = ลด, บวก = เพิ่ม)');
+  lines.push('- น้ำหนักเทรนด์ (regression ตามวันที่ชั่ง): '+(t.weightSlope!=null?t.weightSlope+' kg/สัปดาห์':'ไม่มีข้อมูลพอ')+' | สัปดาห์ก่อน '+(p.weightSlope!=null?p.weightSlope+' kg/สัปดาห์':'ไม่มีข้อมูล')+' | เป้าหมาย: '+(report.wantLoss?'ลดน้ำหนัก':'เพิ่มน้ำหนัก/กล้ามเนื้อ')+' (ลบ = ลด, บวก = เพิ่ม)');
   lines.push('- เวลานอนเฉลี่ย: '+(t.avgSleepHours!=null?t.avgSleepHours+' ชม./คืน ('+t.sleepNights+' คืนที่มีข้อมูล)':'ไม่มีข้อมูล')+' ต้องการ ~'+t.avgSleepNeedHours+' ชม./คืน | สัปดาห์ก่อน '+(p.avgSleepHours!=null?p.avgSleepHours+' ชม./คืน':'ไม่มีข้อมูล'));
   lines.push('- ออกกำลังกาย: '+t.workoutMinutes+' นาที รวม ('+t.workoutDays+' วัน) | สัปดาห์ก่อน '+p.workoutMinutes+' นาที ('+p.workoutDays+' วัน)');
   if (report.prList.length) lines.push('- PR ใหม่สัปดาห์นี้ (เฉพาะท่าที่เล่นซ้ำบ่อย): '+report.prList.map(function(pr){ return pr.name+' '+(parseFloat(pr.weight)>0?pr.weight+'kg'+(pr.deltaKg!=null?' ('+(pr.deltaKg>=0?'+':'')+pr.deltaKg+'kg)':''):('best '+pr.reps+' reps')); }).join(', '));
@@ -5967,7 +6153,8 @@ function restoreOrGenerateWeeklySummary() {
   var mostRecent = weeklyReportWeekEnd(localDateStr());
   var saved = null; try { saved = JSON.parse(localStorage.getItem('gd_weekly_summary')||'null'); } catch(e){}
   if (saved && saved.report) renderWeeklyReportCard(saved.report, weeklyNarrativeHTML(saved.narrative));
-  if (saved && saved.weekEnd === mostRecent) {
+  // v gate: reports stored before WEEKLY_REPORT_VER covered a partial Sunday — rebuild them.
+  if (saved && saved.weekEnd === mostRecent && saved.report && saved.report.v === WEEKLY_REPORT_VER) {
     // S.goals starts at a hardcoded default and is only corrected once Firebase's
     // loadRemoteData() resolves (async, after the first render() already ran). If this
     // week's report was generated in that window, the goal it used is stale even though
@@ -5988,7 +6175,7 @@ function renderCorrelations() {
   var workouts=(typeof FT!=='undefined'&&FT.workouts)?FT.workouts:JSON.parse(localStorage.getItem('gd_workouts')||'[]');
   var weights=(typeof WT!=='undefined'&&WT.log&&WT.log.length)?WT.log:JSON.parse(localStorage.getItem('gd_weight')||'[]');
   var slLog2=[]; try{slLog2=JSON.parse(localStorage.getItem('gd_sleep_log')||'[]');}catch(e){}
-  var sd3=S.sleepData, goalProC=S.goals.pro||120, calGoalC=S.goals.cal||1800;
+  var sd3=S.sleepData;
   var dayData={};
   days.forEach(function(date){
     var dm=meals.filter(function(m){return m.date===date;});
@@ -6015,13 +6202,13 @@ function renderCorrelations() {
   var hiStr=days.filter(function(d){return dayData[d].strain>300;});
   if(hiStr.length>=2){var dr=0,ch2=0;hiStr.forEach(function(d){var ni=days.indexOf(d)+1;if(ni>=days.length)return;var nx=days[ni];if(dayData[d].hrv!==null&&dayData[nx].hrv!==null){ch2++;if(dayData[nx].hrv<dayData[d].hrv*0.9)dr++;}});if(ch2>=2){var p2=Math.round(dr/ch2*100);if(p2>=50)findings.push({icon:'💓',color:'var(--red)',text:'ออกกำลังกายหนัก (>300 kcal) → HRV ลดวันถัดไป '+p2+'% ของครั้ง'});}}
   // P3 low protein
-  var lowPro=days.filter(function(d){return dayData[d].hasMeal&&dayData[d].protein<goalProC*0.7;});
+  var lowPro=days.filter(function(d){return dayData[d].hasMeal&&dayData[d].protein<(effectiveGoalForDay(d).pro||S.goals.pro||120)*0.7;});
   if(lowPro.length>=3)findings.push({icon:'🥩',color:'var(--blue)',text:'มี '+lowPro.length+' วันใน 14 วัน ที่โปรตีน <70% ของเป้า — อาจส่งผลต่อ muscle preservation'});
   // P4 surplus→weight. Compare GROSS intake against the goal: the goal is TDEE − deficit
   // and that TDEE already includes workout + NEAT, so subtracting them again here made the
   // threshold unreachable (it needed intake > goal + 200 + burn + NEAT, i.e. ~3100 kcal on
   // a 2270 goal for anyone who logs steps) and this finding never appeared.
-  var surp=days.filter(function(d){return dayData[d].hasMeal&&dayData[d].intake>calGoalC+200;});
+  var surp=days.filter(function(d){return dayData[d].hasMeal&&dayData[d].intake>goalCalForDay(d)+200;});
   if(surp.length>=3){var wu=0,ch3=0;surp.forEach(function(d){var ni=days.indexOf(d)+1;if(ni>=days.length)return;var nx=days[ni];if(dayData[d].weight!==null&&dayData[nx].weight!==null){ch3++;if(dayData[nx].weight>dayData[d].weight)wu++;}});if(ch3>=2){var p4=Math.round(wu/ch3*100);findings.push({icon:'⚖️',color:p4>=60?'var(--red)':'var(--green)',text:'กินเกินเป้า >200 kcal → น้ำหนักขึ้นวันถัดไป '+p4+'% ('+ch3+' ครั้งที่ตรวจได้)'});}}
   // P5 RHR trend
   var rhrD=days.map(function(d){return dayData[d].rhr;}).filter(function(v){return v!==null;});
@@ -6992,7 +7179,7 @@ function applyGoalValues(goal, persist) {
     // was current when it ran. Without this the AI Deep-Dive quotes the old goal.
     localStorage.removeItem('gd_wt_analysis');
     localStorage.removeItem('gd_wt_analysis_data');
-    if (window.FB_OK) window.FB.saveSetting('goals', S.goals);
+    fbSaveSettingOrQueue('goals', S.goals);
     updateDash();
     if (typeof updateFitnessUI === 'function') updateFitnessUI();
   }
@@ -7277,7 +7464,7 @@ function persistTrainingPrefs() {
   if (recEl) S.profile.recoveryPriority = recEl.value;
   if (freqEl) S.profile.weeklyFrequency = freqEl.value;
   localStorage.setItem('gd_profile', JSON.stringify(S.profile));
-  if (window.FB_OK) window.FB.saveSetting('profile', S.profile);
+  fbSaveSettingOrQueue('profile', S.profile);
 }
 function calcGoal() {
   var age=+document.getElementById('s-age').value, weight=getLatestCheckinWeight();
@@ -7292,7 +7479,7 @@ function calcGoal() {
     weeklyFrequency:(document.getElementById('s-weekly-frequency')?document.getElementById('s-weekly-frequency').value:'4')
   };
   localStorage.setItem('gd_profile',JSON.stringify(S.profile));
-  if(window.FB_OK) window.FB.saveSetting('profile',S.profile);
+  fbSaveSettingOrQueue('profile', S.profile);
   var ctx = getOfficialCalorieContext();
   var goal = buildGoalFromMode(goalType, S.profile, ctx.officialTDEE || calcFormulaTDEE(S.profile));
   // Preview only — fill the input boxes but don't persist. calcGoal() is the "คำนวณ"
@@ -7356,12 +7543,12 @@ function saveGoals() {
     S.profile.recoveryPriority=document.getElementById('s-recovery-priority')?document.getElementById('s-recovery-priority').value:'normal';
     S.profile.weeklyFrequency=document.getElementById('s-weekly-frequency')?document.getElementById('s-weekly-frequency').value:'4';
     localStorage.setItem('gd_profile',JSON.stringify(S.profile));
-    if(window.FB_OK) window.FB.saveSetting('profile',S.profile);
+    fbSaveSettingOrQueue('profile', S.profile);
   }
   localStorage.removeItem('gd_daily_summary'); localStorage.removeItem('gd_wt_ai_result');
   localStorage.removeItem('gd_weekly_summary');
   localStorage.removeItem('gd_wt_analysis'); localStorage.removeItem('gd_wt_analysis_data');
-  if(window.FB_OK) window.FB.saveSetting('goals',S.goals);
+  fbSaveSettingOrQueue('goals', S.goals);
   updateGoalModeHint({cal:cal,pro:pro,crb:crb,fat:fat,tdee:getOfficialCalorieContext().officialTDEE});
   showToast('บันทึกเป้าหมายแล้ว ✅','success');
   updateDash(); if(typeof updateFitnessUI==='function') updateFitnessUI();
@@ -7834,11 +8021,11 @@ function migrateThaiExercisesToEnglish() {
   });
   saveStrengthLog(log);
   saveCustomExercises(customs.filter(function(c){ return !moves[c.id]; }));
-  if (window.FB_OK && window.FB && changed.length) {
-    changed.forEach(function(e) {
-      window.FB.saveStrengthEntry(e).catch(function(){});
-    });
-  }
+  // Runs at startup, usually before auth resolves — queue instead of dropping the upload.
+  changed.forEach(function(e) {
+    if (window.FB_OK && window.FB) window.FB.saveStrengthEntry(e).catch(function(){});
+    else queueFBWrite('strength', 'save', e);
+  });
   var names = ids.map(function(id){ var ex = getExById(moves[id]); return ex ? ex.name : moves[id]; });
   showToast('🔄 รวมประวัติท่าชื่อไทย '+ids.length+' ท่าเข้ากับท่าอังกฤษ: '+names.join(', '), 'info');
 }
@@ -8601,14 +8788,19 @@ function confirmExerciseFromSheet() {
       e1RM:calcE1RM(s.weight,s.reps,s.rir), isPR:isPR&&i===bestSetIdx});
   });
   saveStrengthLog(log);
+  var newRows = log.slice(log.length - validSets.length);
   if (window.FB_OK && window.FB) {
     replacedRows.forEach(function(e) {
       window.FB.delStrengthEntry(e.id).catch(function(){});
     });
-    validSets.forEach(function(s, i) {
-      var entry = log[log.length - validSets.length + i];
+    newRows.forEach(function(entry) {
       window.FB.saveStrengthEntry(entry).catch(function(){});
     });
+  } else {
+    // Same offline queue as meals/weights — strength sets logged before Firebase is ready
+    // used to stay on this device only.
+    replacedRows.forEach(function(e){ queueFBWrite('strength', 'del', e.id); });
+    newRows.forEach(function(entry){ queueFBWrite('strength', 'save', entry); });
   }
   if (S.webhook) autoSyncStrengthLog(ST.curExercise, validSets, bestE1RM, isPR, today, bestSetIdx);
   var idx = ST.sessionExercises.findIndex(function(e){ return e.exerciseId === ST.curExercise.id; });
@@ -9124,7 +9316,8 @@ function saveSteps() {
   var stepData = JSON.parse(localStorage.getItem('gd_steps') || '{}');
   stepData[date] = steps;
   localStorage.setItem('gd_steps', JSON.stringify(stepData));
-  if (window.FB_OK && window.FB) window.FB.saveSetting('steps', stepData).catch(function(){});
+  markSyncDirty('gd_steps', date);
+  pushDateMapSetting('gd_steps', 'steps');
   updateFitnessUI();
 }
 
@@ -9138,9 +9331,10 @@ function getTodaySteps() {
 // Simple per-day ml total (mirrors the gd_steps pattern), plus a one-slot
 // undo for the last add — quick-tap logging has no natural "edit" affordance.
 function getWaterLog() { return JSON.parse(localStorage.getItem('gd_water_log') || '{}'); }
-function setWaterLog(log) {
+function setWaterLog(log, date) {
   localStorage.setItem('gd_water_log', JSON.stringify(log));
-  if (window.FB_OK && window.FB) window.FB.saveSetting('waterLog', log).catch(function(){});
+  if (date) markSyncDirty('gd_water_log', date);
+  pushDateMapSetting('gd_water_log', 'waterLog');
 }
 function getWaterForDate(date) { return getWaterLog()[date] || 0; }
 function getTodayWaterMl() { return getWaterForDate(localDateStr()); }
@@ -9154,7 +9348,7 @@ function addWater(ml) {
   var date = localDateStr();
   var log = getWaterLog();
   log[date] = (log[date] || 0) + ml;
-  setWaterLog(log);
+  setWaterLog(log, date);
   localStorage.setItem('gd_water_last_add', JSON.stringify({date:date, ml:ml}));
   renderDashWater(date);
   showToast('+' + ml + 'ml', 'success');
@@ -9164,7 +9358,7 @@ function undoLastWater() {
   if (!last || last.date !== localDateStr()) { showToast('ไม่มีรายการล่าสุดให้ยกเลิก', 'error'); return; }
   var log = getWaterLog();
   log[last.date] = Math.max(0, (log[last.date] || 0) - last.ml);
-  setWaterLog(log);
+  setWaterLog(log, last.date);
   localStorage.removeItem('gd_water_last_add');
   renderDashWater(last.date);
   showToast('ยกเลิกแล้ว', 'info');
@@ -9352,7 +9546,7 @@ function renderFitnessCharts() {
     var d = new Date(); d.setDate(d.getDate() - i);
     days.push(localDateStr(d));
   }
-  var labels   = days.map(function(d) { var dd = new Date(d); return (dd.getMonth()+1)+'/'+(dd.getDate()); });
+  var labels   = days.map(function(d) { var dd = new Date(d + 'T12:00:00'); return (dd.getMonth()+1)+'/'+(dd.getDate()); });
   var burnData = days.map(function(d) { return FT.workouts.filter(function(w){return w.date===d;}).reduce(function(a,w){return a+w.calories_burned;},0); });
   var minData  = days.map(function(d) { return FT.workouts.filter(function(w){return w.date===d;}).reduce(function(a,w){return a+w.duration_min;},0); });
   var stepData = JSON.parse(localStorage.getItem('gd_steps') || '{}');
@@ -9882,7 +10076,7 @@ function saveFitnessTarget() {
   localStorage.removeItem('gd_daily_summary'); localStorage.removeItem('gd_wt_ai_result');
   localStorage.removeItem('gd_weekly_summary');
   window._fitnessTarget = target; // expose for weight log module
-  if (window.FB_OK) window.FB.saveSetting('fitnessTarget', target);
+  fbSaveSettingOrQueue('fitnessTarget', target);
   if (S.webhook) { fetch('https://kindee.ojo0308.workers.dev/',{method:'POST',headers:{'Content-Type':'application/json','x-target-url':S.webhook},body:JSON.stringify({action:'saveFitnessTarget',data:target})}).catch(function(){}); }
   updateFeasibilityPreview();
   if (feas && feas.status === 'unrealistic') showToast('บันทึกแล้ว แต่เป้านี้เร็วเกินไป — ดูคำแนะนำใต้ฟอร์ม ⚠️','error');
@@ -9912,7 +10106,7 @@ function resetTargetStartDate() {
   localStorage.removeItem('gd_daily_summary'); localStorage.removeItem('gd_wt_ai_result');
   localStorage.removeItem('gd_weekly_summary');
   window._fitnessTarget = t;
-  if (window.FB_OK) window.FB.saveSetting('fitnessTarget', t);
+  fbSaveSettingOrQueue('fitnessTarget', t);
   renderTargetDashboard();
   showToast('รีเซ็ตวันเริ่มต้นใหม่แล้ว ✅','success');
 }
@@ -9932,7 +10126,7 @@ function loadFitnessTarget() {
       if (ib.visceral!= null && t.currVisceral!== ib.visceral){ t.currVisceral = ib.visceral; ibChanged = true; }
       if (ibChanged) {
         localStorage.setItem('gd_ft_target', JSON.stringify(t));
-        if (window.FB_OK) window.FB.saveSetting('fitnessTarget', t);
+        fbSaveSettingOrQueue('fitnessTarget', t);
       }
     }
     // Legacy targets predate the program-start snapshot: freeze today's values as
@@ -9943,7 +10137,7 @@ function loadFitnessTarget() {
       if (t.startMuscle == null && t.currMuscle != null) t.startMuscle = t.currMuscle;
       if (t.startVisceral == null && t.currVisceral != null) t.startVisceral = t.currVisceral;
       localStorage.setItem('gd_ft_target', JSON.stringify(t));
-      if (window.FB_OK) window.FB.saveSetting('fitnessTarget', t);
+      fbSaveSettingOrQueue('fitnessTarget', t);
     }
   } catch(e){}
   if (t.currBF)    { document.getElementById('ft-curr-bf').value = t.currBF; }
@@ -11219,7 +11413,9 @@ var WT = { log: [], chartInstance: null, _calChartInstance: null, filterDays: 7 
 function initWeightTab() {
   if (window.FB_OK && window.FB && window.FB.loadWeights) {
     window.FB.loadWeights().then(function(ws){
-      WT.log = ws || [];
+      // Replay queued offline check-ins/deletes, or they vanish from the tab until a reload.
+      WT.log = applyPendingFBQueue('weight', ws || []).sort(function(a,b){ return ((a.date||'')+(a.time||'')).localeCompare((b.date||'')+(b.time||'')); });
+      localStorage.setItem('gd_weight', JSON.stringify(WT.log));
       _renderWeightTab();
     }).catch(function(){
       WT.log = JSON.parse(localStorage.getItem('gd_weight')||'[]');
@@ -11328,7 +11524,7 @@ function renderWeightCalChart() {
     days.push(localDateStr(d));
   }
   var labels = days.map(function(d) {
-    var dd = new Date(d); return (dd.getMonth()+1)+'/'+(dd.getDate());
+    var dd = new Date(d + 'T12:00:00'); return (dd.getMonth()+1)+'/'+(dd.getDate());
   });
 
   // Weight per day: use the last entry of that day (or null)
@@ -11464,9 +11660,9 @@ function renderWeightLogList() {
   el.innerHTML = [].concat(WT.log).reverse().map(function(e){
     return '<div class="wt-log-item">'+
       '<div class="wt-log-left">'+
-        '<div class="wt-log-val" style="color:var(--blue)">'+e.weight+' <span style="font-size:12px;font-weight:400;color:var(--text3)">กก.</span></div>'+
-        '<div class="wt-log-meta">'+e.date+'  🕐 '+e.time+(e.waist?'  📏 เอว '+e.waist+' ซม.':'')+'</div>'+
-        (e.note ? '<div class="wt-log-note">'+e.note+'</div>' : '')+
+        '<div class="wt-log-val" style="color:var(--blue)">'+escapeHTML(e.weight)+' <span style="font-size:12px;font-weight:400;color:var(--text3)">กก.</span></div>'+
+        '<div class="wt-log-meta">'+escapeHTML(e.date)+'  🕐 '+escapeHTML(e.time)+(e.waist?'  📏 เอว '+escapeHTML(e.waist)+' ซม.':'')+'</div>'+
+        (e.note ? '<div class="wt-log-note">'+escapeHTML(e.note)+'</div>' : '')+
       '</div>'+
       '<button style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:16px;padding:4px;transition:color 0.2s;" '+
         'onmouseover="this.style.color=\'var(--red)\'" onmouseout="this.style.color=\'var(--text3)\'" '+
@@ -11506,9 +11702,8 @@ function handleSaveWeight() {
   WT.log.sort(function(a,b){ return (a.date+a.time).localeCompare(b.date+b.time); });
   localStorage.setItem('gd_weight', JSON.stringify(WT.log));
   // New data point -> the cached same-day analysis (trend, Adaptive TDEE, forecast) is stale.
-  localStorage.removeItem('gd_wt_analysis'); localStorage.removeItem('gd_wt_analysis_data');
-  localStorage.removeItem('gd_daily_summary');
-  localStorage.removeItem('gd_weekly_summary');
+  // The AI Deep-Dive (gd_wt_ai_result) quotes the weight data too — clear the full set.
+  clearGoalDependentCaches();
   if (window.FB_OK && window.FB.saveWeight) window.FB.saveWeight(entry); else queueFBWrite('weight','save',entry);
   if (S.webhook) autoSyncWeight(entry);
 
@@ -11522,7 +11717,7 @@ function handleSaveWeight() {
     S.profile = { weight: wVal };
   }
   localStorage.setItem('gd_profile', JSON.stringify(S.profile));
-  if (window.FB_OK) window.FB.saveSetting('profile', S.profile);
+  fbSaveSettingOrQueue('profile', S.profile);
   syncProfileWeightFromLatestCheckin();
 
   document.getElementById('wt-input').value = '';
@@ -11547,15 +11742,13 @@ function handleDeleteWeight(id) {
   // Removing a data point changes the trend / Adaptive TDEE — drop the same-day cache.
   // The Daily Coach's PROGRESS TREND now reads the weight log too, so its cache
   // (gd_daily_summary) and the weekly summary must be invalidated here as well.
-  localStorage.removeItem('gd_wt_analysis'); localStorage.removeItem('gd_wt_analysis_data');
-  localStorage.removeItem('gd_daily_summary'); localStorage.removeItem('gd_weekly_summary');
+  clearGoalDependentCaches();
   if (window.FB_OK && window.FB.delWeight) window.FB.delWeight(id); else queueFBWrite('weight','del',id);
   _renderWeightTab();
   showUndoToast('ลบรายการแล้ว', function(){
     WT.log = backup;
     localStorage.setItem('gd_weight', JSON.stringify(WT.log));
-    localStorage.removeItem('gd_wt_analysis'); localStorage.removeItem('gd_wt_analysis_data');
-    localStorage.removeItem('gd_daily_summary'); localStorage.removeItem('gd_weekly_summary');
+    clearGoalDependentCaches();
     if (window.FB_OK && window.FB.saveWeight && deleted) window.FB.saveWeight(deleted); else if(deleted) queueFBWrite('weight','save',deleted);
     _renderWeightTab(); showToast('คืนค่าแล้ว','info');
   });
@@ -11781,8 +11974,7 @@ function deleteBodyCompLogEntry(id){
   renderBodyCompSummary();
   if (typeof renderBodyCompOutlierBanner === 'function') renderBodyCompOutlierBanner();
   if (typeof renderTargetTrendChart === 'function') renderTargetTrendChart();
-  localStorage.removeItem('gd_wt_analysis'); localStorage.removeItem('gd_daily_summary');
-  localStorage.removeItem('gd_weekly_summary');
+  clearGoalDependentCaches();
   showUndoToast('ลบ Body Composition log แล้ว', function(){
     setBodyCompLogs(backup);
     if (window.FB_OK && window.FB.saveBodyComp && deleted) window.FB.saveBodyComp(deleted); else if(deleted) queueFBWrite('bodycomp','save',deleted);
@@ -11874,8 +12066,7 @@ function saveBodyCompLogFromCheckin(entry, showEmptyToast){
   if (S.webhook) { fetch('https://kindee.ojo0308.workers.dev/',{method:'POST',headers:{'Content-Type':'application/json','x-target-url':S.webhook},body:JSON.stringify({action:'addBodyComp',data:row})}).catch(function(){}); }
   renderBodyCompSummary();
   if (typeof renderBodyCompOutlierBanner === 'function') renderBodyCompOutlierBanner();
-  localStorage.removeItem('gd_wt_analysis'); localStorage.removeItem('gd_daily_summary');
-  localStorage.removeItem('gd_weekly_summary');
+  clearGoalDependentCaches();
 
   // Sync body composition to Fitness Target ONLY when measured by InBody.
   // Eufy/manual = daily trend only; keep last InBody values in Fitness Target untouched.
@@ -11890,7 +12081,7 @@ function saveBodyCompLogFromCheckin(entry, showEmptyToast){
   if (changed) {
     window._fitnessTarget = ft;
     localStorage.setItem('gd_ft_target', JSON.stringify(ft));
-    if (window.FB_OK) window.FB.saveSetting('fitnessTarget', ft);
+    fbSaveSettingOrQueue('fitnessTarget', ft);
   }
 
   return true;
@@ -11945,8 +12136,7 @@ function updateBodyCompLogSource(id, newSource){
   row.confidence = BODY_SOURCE_CONF[newSource] || BODY_SOURCE_CONF.manual;
   setBodyCompLogs(logs);
   if (window.FB_OK) window.FB.saveBodyComp(row); else queueFBWrite('bodycomp','save',row);
-  localStorage.removeItem('gd_wt_analysis'); localStorage.removeItem('gd_daily_summary');
-  localStorage.removeItem('gd_weekly_summary');
+  clearGoalDependentCaches();
   if (typeof loadFitnessTarget === 'function') loadFitnessTarget(); // re-pull latest InBody now that tags changed
   if (typeof renderTargetDashboard === 'function') renderTargetDashboard();
   if (typeof renderTargetTrendChart === 'function') renderTargetTrendChart();
@@ -12201,7 +12391,8 @@ function saveProgressPhotoLog(){
       var evicted=logs.slice(0, logs.length-20);
       logs=logs.slice(logs.length-20);
       evicted.forEach(function(ev){
-        if(ev.imageUrl && window.FB.deleteProgressPhotoBlob) window.FB.deleteProgressPhotoBlob(ev.id);
+        // window.FB is null offline / signed out — that used to throw here and abort the save.
+        if(ev.imageUrl && window.FB && window.FB.deleteProgressPhotoBlob) window.FB.deleteProgressPhotoBlob(ev.id);
         if(window.FB && window.FB.delPhotoMeta) window.FB.delPhotoMeta(ev.id).catch(function(){});
       });
     }
@@ -12223,8 +12414,7 @@ function saveProgressPhotoLog(){
     var f=document.getElementById('vp-file'); if(f) f.value='';
     var p=document.getElementById('vp-preview'); if(p){p.src='';p.style.display='none';}
     var ar=document.getElementById('vp-ai-result'); if(ar){ar.style.display='none';ar.innerHTML='';}
-    renderProgressPhotoSummary(); localStorage.removeItem('gd_wt_analysis'); localStorage.removeItem('gd_daily_summary');
-    localStorage.removeItem('gd_weekly_summary');
+    renderProgressPhotoSummary(); clearGoalDependentCaches();
     showToast('บันทึกรูป Progress แล้ว ✅','success');
   }
 
@@ -14256,7 +14446,7 @@ var HRV_BASELINE_MIN_NIGHTS = 5;
 function computeAutoHRVBaseline(forDate) {
   if (!forDate) return null;
   var log = []; try { log = JSON.parse(localStorage.getItem('gd_sleep_log') || '[]'); } catch(e) {}
-  var cutoff = new Date(forDate); cutoff.setDate(cutoff.getDate() - HRV_BASELINE_WINDOW_DAYS);
+  var cutoff = new Date(forDate + 'T12:00:00'); cutoff.setDate(cutoff.getDate() - HRV_BASELINE_WINDOW_DAYS);
   var cutoffStr = localDateStr(cutoff);
   var vals = log.filter(function(s){ return s.date < forDate && s.date >= cutoffStr && s.hrv > 0; })
                 .map(function(s){ return parseFloat(s.hrv); });
@@ -14270,7 +14460,7 @@ function computeAutoHRVBaseline(forDate) {
 function computeAutoRHRBaseline(forDate) {
   if (!forDate) return null;
   var log = []; try { log = JSON.parse(localStorage.getItem('gd_sleep_log') || '[]'); } catch(e) { return null; }
-  var cutoff = new Date(forDate); cutoff.setDate(cutoff.getDate() - HRV_BASELINE_WINDOW_DAYS);
+  var cutoff = new Date(forDate + 'T12:00:00'); cutoff.setDate(cutoff.getDate() - HRV_BASELINE_WINDOW_DAYS);
   var cutoffStr = localDateStr(cutoff);
   var vals = log.filter(function(s){ return s.date < forDate && s.date >= cutoffStr && s.rhr > 0; })
                 .map(function(s){ return parseFloat(s.rhr); });
@@ -14333,7 +14523,7 @@ var SLEEP_DEBT_REST_THRESHOLD_H = 6; // accumulated debt this large overrides a 
 // actual sleep as the target makes "repaying debt" achievable again.
 function computeSleepNeedHours(forDate) {
   var log = []; try { log = JSON.parse(localStorage.getItem('gd_sleep_log') || '[]'); } catch(e) {}
-  var cutoff = new Date(forDate); cutoff.setDate(cutoff.getDate() - SLEEP_NEED_LOOKBACK_DAYS);
+  var cutoff = new Date(forDate + 'T12:00:00'); cutoff.setDate(cutoff.getDate() - SLEEP_NEED_LOOKBACK_DAYS);
   var cutoffStr = localDateStr(cutoff);
   var hours = log.filter(function(s){ return s.date <= forDate && s.date > cutoffStr && s.hours > 0; })
                   .map(function(s){ return s.hours; }).sort(function(a,b){ return a-b; });
@@ -14353,7 +14543,7 @@ function computeSleepOpportunity(forDate) {
   var eff = 0.90, measured = false;
   try {
     var log = JSON.parse(localStorage.getItem('gd_sleep_log') || '[]');
-    var cutoff = new Date(forDate); cutoff.setDate(cutoff.getDate() - SLEEP_NEED_LOOKBACK_DAYS);
+    var cutoff = new Date(forDate + 'T12:00:00'); cutoff.setDate(cutoff.getDate() - SLEEP_NEED_LOOKBACK_DAYS);
     var cutoffStr = localDateStr(cutoff);
     var effs = log.filter(function(s){ return s.date <= forDate && s.date > cutoffStr && s.hours > 0 && s.timeInBed > 0 && s.hours <= s.timeInBed; })
                   .map(function(s){ return s.hours / s.timeInBed; });
@@ -14376,7 +14566,7 @@ function computeSleepDebt(forDate) {
   if (!forDate) return null;
   var log = []; try { log = JSON.parse(localStorage.getItem('gd_sleep_log') || '[]'); } catch(e) {}
   var needHours = computeSleepNeedHours(forDate);
-  var cutoff = new Date(forDate); cutoff.setDate(cutoff.getDate() - SLEEP_DEBT_WINDOW_DAYS);
+  var cutoff = new Date(forDate + 'T12:00:00'); cutoff.setDate(cutoff.getDate() - SLEEP_DEBT_WINDOW_DAYS);
   var cutoffStr = localDateStr(cutoff);
   var nights = log.filter(function(s){ return s.date <= forDate && s.date > cutoffStr && s.hours > 0; })
                    .sort(function(a,b){ return a.date.localeCompare(b.date); });
@@ -14515,7 +14705,11 @@ function syncSleepLog(data){
   var cstr=localDateStr(cutoff);
   log=log.filter(function(s){return s.date>=cstr;});
   localStorage.setItem('gd_sleep_log',JSON.stringify(log));
-  if (window.FB_OK && window.FB && window.FB.saveSleepLogEntry) window.FB.saveSleepLogEntry(rec).catch(function(){});
+  markSyncDirty('gd_sleep_log', rec.date);
+  if (window.FB_OK && window.FB && window.FB.saveSleepLogEntry) {
+    var slStamp = Date.now();
+    window.FB.saveSleepLogEntry(rec).then(function(){ clearSyncDirty('gd_sleep_log', [rec.date], slStamp); }).catch(function(){});
+  }
   if (typeof renderSleepTrendChart === 'function') renderSleepTrendChart();
 }
 
@@ -14538,7 +14732,7 @@ function renderSleepTrendChart() {
   if (emptyEl) emptyEl.style.display = 'none';
   if (wrapEl) wrapEl.style.display = 'block';
   if (_sleepTrendChart) { _sleepTrendChart.destroy(); _sleepTrendChart = null; }
-  var labels = log.map(function(e){ var d = new Date(e.date); return (d.getMonth()+1)+'/'+d.getDate(); });
+  var labels = log.map(function(e){ var d = new Date(e.date + 'T12:00:00'); return (d.getMonth()+1)+'/'+d.getDate(); });
   var hoursData = log.map(function(e){ return (e.hours != null) ? e.hours : null; });
   var scoreData = log.map(function(e){ return (e.sleepScore != null) ? e.sleepScore : null; });
   var hourColors = hoursData.map(function(h){
@@ -14826,6 +15020,7 @@ function submitOnboarding() {
   if (existingIdx !== -1) WT.log.splice(existingIdx, 1, entry); else WT.log.push(entry);
   WT.log.sort(function(a,b){ return (a.date+a.time).localeCompare(b.date+b.time); });
   localStorage.setItem('gd_weight', JSON.stringify(WT.log));
+  clearGoalDependentCaches();
   if (window.FB_OK && window.FB.saveWeight) window.FB.saveWeight(entry); else queueFBWrite('weight','save',entry);
 
   // 2) Build the profile (mirror calcGoal's schema, keep training defaults)
@@ -14835,7 +15030,7 @@ function submitOnboarding() {
     trainingFocus: 'hybrid', recoveryPriority: 'normal', weeklyFrequency: '4'
   };
   localStorage.setItem('gd_profile', JSON.stringify(S.profile));
-  if (window.FB_OK) window.FB.saveSetting('profile', S.profile);
+  fbSaveSettingOrQueue('profile', S.profile);
   syncProfileWeightFromLatestCheckin();
 
   // 3) Compute the initial goal from the chosen mode + formula TDEE
@@ -15313,6 +15508,10 @@ function _appendChatMealConfirmCard(args) {
 function confirmChatMealLog(cardId) {
   var meal = _chatPendingMeals[cardId];
   if (!meal) return;
+  // Cards built in the same response share a Date.now() id — stamp it at confirm time and
+  // keep it unique, or two meals would overwrite each other's Firestore doc.
+  meal.id = Date.now();
+  while (S.meals.some(function(m){ return m.id === meal.id; })) meal.id++;
   S.meals.push(meal);
   localStorage.setItem('gd_meals', JSON.stringify(S.meals));
   if (window.FB_OK) window.FB.saveMeal(meal); else queueFBWrite('meal', 'save', meal);
@@ -15417,16 +15616,20 @@ function sendChatMessage(){
       parts = (cand && cand.content && cand.content.parts) || [];
     } catch(e){ parts = []; }
 
-    var fnCall = null;
-    for (var i = 0; i < parts.length; i++) { if (parts[i].functionCall) { fnCall = parts[i].functionCall; break; } }
+    // "ข้าวมันไก่กับชาเย็น" comes back as TWO parallel log_meal calls (plus, sometimes, a text
+    // part). Only the first call used to be shown — the second meal was silently dropped.
+    var mealCalls = parts.filter(function(p){ return p.functionCall && p.functionCall.name === 'log_meal' && p.functionCall.args; })
+                         .map(function(p){ return p.functionCall.args; });
+    var replyText = parts.filter(function(p){ return p.text; }).map(function(p){ return p.text; }).join('\n').trim();
 
-    if (fnCall && fnCall.name === 'log_meal' && fnCall.args) {
-      // Never auto-save from a model guess — render a confirm card, the
+    if (mealCalls.length) {
+      // Never auto-save from a model guess — render a confirm card per meal, the
       // actual save only happens when the user taps it.
-      _appendChatMealConfirmCard(fnCall.args);
-      _chatHistory.push({ role:'model', text: '(เสนอบันทึกมื้ออาหาร: ' + (fnCall.args.foodName || '') + ')' });
+      if (replyText) _appendChatMsg('ai', replyText);
+      mealCalls.forEach(function(args){ _appendChatMealConfirmCard(args); });
+      _chatHistory.push({ role:'model', text: (replyText ? replyText + '\n' : '') + '(เสนอบันทึกมื้ออาหาร: ' + mealCalls.map(function(a){ return a.foodName || ''; }).join(', ') + ')' });
     } else {
-      var txt = (parts[0] && parts[0].text) ? parts[0].text : '';
+      var txt = replyText;
       if (!txt) txt = 'ขอโทษครับ ไม่สามารถสร้างคำตอบได้ ลองถามใหม่อีกครั้ง';
       _appendChatMsg('ai', txt);
       _chatHistory.push({ role:'model', text: txt });
