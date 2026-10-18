@@ -1350,7 +1350,7 @@ test('the rest-day carb cut is sized on CREDITED burn, like every other burn rea
 });
 
 test("a range chart reads TODAY's goal from the same source as the dashboard ring", () => {
-  const ctx = load(['goalCalForDay'], {
+  const ctx = load(['effectiveGoalForDay', 'goalCalForDay'], {
     prelude: `
       function localDateStr(){ return '2026-09-08'; }
       // The ring shows the EA-bumped target; the past-date resolver deliberately never replays it.
@@ -1448,4 +1448,71 @@ test('sleep look-back windows do not shift a day outside UTC+4 and beyond', () =
   } finally {
     if (prevTZ === undefined) delete process.env.TZ; else process.env.TZ = prevTZ;
   }
+});
+
+// ── Whole-app review fixes ───────────────────────────────────────────────────
+
+test('weekly weight trend regresses on the date, not the entry index', () => {
+  const ctx = load(['_linReg', 'weeklyWeightSlope']);
+  // Two weigh-ins six days apart, −0.6 kg: −0.7 kg/wk. The index regression read −4.2.
+  assert.strictEqual(ctx.weeklyWeightSlope([{ date: '2026-10-05', weight: 80 }, { date: '2026-10-11', weight: 79.4 }]), -0.7);
+  assert.strictEqual(ctx.weeklyWeightSlope([{ date: '2026-10-05', weight: 80 }, { date: '2026-10-05', weight: 79.8 }]), null,
+    'weigh-ins on one date carry no slope');
+  assert.strictEqual(ctx.weeklyWeightSlope([{ date: '2026-10-05', weight: 80 }]), null);
+});
+
+test('the weekly report covers the last COMPLETE week, never a Sunday still in progress', () => {
+  const ctx = load(['localDateStr', 'weeklyReportWeekEnd']);
+  assert.strictEqual(ctx.weeklyReportWeekEnd('2026-10-18'), '2026-10-11', 'on Sunday: the previous week');
+  assert.strictEqual(ctx.weeklyReportWeekEnd('2026-10-19'), '2026-10-18', 'on Monday: the week that just ended');
+  assert.strictEqual(ctx.weeklyReportWeekEnd('2026-10-14'), '2026-10-11');
+});
+
+test('per-date sync: remote wins unless this device edited the date', () => {
+  const ctx = load(['mergeByDateDirty']);
+  const merged = ctx.mergeByDateDirty({ '2026-10-17': 8000 }, { '2026-10-17': 5000, '2026-10-16': 3000 }, {});
+  assert.strictEqual(merged['2026-10-17'], 8000, 'a stale local value no longer overwrites a newer remote one');
+  assert.strictEqual(merged['2026-10-16'], 3000, 'dates Firestore lacks are kept');
+  const dirty = ctx.mergeByDateDirty({ '2026-10-17': 8000 }, { '2026-10-17': 9000 }, { '2026-10-17': 1 });
+  assert.strictEqual(dirty['2026-10-17'], 9000, 'a date edited here since the last upload wins');
+  assert.strictEqual(ctx.mergeByDateDirty(null, { a: 1 }, {}).a, 1, 'no remote copy → keep local');
+});
+
+const queueSandbox = (queue) => load(['safeJSON', 'applyPendingFBQueue', 'hasPendingFBSetting'], {
+  prelude: `var STORE = { gd_pending_fb: ${JSON.stringify(JSON.stringify(queue))} };
+    var localStorage = { getItem: function(k){ return STORE[k] == null ? null : STORE[k]; } };`,
+});
+
+test('offline-queued saves and deletes are replayed onto the remote copy', () => {
+  const ctx = queueSandbox([
+    { type: 'meal', op: 'save', data: { id: 3, foodName: 'offline' }, ts: 1 },
+    { type: 'meal', op: 'del', data: 1, ts: 2 },
+    { type: 'setting', op: 'save', data: { id: 'setting:goals', key: 'goals', v: {} }, ts: 3 },
+  ]);
+  const out = ctx.applyPendingFBQueue('meal', [{ id: 1 }, { id: 2 }]);
+  assert.deepStrictEqual(out.map((m) => m.id).sort(), [2, 3], 'logged offline → shown; deleted offline → not resurrected');
+  assert.strictEqual(ctx.hasPendingFBSetting('goals'), true);
+  assert.strictEqual(ctx.hasPendingFBSetting('profile'), false);
+});
+
+test('the allowlist check does not lock an allowed user out when offline', async () => {
+  const ctx = load(['checkUserAllowed'], {
+    prelude: `var STORE = {};
+      var localStorage = { getItem: function(k){ return STORE[k] == null ? null : STORE[k]; },
+        setItem: function(k, v){ STORE[k] = String(v); }, removeItem: function(k){ delete STORE[k]; } };
+      var NEXT = null;
+      var db = { collection: function(){ return { doc: function(){ return { get: function(){ return NEXT(); } }; } }; } };`,
+  });
+  const user = { uid: 'u1', email: 'a@b.c' };
+  const offline = () => Promise.reject(Object.assign(new Error('client is offline'), { code: 'unavailable' }));
+  const denied = () => Promise.reject(Object.assign(new Error('denied'), { code: 'permission-denied' }));
+
+  ctx.NEXT = offline;
+  assert.strictEqual(await ctx.checkUserAllowed(user, ctx.db), false, 'never confirmed on this device → not allowed');
+  ctx.NEXT = () => Promise.resolve({ exists: true });
+  assert.strictEqual(await ctx.checkUserAllowed(user, ctx.db), true);
+  ctx.NEXT = offline;
+  assert.strictEqual(await ctx.checkUserAllowed(user, ctx.db), true, 'confirmed before → offline launch still works');
+  ctx.NEXT = denied;
+  assert.strictEqual(await ctx.checkUserAllowed(user, ctx.db), false, 'a rules denial is still a denial');
 });

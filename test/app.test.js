@@ -798,3 +798,156 @@ test('answering the photo clarify question keeps the description typed with the 
   assert.match(text, /จานใหญ่/, 'the clarify answer is sent');
   await page.close();
 });
+
+// ── Whole-app review fixes ───────────────────────────────────────────────────
+
+// A stand-in for window.FB: every load* resolves from the given tables, every write is
+// recorded and resolves (or rejects, for ids listed in failIds).
+const fakeFBSource = `
+  window.__fbWrites = [];
+  window.makeFakeFB = function(lists, settings, failIds) {
+    failIds = failIds || [];
+    return new Proxy({}, { get: function(_, k) {
+      return function() {
+        var a = Array.prototype.slice.call(arguments);
+        if (String(k).indexOf('load') === 0) {
+          if (k === 'loadSetting') return Promise.resolve(a[0] in settings ? settings[a[0]] : (a[1] === undefined ? null : a[1]));
+          return Promise.resolve(lists[k] || []);
+        }
+        window.__fbWrites.push([k].concat(a));
+        var id = a[0] && a[0].id != null ? a[0].id : a[0];
+        return failIds.indexOf(id) >= 0 ? Promise.reject(new Error('offline')) : Promise.resolve();
+      };
+    } });
+  };`;
+
+test('the offline queue keeps a write that failed, and drops only those that succeeded', async () => {
+  const page = await openApp(browser, buildSeed());
+  const r = await page.evaluate(async (src) => {
+    eval(src);
+    window.FB_OK = false; window.FB = null;
+    queueFBWrite('meal', 'save', { id: 101, foodName: 'a' });
+    queueFBWrite('meal', 'save', { id: 102, foodName: 'b' });
+    window.FB = makeFakeFB({}, {}, [102]); window.FB_OK = true;
+    await drainFBQueue();
+    return JSON.parse(localStorage.getItem('gd_pending_fb') || '[]').map((i) => i.data.id);
+  }, fakeFBSource);
+  assert.deepStrictEqual(r, [102], 'the failed write stays queued for the next drain');
+  await page.close();
+});
+
+test('loading from Firebase keeps offline-logged entries, queued settings and the diet break', async () => {
+  const page = await openApp(browser, buildSeed());
+  const r = await page.evaluate(async (src) => {
+    eval(src);
+    window.FB_OK = false; window.FB = null;
+    // Logged before Firebase was ready.
+    const meal = { id: 777, date: localDateStr(), foodName: 'ออฟไลน์', calories: 400, protein: 30, carbs: 40, fat: 13.3 };
+    S.meals.push(meal); queueFBWrite('meal', 'save', meal);
+    S.favorites.unshift({ id: 888, foodName: 'โปรดออฟไลน์', calories: 100, protein: 10, carbs: 10, fat: 2.2 });
+    queueFBWrite('favorite', 'save', S.favorites[0]);
+    S.goals = { cal: 2222, pro: 150, crb: 230, fat: 70 };
+    fbSaveSettingOrQueue('goals', S.goals);
+
+    window.FB = makeFakeFB({ loadMeals: [], loadFavorites: [] },
+      { goals: { cal: 1500, pro: 100, crb: 150, fat: 50 },
+        dietBreak: { active: true, startDate: localDateStr(), days: 14, updatedAt: Date.now() } });
+    window.FB_OK = true;
+    loadRemoteData();
+    for (let i = 0; i < 40 && !S.meals.some((m) => m.id === 777 && S.goals.cal); i++) await new Promise((res) => setTimeout(res, 50));
+    await new Promise((res) => setTimeout(res, 300));
+    return {
+      meal: S.meals.some((m) => m.id === 777),
+      fav: S.favorites.some((f) => f.id === 888),
+      goal: S.goals.cal,
+      dietBreak: !!getActiveDietBreak(),
+    };
+  }, fakeFBSource);
+  assert.ok(r.meal, 'a meal logged offline is not wiped by the remote copy');
+  assert.ok(r.fav, 'a favorite saved offline survives');
+  assert.strictEqual(r.goal, 2222, 'a goal edit still queued is not overwritten by the older cloud value');
+  assert.ok(r.dietBreak, 'the diet break is read back from Firestore');
+  await page.close();
+});
+
+test('chat: two meals in one AI reply give two confirm cards with distinct ids', async () => {
+  const page = await openApp(browser, buildSeed());
+  const r = await page.evaluate(async () => {
+    window.aiAvailable = () => true;
+    window.geminiCall = () => Promise.resolve({ candidates: [{ content: { parts: [
+      { text: 'บันทึกให้นะครับ' },
+      { functionCall: { name: 'log_meal', args: { foodName: 'ข้าวมันไก่', calories: 600, protein: 25, carbs: 75, fat: 22 } } },
+      { functionCall: { name: 'log_meal', args: { foodName: 'ชาเย็น', calories: 200, protein: 3, carbs: 35, fat: 5.5 } } },
+    ] } }] });
+    openChat();
+    document.getElementById('chatInput').value = 'กินข้าวมันไก่กับชาเย็น';
+    sendChatMessage();
+    await new Promise((res) => setTimeout(res, 300));
+    const cards = document.querySelectorAll('[id^="chat-meal-card-"]');
+    const before = S.meals.length;
+    cards.forEach((c) => c.querySelector('.chat-meal-btn').click());
+    const added = S.meals.slice(before);
+    return { cards: cards.length, ids: added.map((m) => m.id) };
+  });
+  assert.strictEqual(r.cards, 2, 'both meals get a card');
+  assert.strictEqual(new Set(r.ids).size, 2, 'each confirmed meal has its own id');
+  await noErrors(page, 'chat multi-meal');
+  await page.close();
+});
+
+test('a weight note is rendered as text, not HTML', async () => {
+  const seed = buildSeed();
+  seed.gd_weight = seed.gd_weight.concat([{ id: 999, date: seed.gd_weight[0].date, time: '07:00', weight: 77,
+    note: '<img src=x onerror="window.__xss=1">' }]);
+  const page = await openApp(browser, seed);
+  const r = await page.evaluate(async () => {
+    showPage('weight');
+    await new Promise((res) => setTimeout(res, 300));
+    return { img: !!document.querySelector('#wt-log-list img'), xss: !!window.__xss };
+  });
+  assert.strictEqual(r.img, false);
+  assert.strictEqual(r.xss, false);
+  await page.close();
+});
+
+test('the 21st progress photo saves offline instead of throwing on a null window.FB', async () => {
+  const seed = buildSeed();
+  seed.gd_progress_photos = Array.from({ length: 20 }, (_, i) => ({ id: i + 1, date: '2026-01-01', angle: 'front', imageUrl: 'https://x/' + i }));
+  const page = await openApp(browser, seed);
+  const r = await page.evaluate(() => {
+    window.FB_OK = false; window.FB = null;
+    _vpImgB64 = '/9j/AAAA';
+    saveProgressPhotoLog();
+    const logs = getProgressPhotos();
+    return { n: logs.length, lastIsNew: !!logs[logs.length - 1].imageB64 };
+  });
+  assert.strictEqual(r.n, 20);
+  assert.ok(r.lastIsNew, 'the new photo is stored');
+  await noErrors(page, 'offline progress photo');
+  await page.close();
+});
+
+test('confirming a recovery adjustment clears every goal-dependent cache', async () => {
+  const page = await openApp(browser, buildSeed());
+  const r = await page.evaluate(() => {
+    const today = localDateStr();
+    localStorage.setItem('gd_recovery_adj', JSON.stringify({ date: today, rec: 'Push', delta: 152, carbDelta: 38, proDelta: 0, reason: 'x' }));
+    ['gd_daily_summary', 'gd_weekly_summary', 'gd_wt_analysis', 'gd_wt_analysis_data', 'gd_wt_ai_result']
+      .forEach((k) => localStorage.setItem(k, JSON.stringify({ date: today })));
+    applyRecoveryAdj();
+    return ['gd_daily_summary', 'gd_weekly_summary', 'gd_wt_analysis', 'gd_wt_analysis_data', 'gd_wt_ai_result']
+      .filter((k) => localStorage.getItem(k) !== null);
+  });
+  assert.deepStrictEqual(r, [], 'no stale analysis survives the goal change');
+  await page.close();
+});
+
+test('a corrupt gd_sleep value does not stop the app from starting', async () => {
+  const seed = buildSeed();
+  seed.gd_sleep = '{not json';
+  const page = await openApp(browser, seed);
+  const r = await page.evaluate(() => typeof S !== 'undefined' && S.sleepData === null && typeof updateDash === 'function');
+  assert.ok(r);
+  await noErrors(page, 'corrupt gd_sleep');
+  await page.close();
+});
