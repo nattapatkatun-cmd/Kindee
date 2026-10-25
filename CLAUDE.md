@@ -8,13 +8,16 @@ style preferences; each one is here because ignoring it has already shipped a bu
 `index.html` is the entire app: ~12,000 lines, one file, no build step, no modules, no
 framework. Everything shares one global scope at runtime across a few `<script>` blocks.
 `worker/worker.js` is a Cloudflare Worker that proxies Gemini and holds the API keys.
+`android/` is a Capacitor shell that loads the same page from GitHub Pages so it can read
+Health Connect (see `SETUP_ANDROID.md`). Native-only code sits behind `isNativeApp()`; in a
+normal browser it must stay inert.
 
 State lives in `localStorage` under `gd_*` keys, mirrored to Firebase when signed in.
 
 ## Before you push
 
 ```bash
-npm test        # lint + 28 tests, ~3 min
+npm test        # lint + unit + browser tests, ~3 min
 npm run lint    # ~1 s — run this constantly while editing
 ```
 

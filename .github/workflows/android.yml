@@ -1,0 +1,123 @@
+name: android
+
+# Builds the Android wrapper (Capacitor) that gives Kindee access to Health Connect.
+# The web app itself is NOT bundled: capacitor.config.json points the WebView at GitHub
+# Pages, so index.html changes reach the app without a rebuild. Only changes to the native
+# shell (this folder, plugins, permissions) need a new APK.
+#
+# Secrets (Settings → Secrets and variables → Actions) — see SETUP_ANDROID.md:
+#   ANDROID_KEYSTORE_BASE64    base64 of the release keystore (alias "kindee")
+#   ANDROID_KEYSTORE_PASSWORD  its password
+# Without both, or without android/app/google-services.json, the build still runs as a
+# compile check but no APK is uploaded: an unsigned APK cannot be installed, and one built
+# against the placeholder Firebase config crashes on Google sign-in.
+
+on:
+  # Any branch: the native shell can only be verified by actually building it.
+  push:
+    paths:
+      - 'android/**'
+      - 'www/**'
+      - 'capacitor.config.json'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/android.yml'
+  pull_request:
+    paths:
+      - 'android/**'
+      - 'www/**'
+      - 'capacitor.config.json'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/android.yml'
+  workflow_dispatch:
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Capacitor 8 and @capgo/capacitor-health compile with Java 21.
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+
+      # Copies www/ and capacitor.config.json into the native project. Both are gitignored
+      # inside android/ (they are generated), so a fresh checkout cannot build without this.
+      - name: Capacitor sync
+        run: npx cap sync android
+
+      - name: Firebase config
+        id: firebase
+        run: |
+          if [ -s android/app/google-services.json ]; then
+            echo "real=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::android/app/google-services.json is missing — building with a placeholder as a compile check only. See SETUP_ANDROID.md step 2."
+            echo "real=false" >> "$GITHUB_OUTPUT"
+            cat > android/app/google-services.json <<'JSON'
+          {
+            "project_info": { "project_number": "000000000000", "project_id": "placeholder", "storage_bucket": "placeholder.appspot.com" },
+            "client": [{
+              "client_info": {
+                "mobilesdk_app_id": "1:000000000000:android:0000000000000000",
+                "android_client_info": { "package_name": "com.nattapat.kindee" }
+              },
+              "oauth_client": [{ "client_id": "000000000000-placeholder.apps.googleusercontent.com", "client_type": 3 }],
+              "api_key": [{ "current_key": "placeholder" }],
+              "services": { "appinvite_service": { "other_platform_oauth_client": [] } }
+            }],
+            "configuration_version": "1"
+          }
+          JSON
+          fi
+
+      - name: Signing key
+        id: signing
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        run: |
+          if [ -n "$KEYSTORE_BASE64" ] && [ -n "$KEYSTORE_PASSWORD" ]; then
+            echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/kindee-release.jks"
+            {
+              echo "KINDEE_KEYSTORE_PATH=$RUNNER_TEMP/kindee-release.jks"
+              echo "KINDEE_KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD"
+              echo "KINDEE_KEY_ALIAS=kindee"
+              echo "KINDEE_KEY_PASSWORD=$KEYSTORE_PASSWORD"
+            } >> "$GITHUB_ENV"
+            echo "signed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::ANDROID_KEYSTORE_BASE64 / ANDROID_KEYSTORE_PASSWORD secrets are not set — the APK will be unsigned. See SETUP_ANDROID.md step 1."
+            echo "signed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build release APK
+        working-directory: android
+        env:
+          KINDEE_VERSION_CODE: ${{ github.run_number }}
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleRelease --no-daemon --stacktrace
+
+      - name: Upload APK
+        if: steps.signing.outputs.signed == 'true' && steps.firebase.outputs.real == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: kindee-android-${{ github.run_number }}
+          path: android/app/build/outputs/apk/release/app-release.apk
+          if-no-files-found: error
+          retention-days: 30

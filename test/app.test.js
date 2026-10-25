@@ -951,3 +951,143 @@ test('a corrupt gd_sleep value does not stop the app from starting', async () =>
   await noErrors(page, 'corrupt gd_sleep');
   await page.close();
 });
+
+// ── Health Connect (Android app) ─────────────────────────────────────────────
+// The Android build is this same page with Capacitor's bridge injected. This stands in for
+// that bridge (window.Capacitor + nativePromise) and plays back what Health Connect returns,
+// so the whole import runs against the real merge, scoring and storage code.
+function fakeCapacitorBridge(hc) {
+  window.__nativeCalls = [];
+  const at = (date, hhmm) => new Date(date + 'T' + hhmm + ':00').toISOString();
+  const prev = (date) => { const d = new Date(date + 'T12:00:00'); d.setDate(d.getDate() - 1);
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); };
+  const ring = 'com.sec.android.app.shealth';
+  const night = (date) => ({
+    sourceId: ring, sourceName: 'Samsung Galaxy Ring', startDate: at(prev(date), '23:10'), endDate: at(date, '06:50'),
+    stages: [
+      { startDate: at(prev(date), '23:10'), endDate: at(prev(date), '23:30'), stage: 'awake' },
+      { startDate: at(prev(date), '23:30'), endDate: at(date, '01:00'), stage: 'light' },
+      { startDate: at(date, '01:00'), endDate: at(date, '02:10'), stage: 'deep' },
+      { startDate: at(date, '02:10'), endDate: at(date, '05:00'), stage: 'light' },
+      { startDate: at(date, '05:00'), endDate: at(date, '06:30'), stage: 'rem' },
+      { startDate: at(date, '06:30'), endDate: at(date, '06:50'), stage: 'awake' },
+    ],
+  });
+  const samples = {
+    sleep: [night(hc.fresh), night(hc.typed)],
+    heartRateVariability: [hc.fresh, hc.typed].flatMap((d) => [
+      { sourceId: ring, startDate: at(d, '02:00'), value: 48 }, { sourceId: ring, startDate: at(d, '04:00'), value: 52 }]),
+    restingHeartRate: [{ sourceId: ring, startDate: at(hc.fresh, '15:00'), value: 54 }],
+    respiratoryRate: [{ sourceId: ring, startDate: at(hc.fresh, '03:00'), value: 14.2 }],
+  };
+  const stepBuckets = [
+    { startDate: at(hc.fresh, '09:00'), value: 9000 }, { startDate: at(hc.fresh, '17:00'), value: 6500 },
+    { startDate: at(hc.typed, '10:00'), value: 2000 },
+  ];
+  const all = ['sleep', 'heartRateVariability', 'restingHeartRate', 'respiratoryRate', 'steps'];
+  const reply = {
+    isAvailable: () => ({ available: true, platform: 'android' }),
+    requestAuthorization: () => ({ readAuthorized: all, readDenied: [], writeAuthorized: [], writeDenied: [], historyAccessAuthorized: false }),
+    checkAuthorization: () => ({ readAuthorized: all, readDenied: [] }),
+    readSamples: (o) => ({ samples: samples[o.dataType] || [] }),
+    queryAggregated: () => ({ samples: stepBuckets }),
+    signInWithGoogle: () => ({ user: null, credential: { providerId: 'google.com', idToken: 'fake-id-token' } }),
+  };
+  window.Capacitor = {
+    isNativePlatform: () => true,
+    getPlatform: () => 'android',
+    PluginHeaders: [{ name: 'Health', methods: [] }, { name: 'FirebaseAuthentication', methods: [] }],
+    nativePromise: (plugin, method, options) => {
+      window.__nativeCalls.push({ plugin, method, options });
+      const fn = reply[method];
+      return fn ? Promise.resolve(fn(options)) : Promise.reject(new Error('unmocked ' + plugin + '.' + method));
+    },
+  };
+}
+
+test('Health Connect: imported nights are scored like typed ones, and typed values survive', async () => {
+  const seed = buildSeed();
+  const fresh = dateBack(3), typed = dateBack(2);
+  // `fresh` has nothing logged yet; `typed` was entered by hand and must keep its numbers.
+  seed.gd_sleep_log = seed.gd_sleep_log.filter((s) => s.date !== fresh);
+  const t = seed.gd_sleep_log.find((s) => s.date === typed);
+  Object.assign(t, { hours: 6.4, rhr: 58, bedtime: '00:20', wakeTime: '06:45' });
+  delete t.hrv; delete t.hrvBaseline;
+  seed.gd_steps[fresh] = 4000;
+  seed.gd_steps[typed] = 12000;
+
+  const page = await openApp(browser, seed, { init: fakeCapacitorBridge, initArg: { fresh, typed } });
+  const r = await page.evaluate(async ({ fresh, typed }) => {
+    showPage('settings');
+    await hcConnect();
+    const log = JSON.parse(localStorage.getItem('gd_sleep_log'));
+    const steps = JSON.parse(localStorage.getItem('gd_steps'));
+    return {
+      fresh: log.find((s) => s.date === fresh),
+      typed: log.find((s) => s.date === typed),
+      steps: { fresh: steps[fresh], typed: steps[typed] },
+      dirty: JSON.parse(localStorage.getItem('gd_dirty_gd_sleep_log') || '{}'),
+      state: JSON.parse(localStorage.getItem('gd_hc_state')),
+      requested: window.__nativeCalls.find((c) => c.method === 'requestAuthorization').options,
+      cardText: document.getElementById('hc-status').textContent,
+    };
+  }, { fresh, typed });
+
+  // 23:30–06:30 minus nothing = 7 h asleep (20 + 20 min awake excluded); 7 h 40 in bed.
+  assert.strictEqual(r.fresh.hours, 7);
+  assert.strictEqual(r.fresh.timeInBed, 7.67);
+  assert.strictEqual(r.fresh.deepSleep, 70);
+  assert.strictEqual(r.fresh.remSleep, 90);
+  assert.strictEqual(r.fresh.bedtime, '23:10');
+  assert.strictEqual(r.fresh.wakeTime, '06:50');
+  assert.strictEqual(r.fresh.hrv, 50, 'mean of the overnight HRV samples');
+  assert.strictEqual(r.fresh.rhr, 54, 'a once-a-day RHR is taken from the wake morning');
+  assert.strictEqual(r.fresh.respRate, 14.2);
+  assert.strictEqual(r.fresh.source, 'health_connect');
+  assert.ok(r.fresh.sleepScore > 0, 'scored deterministically at import, like saveSleep');
+  assert.ok(r.fresh.consistency != null, 'consistency recomputed from the surrounding nights');
+  assert.ok(r.fresh.hrvBaseline > 0, 'HRV baseline filled from the rolling log, as the form does');
+  assert.ok(r.dirty[fresh] && r.dirty[typed], 'touched nights are marked for Firestore');
+
+  assert.strictEqual(r.typed.hours, 6.4, 'a hand-entered value is never overwritten');
+  assert.strictEqual(r.typed.rhr, 58);
+  assert.strictEqual(r.typed.bedtime, '00:20');
+  assert.strictEqual(r.typed.hrv, 50, 'only its empty fields are filled');
+  assert.strictEqual(r.typed.source, undefined);
+
+  assert.strictEqual(r.steps.fresh, 15500, 'the higher Health Connect total replaces a lower one');
+  assert.strictEqual(r.steps.typed, 12000, 'a higher typed count is kept');
+
+  assert.deepStrictEqual(r.requested.read.slice().sort(),
+    ['heartRateVariability', 'respiratoryRate', 'restingHeartRate', 'sleep', 'steps'], 'read-only, and nothing else');
+  assert.strictEqual(r.requested.write, undefined, 'never asks to write');
+  assert.strictEqual(r.state.connected, true);
+  assert.match(r.cardText, /เชื่อมต่อแล้ว/);
+  await noErrors(page, 'Health Connect import');
+  await page.close();
+});
+
+test('in the Android app, Google sign-in goes through the native picker, not a WebView popup', async () => {
+  const page = await openApp(browser, buildSeed(), { init: fakeCapacitorBridge, initArg: { fresh: dateBack(3), typed: dateBack(2) } });
+  const calls = await page.evaluate(async () => {
+    loginWithGoogle();
+    await new Promise((r) => setTimeout(r, 300));
+    return window.__nativeCalls.filter((c) => c.plugin === 'FirebaseAuthentication');
+  });
+  assert.strictEqual(calls.length, 1);
+  assert.strictEqual(calls[0].method, 'signInWithGoogle');
+  assert.strictEqual(calls[0].options.skipNativeAuth, true, 'the Firebase JS SDK keeps owning the session');
+  await page.close();
+});
+
+test('in a normal browser the Health Connect card explains it needs the Android app', async () => {
+  const page = await openApp(browser, buildSeed());
+  const r = await page.evaluate(() => {
+    showPage('settings');
+    return { text: document.getElementById('hc-status').textContent, actions: document.getElementById('hc-actions').style.display };
+  });
+  assert.match(r.text, /เฉพาะในแอป Kindee บน Android/);
+  assert.strictEqual(r.actions, 'none');
+  await noErrors(page, 'Health Connect card on the web');
+  await page.close();
+});

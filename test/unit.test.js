@@ -1516,3 +1516,138 @@ test('the allowlist check does not lock an allowed user out when offline', async
   ctx.NEXT = denied;
   assert.strictEqual(await ctx.checkUserAllowed(user, ctx.db), false, 'a rules denial is still a denial');
 });
+
+// ── Health Connect import (Android app) ──────────────────────────────────────
+// Sessions are built from LOCAL wall-clock times, the way a wearable reports a night, so
+// the assertions read like the night they describe. CI pins TZ=Asia/Bangkok.
+const HC_FUNCS = ['localDateStr', 'hcCalendarDateStr', 'hcHHMM', 'hcSourceKey', 'hcIsNightSession',
+  'hcSessionMinutes', 'hcNightCluster', 'hcBuildSleepNights', 'hcNightVital', 'hcMergeSleepNight', 'hcStepsByDay', 'hcMergeSteps'];
+const HC_CONSTS = ['HC_NIGHT_EVENING_HOUR', 'HC_NIGHT_MORNING_HOUR', 'HC_NIGHT_MAX_HOURS', 'HC_NIGHT_MAX_GAP_MIN', 'HC_SLEEP_FIELDS'];
+const at = (d, hh, mm = 0) => new Date(2026, 9, d, hh, mm).toISOString(); // October 2026, local time
+const stage = (d0, h0, m0, d1, h1, m1, s) => ({ startDate: at(d0, h0, m0), endDate: at(d1, h1, m1), stage: s });
+
+test('a staged Health Connect night becomes one entry dated by its wake morning', () => {
+  const ctx = load(HC_FUNCS, { consts: HC_CONSTS });
+  const night = {
+    sourceId: 'com.sec.android.app.shealth', startDate: at(20, 23), endDate: at(21, 7),
+    stages: [
+      stage(20, 23, 0, 21, 0, 30, 'light'),  // 90
+      stage(21, 0, 30, 21, 2, 0, 'deep'),    // 90
+      stage(21, 2, 0, 21, 2, 30, 'awake'),   // 30 — in bed, not asleep
+      stage(21, 2, 30, 21, 3, 30, 'rem'),    // 60
+      stage(21, 3, 30, 21, 7, 0, 'light'),   // 210
+    ],
+  };
+  const [n] = ctx.hcBuildSleepNights([night]);
+  assert.strictEqual(n.date, '2026-10-21', 'a record dated D holds the night that ended on the morning of D');
+  assert.strictEqual(n.hours, 7.5, 'asleep = light + deep + REM, the awake stage excluded');
+  assert.strictEqual(n.timeInBed, 8);
+  assert.strictEqual(n.deepSleep, 90);
+  assert.strictEqual(n.remSleep, 60);
+  assert.strictEqual(n.bedtime, '23:00');
+  assert.strictEqual(n.wakeTime, '07:00');
+});
+
+test('a wake-up before 04:00 is still filed under that calendar morning, not the day before', () => {
+  // localDateStr()'s 04:00 boundary is for "which app day is it now"; the sleep record's
+  // date is the wake morning, which for a 03:30 wake-up is still the 21st.
+  const ctx = load(HC_FUNCS, { consts: HC_CONSTS });
+  const [n] = ctx.hcBuildSleepNights([{ sourceId: 'x', startDate: at(20, 21, 30), endDate: at(21, 3, 30) }]);
+  assert.strictEqual(n.date, '2026-10-21');
+  assert.strictEqual(n.hours, 6);
+  assert.strictEqual(n.timeInBed, null, 'no stage data → time in bed is unknown, not equal to sleep');
+});
+
+test('two devices recording the same night are not added together', () => {
+  const ctx = load(HC_FUNCS, { consts: HC_CONSTS });
+  const ring = { sourceId: 'com.sec.android.app.shealth', startDate: at(20, 23), endDate: at(21, 6, 30),
+    stages: [stage(20, 23, 0, 21, 6, 30, 'light')] };
+  const watch = { sourceId: 'fi.polar.polarflow', startDate: at(20, 22, 45), endDate: at(21, 7) };
+  const auto = ctx.hcBuildSleepNights([watch, ring]);
+  assert.strictEqual(auto.length, 1);
+  assert.strictEqual(auto[0].hours, 7.5, 'one source (the staged ring), never 7.5 + 8.25');
+  assert.strictEqual(auto[0].source, 'com.sec.android.app.shealth');
+
+  const chosen = ctx.hcBuildSleepNights([watch, ring], 'fi.polar.polarflow');
+  assert.strictEqual(chosen[0].hours, 8.25, "the user's chosen source wins when it recorded the night");
+});
+
+test('one source splitting a night in two is combined; naps are not nights', () => {
+  const ctx = load(HC_FUNCS, { consts: HC_CONSTS });
+  const nights = ctx.hcBuildSleepNights([
+    { sourceId: 'a', startDate: at(20, 23), endDate: at(21, 2) },
+    { sourceId: 'a', startDate: at(21, 2, 30), endDate: at(21, 7) },
+    { sourceId: 'a', startDate: at(21, 10), endDate: at(21, 11, 30) },  // late-morning nap, 3 h after waking
+    { sourceId: 'a', startDate: at(21, 13), endDate: at(21, 14, 30) },  // afternoon nap
+    { sourceId: 'a', startDate: at(21, 21), endDate: at(21, 23) },      // evening nap, ends the same day
+  ]);
+  assert.strictEqual(nights.length, 1);
+  assert.strictEqual(nights[0].hours, 7.5);
+  assert.strictEqual(nights[0].bedtime, '23:00');
+  assert.strictEqual(nights[0].wakeTime, '07:00');
+});
+
+test('overnight vitals use the sleep window, the night\'s own source, and the app\'s ranges', () => {
+  const ctx = load(HC_FUNCS, { consts: HC_CONSTS });
+  const night = { date: '2026-10-21', bedMs: Date.parse(at(20, 23)), wakeMs: Date.parse(at(21, 7)), source: 'ring' };
+  const hrv = [
+    { sourceId: 'ring', startDate: at(21, 2), value: 40 },
+    { sourceId: 'ring', startDate: at(21, 4), value: 50 },
+    { sourceId: 'watch', startDate: at(21, 3), value: 90 },  // another device: not averaged in
+    { sourceId: 'ring', startDate: at(21, 18), value: 20 },  // daytime: outside the window
+  ];
+  assert.strictEqual(ctx.hcNightVital(hrv, night, { min: 10, max: 200 }), 45);
+  // The 39-read-as-390 class of error must not reach the score (same bound as saveSleep).
+  assert.strictEqual(ctx.hcNightVital([{ sourceId: 'ring', startDate: at(21, 3), value: 390 }], night, { min: 10, max: 200 }), null);
+  // A once-a-day RHR written mid-afternoon still belongs to that morning's entry.
+  const rhr = [{ sourceId: 'ring', startDate: at(21, 15), value: 52 }];
+  assert.strictEqual(ctx.hcNightVital(rhr, night, { min: 30, max: 120 }), null);
+  assert.strictEqual(ctx.hcNightVital(rhr, night, { min: 30, max: 120, sameDayFallback: true }), 52);
+  assert.strictEqual(ctx.hcNightVital([{ sourceId: 'ring', startDate: at(21, 3), value: 14.26 }], night, { decimals: 1 }), 14.3);
+});
+
+test('an imported night never overwrites what the user typed', () => {
+  const ctx = load(HC_FUNCS, { consts: HC_CONSTS });
+  const night = { date: '2026-10-21', hours: 7.5, timeInBed: 8, deepSleep: 90, remSleep: 60, hrv: 45, rhr: 52,
+    respRate: 14, bedtime: '23:00', wakeTime: '07:00', source: 'ring' };
+
+  const manual = { date: '2026-10-21', hours: 6.5, rhr: 58, bedtime: '00:10', wakeTime: '06:40', polarStrain: 60 };
+  const m = ctx.hcMergeSleepNight(manual, night);
+  assert.strictEqual(m.hours, 6.5);
+  assert.strictEqual(m.rhr, 58);
+  assert.strictEqual(m.bedtime, '00:10');
+  assert.strictEqual(m.polarStrain, 60);
+  assert.strictEqual(m.hrv, 45, 'empty fields are filled');
+  assert.strictEqual(m.source, undefined, 'still a manual entry');
+  assert.strictEqual(m.deepSleep, 90);
+
+  const imported = { date: '2026-10-21', source: 'health_connect', hcSource: 'ring', hours: 6, hrv: 40, hrvBaseline: 50 };
+  const r = ctx.hcMergeSleepNight(imported, night);
+  assert.strictEqual(r.hours, 7.5, 'an earlier import is refreshed');
+  assert.strictEqual(r.hrv, 45);
+  assert.strictEqual(r.hrvBaseline, 50, 'fields the import does not own are kept');
+  assert.strictEqual(r.displayStr, '7h 30min');
+
+  // Filling gaps can pair numbers from two devices; impossible pairs are dropped, not scored.
+  const short = ctx.hcMergeSleepNight({ date: '2026-10-21', hours: 8.5 }, night);
+  assert.strictEqual(short.timeInBed, null, 'time in bed below time asleep');
+  const tiny = ctx.hcMergeSleepNight({ date: '2026-10-21', hours: 2 }, night);
+  assert.strictEqual(tiny.deepSleep, null, 'deep + REM above total sleep');
+  assert.strictEqual(tiny.remSleep, null);
+});
+
+test('Health Connect steps follow the 04:00 day boundary and never lower a higher count', () => {
+  const ctx = load(HC_FUNCS, { consts: HC_CONSTS });
+  const days = ctx.hcStepsByDay([
+    { startDate: at(21, 9), value: 4000 },
+    { startDate: at(21, 18), value: 3500.4 },
+    { startDate: at(22, 2), value: 500 },   // 02:00 on the 22nd is still the 21st's app day
+    { startDate: at(22, 5), value: 1200 },
+  ]);
+  assert.deepStrictEqual({ ...days }, { '2026-10-21': 8000, '2026-10-22': 1200 });
+
+  const merged = ctx.hcMergeSteps({ '2026-10-21': 9000, '2026-10-22': 300 }, days);
+  assert.strictEqual(merged.data['2026-10-21'], 9000, 'a higher hand-entered count stays');
+  assert.strictEqual(merged.data['2026-10-22'], 1200);
+  assert.deepStrictEqual([...merged.changed], ['2026-10-22']);
+});

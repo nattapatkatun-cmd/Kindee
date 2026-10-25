@@ -46,7 +46,9 @@ const IGNORABLE = /net::|Failed to load resource|ERR_|firebase|firestore|gstatic
  * changes a setting and then reloads must see its own change survive, and an unguarded
  * addInitScript would overwrite it on the way back in.
  */
-async function openApp(browser, seed, { settleMs = 1800 } = {}) {
+// `init`, if given, runs in the page before any app script on every navigation — e.g. a
+// stand-in for the native Capacitor bridge the Android app injects.
+async function openApp(browser, seed, { settleMs = 1800, init = null, initArg = null } = {}) {
   const page = await browser.newPage();
   const errors = [];
 
@@ -56,6 +58,7 @@ async function openApp(browser, seed, { settleMs = 1800 } = {}) {
   });
   page.on('dialog', (d) => d.dismiss().catch(() => {}));
 
+  if (init) await page.addInitScript(init, initArg);
   await page.addInitScript((data) => {
     if (localStorage.getItem('__seeded')) return;
     for (const [k, v] of Object.entries(data)) {

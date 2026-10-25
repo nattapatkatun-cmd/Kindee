@@ -10,9 +10,17 @@
     "test:app": "node --test --test-concurrency=1 test/app.test.js"
   },
   "devDependencies": {
+    "@capacitor/cli": "8.5.3",
     "eslint": "^10.8.0",
     "eslint-plugin-html": "^8.1.4",
     "globals": "^17.7.0",
     "playwright-core": "1.62.0"
+  },
+  "dependencies": {
+    "@capacitor-firebase/authentication": "8.5.2",
+    "@capacitor/android": "8.5.3",
+    "@capacitor/core": "8.5.3",
+    "@capgo/capacitor-health": "8.11.12",
+    "firebase": "12.19.0"
   }
 }

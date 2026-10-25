@@ -1977,6 +1977,18 @@ select.input-field{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
         </div>
       </div>
     </div>
+    <div class="card" id="hc-card">
+      <div class="card-title">❤️ Health Connect (Android)</div>
+      <div id="hc-status" style="font-size:12px;color:var(--text3);line-height:1.7;margin-bottom:10px;"></div>
+      <div id="hc-actions" style="display:none;">
+        <button class="btn-primary" id="hc-connect-btn" onclick="hcConnect()">เชื่อมต่อ Health Connect</button>
+        <button class="btn-secondary" id="hc-sync-btn" style="margin-top:8px;width:100%;" onclick="hcSyncNow({manual:true})">🔄 Sync ตอนนี้</button>
+        <label class="input-label" style="margin-top:12px;" for="hc-sleep-source">แหล่งข้อมูลการนอน (ถ้าใส่หลายเครื่องพร้อมกัน)</label>
+        <select class="input-field" id="hc-sleep-source" onchange="hcSetSleepSource(this.value)"></select>
+        <div style="font-size:11px;color:var(--text3);line-height:1.6;margin-top:6px;">ค่าที่คุณกรอกเอง (หรือนำเข้าจากรูป/Sheet) จะไม่ถูกเขียนทับ — Health Connect เติมเฉพาะช่องที่ว่าง · Recovery คำนวณโดย Kindee เอง ไม่ดึงคะแนนจากอุปกรณ์</div>
+        <button class="btn-secondary" style="margin-top:8px;width:100%;" onclick="hcOpenSettings()">ตั้งค่าสิทธิ์ใน Health Connect</button>
+      </div>
+    </div>
     <div class="card">
       <div class="card-title">Gemini API Keys (สำรอง)</div>
       <div style="font-size:12px;color:var(--text3);margin-bottom:10px;">ปกติฟีเจอร์ AI เรียกผ่านเซิร์ฟเวอร์ของแอปอัตโนมัติ ไม่ต้องใส่อะไรที่นี่ — ช่องนี้ใช้เป็น fallback กรณีเซิร์ฟเวอร์ AI ล่มเท่านั้น · <a href="https://aistudio.google.com/app/apikey" target="_blank" style="color:var(--accent)">ขอ key ฟรี</a></div>
@@ -2351,6 +2363,10 @@ function showAuthGateBlocked(user) {
   var emailEl = document.getElementById('authGateBlockedEmail'); if (emailEl) emailEl.textContent = (user && user.email) || '';
 }
 function loginWithGoogle() {
+  // Google refuses OAuth inside an embedded WebView (403 disallowed_useragent), so the
+  // Android app signs in with the native account picker and hands the ID token to the same
+  // Firebase JS SDK session the web uses.
+  if (isNativeApp()) { loginWithGoogleNative(); return; }
   var provider = new firebase.auth.GoogleAuthProvider();
   // Popup first (best on desktop); mobile browsers that block it fall back
   // to a full-page redirect.
@@ -2364,7 +2380,20 @@ function loginWithGoogle() {
 }
 function logoutUser() {
   if (!confirm('ออกจากระบบ? ข้อมูลบน Cloud ยังอยู่ครบ กลับมา login ใหม่ได้เสมอ')) return;
+  // Also drop the native Google session, or the next sign-in silently reuses the account.
+  if (isNativeApp()) nativeCall('FirebaseAuthentication', 'signOut').catch(function(){});
   firebase.auth().signOut().then(function(){ showToast('ออกจากระบบแล้ว', 'info'); });
+}
+function loginWithGoogleNative() {
+  nativeCall('FirebaseAuthentication', 'signInWithGoogle', { skipNativeAuth: true }).then(function(res){
+    var idToken = res && res.credential && res.credential.idToken;
+    if (!idToken) throw new Error('ไม่ได้รับ token จาก Google');
+    return firebase.auth().signInWithCredential(firebase.auth.GoogleAuthProvider.credential(idToken));
+  }).catch(function(err){
+    var msg = (err && err.message) || String(err);
+    if (/cancel/i.test(msg)) return; // user closed the account picker
+    showToast('เข้าสู่ระบบไม่สำเร็จ: ' + msg, 'error');
+  });
 }
 function renderAccountCard(user) {
   var el = document.getElementById('account-info');
@@ -3199,6 +3228,7 @@ function showPage(id) {
   if(_nb) _nb.classList.add('active');
   if(targetId==='dashboard') { updateDash(); renderWeightCalChart(); restoreRecoveryAdj(); detectAnomalies(); }
   if(targetId==='log') setLogViewMode(id==='history' ? 'all' : 'today');
+  if(targetId==='settings') renderHealthConnectCard();
   if(targetId==='fitness') { syncStepsInputToListDate(); updateFitnessUI(); initLogDate('workout-date'); initLogDate('sleep-date'); }
   if(targetId==='weight') initWeightTab();
   if(targetId==='settings') syncProfileWeightFromLatestCheckin();
@@ -11887,6 +11917,441 @@ function importSleepFromSheet() {
   }).catch(function(err){ showToast('นำเข้าไม่สำเร็จ: '+err.message,'error'); });
 }
 
+// ==================== HEALTH CONNECT (Android app only) ====================
+// The Android build (android/, capacitor.config.json) is this same page in a WebView, with
+// the Capacitor bridge injected. Watches, rings and phone apps (Samsung Health / Galaxy Ring,
+// Polar Flow, Garmin Connect) write into Health Connect; this section reads it back.
+//
+// Read-only, and limited to raw measurements Kindee already models: sleep (+ stages),
+// HRV, resting HR, respiratory rate and steps. Device "readiness / recovery / energy"
+// scores are deliberately NOT imported — Kindee computes its own Recovery from these same
+// inputs, and two recovery numbers on one screen is exactly what CLAUDE.md forbids.
+//
+// Every imported night goes through the same range checks, consistency recompute and
+// deterministic calculateSleepScoreFromData() as a hand-logged one, and is never allowed
+// to overwrite a value the user typed (manual / screenshot / sheet entries are only
+// filled in where empty).
+var HC_READ_TYPES = ['sleep', 'heartRateVariability', 'restingHeartRate', 'respiratoryRate', 'steps'];
+var HC_NIGHT_EVENING_HOUR = 18;  // a night's sleep starts after 18:00 the evening before the wake morning…
+var HC_NIGHT_MORNING_HOUR = 15;  // …and ends before 15:00 on it; anything else is a nap and is not a "night"
+var HC_NIGHT_MAX_HOURS = 16;
+var HC_NIGHT_MAX_GAP_MIN = 120;  // sessions within 2 h of the main sleep block are the same night
+var HC_LOOKBACK_DAYS = 30;          // Health Connect's own cap without the history permission
+var HC_HISTORY_LOOKBACK_DAYS = 90;  // first sync when READ_HEALTH_DATA_HISTORY was granted
+var HC_AUTO_SYNC_MIN_INTERVAL_MS = 15 * 60 * 1000;
+var HC_SOURCE_LABELS = {
+  'com.sec.android.app.shealth': 'Samsung Health',
+  'fi.polar.polarflow': 'Polar Flow',
+  'com.garmin.android.apps.connectmobile': 'Garmin Connect',
+  'com.google.android.apps.fitness': 'Google Fit',
+  'com.fitbit.FitbitMobile': 'Fitbit',
+  'com.huawei.health': 'Huawei Health',
+  'com.ouraring.oura': 'Oura'
+};
+
+// Calendar date of a Date in local time. A sleep record dated D holds the night that ENDED
+// on the morning of D, so the wake time's calendar date is the record's date — not
+// localDateStr(), whose 04:00 boundary would file a 03:30 wake-up under the previous day.
+function hcCalendarDateStr(d) {
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+function hcHHMM(d) {
+  return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+}
+function hcSourceKey(s) {
+  return (s && (s.sourceId || s.sourceName)) || 'unknown';
+}
+function hcIsNightSession(start, end) {
+  if (!(start instanceof Date) || !(end instanceof Date) || isNaN(start) || isNaN(end)) return false;
+  if (end <= start || (end - start) > HC_NIGHT_MAX_HOURS * 3600000) return false;
+  if (end.getHours() >= HC_NIGHT_MORNING_HOUR) return false;
+  var eveningBefore = new Date(end.getFullYear(), end.getMonth(), end.getDate() - 1, HC_NIGHT_EVENING_HOUR, 0, 0, 0);
+  return start >= eveningBefore;
+}
+// Minutes asleep / deep / REM / in bed for one Health Connect sleep session. Only stage data
+// says how much of the session was actually asleep; without it the session length is all we
+// know, so it counts as sleep and time-in-bed stays unknown (claiming TIB = sleep would
+// invent a 100% efficiency).
+function hcSessionMinutes(s) {
+  var start = new Date(s.startDate), end = new Date(s.endDate);
+  var inBed = (end - start) / 60000;
+  var stages = (s.stages && s.stages.length) ? s.stages : null;
+  if (!stages) return { asleep: inBed, deep: 0, rem: 0, inBed: inBed, staged: false };
+  var asleep = 0, deep = 0, rem = 0;
+  stages.forEach(function(st){
+    var m = (new Date(st.endDate) - new Date(st.startDate)) / 60000;
+    if (!(m > 0)) return;
+    if (st.stage === 'deep') { deep += m; asleep += m; }
+    else if (st.stage === 'rem') { rem += m; asleep += m; }
+    else if (st.stage === 'light' || st.stage === 'asleep') asleep += m;
+  });
+  return { asleep: asleep, deep: deep, rem: rem, inBed: inBed, staged: true };
+}
+// Health Connect sleep sessions → one Kindee night per wake date.
+// Several apps can write the same night (a ring AND a watch); summing them would double the
+// sleep, so one source is used per night: the user's chosen one if it recorded that night,
+// otherwise the one with stage data, then the longest. A night split into several sessions
+// by one source (woke up at 3am) is combined; a morning nap hours after waking is not.
+function hcNightCluster(list) {
+  var items = list.map(function(s){ return { s: s, st: new Date(s.startDate).getTime(), en: new Date(s.endDate).getTime() }; })
+    .sort(function(a, b){ return a.st - b.st; });
+  var main = items.reduce(function(best, it){ return (!best || (it.en - it.st) > (best.en - best.st)) ? it : best; }, null);
+  var lo = main.st, hi = main.en, gap = HC_NIGHT_MAX_GAP_MIN * 60000, grew = true, inCluster = [main];
+  while (grew) {
+    grew = false;
+    items.forEach(function(it){
+      if (inCluster.indexOf(it) !== -1) return;
+      if (it.en >= lo - gap && it.st <= hi + gap) { inCluster.push(it); lo = Math.min(lo, it.st); hi = Math.max(hi, it.en); grew = true; }
+    });
+  }
+  return inCluster.map(function(it){ return it.s; });
+}
+function hcBuildSleepNights(sessions, preferredSource) {
+  var byDate = {};
+  (sessions || []).forEach(function(s){
+    var start = new Date(s.startDate), end = new Date(s.endDate);
+    if (!hcIsNightSession(start, end)) return;
+    var date = hcCalendarDateStr(end), src = hcSourceKey(s);
+    byDate[date] = byDate[date] || {};
+    (byDate[date][src] = byDate[date][src] || []).push(s);
+  });
+  var nights = [];
+  Object.keys(byDate).sort().forEach(function(date){
+    var bySrc = byDate[date];
+    var totals = {};
+    Object.keys(bySrc).forEach(function(src){
+      var t = { asleep: 0, deep: 0, rem: 0, inBed: 0, staged: false, bed: null, wake: null };
+      hcNightCluster(bySrc[src]).forEach(function(s){
+        var m = hcSessionMinutes(s);
+        t.asleep += m.asleep; t.deep += m.deep; t.rem += m.rem; t.inBed += m.inBed;
+        t.staged = t.staged || m.staged;
+        var st = new Date(s.startDate), en = new Date(s.endDate);
+        if (!t.bed || st < t.bed) t.bed = st;
+        if (!t.wake || en > t.wake) t.wake = en;
+      });
+      totals[src] = t;
+    });
+    var chosen = (preferredSource && totals[preferredSource]) ? preferredSource : Object.keys(totals).sort(function(a, b){
+      var ta = totals[a], tb = totals[b];
+      if (ta.staged !== tb.staged) return ta.staged ? -1 : 1;
+      return tb.asleep - ta.asleep;
+    })[0];
+    var t = totals[chosen];
+    var hours = Math.round(t.asleep / 60 * 100) / 100;
+    if (!(hours >= 1 && hours <= 14)) return;
+    var hasStages = t.staged && (t.deep > 0 || t.rem > 0);
+    nights.push({
+      date: date,
+      hours: hours,
+      timeInBed: t.staged ? Math.round(t.inBed / 60 * 100) / 100 : null,
+      deepSleep: hasStages ? Math.round(t.deep) : null,
+      remSleep: hasStages ? Math.round(t.rem) : null,
+      bedtime: hcHHMM(t.bed),
+      wakeTime: hcHHMM(t.wake),
+      bedMs: t.bed.getTime(),
+      wakeMs: t.wake.getTime(),
+      source: chosen
+    });
+  });
+  return nights;
+}
+// One overnight reading (HRV / RHR / respiratory rate) for a night: the mean of the samples
+// recorded between bedtime and an hour after waking, preferring the night's own source so a
+// ring's HRV is not averaged with a watch's. RHR is often written once per day rather than
+// during sleep, so it may fall back to a sample dated the wake morning.
+function hcNightVital(samples, night, opts) {
+  opts = opts || {};
+  var lo = night.bedMs, hi = night.wakeMs + 3600000;
+  var inWindow = (samples || []).filter(function(s){
+    var t = new Date(s.startDate).getTime();
+    return t >= lo && t <= hi && isFinite(s.value);
+  });
+  if (!inWindow.length && opts.sameDayFallback) {
+    inWindow = (samples || []).filter(function(s){
+      return isFinite(s.value) && hcCalendarDateStr(new Date(s.startDate)) === night.date;
+    });
+  }
+  if (!inWindow.length) return null;
+  var own = inWindow.filter(function(s){ return hcSourceKey(s) === night.source; });
+  var use = own.length ? own : inWindow;
+  var avg = use.reduce(function(a, s){ return a + Number(s.value); }, 0) / use.length;
+  var f = Math.pow(10, opts.decimals || 0);
+  var v = Math.round(avg * f) / f;
+  if (opts.min != null && v < opts.min) return null;
+  if (opts.max != null && v > opts.max) return null;
+  return v;
+}
+var HC_SLEEP_FIELDS = ['hours', 'timeInBed', 'deepSleep', 'remSleep', 'rhr', 'hrv', 'respRate', 'bedtime', 'wakeTime'];
+// Merge an imported night into the existing log entry for that date (or null). A night that
+// came from Health Connect is refreshed; anything else was entered by the user and only
+// gets its empty fields filled. Score fields are recomputed by the caller.
+function hcMergeSleepNight(existing, night) {
+  var fromHC = !existing || existing.source === 'health_connect';
+  var e = existing ? JSON.parse(JSON.stringify(existing)) : { date: night.date, source: 'health_connect' };
+  HC_SLEEP_FIELDS.forEach(function(k){
+    var v = night[k];
+    if (v == null || v === '') return;
+    if (fromHC || e[k] == null || e[k] === '') e[k] = v;
+  });
+  if (fromHC) e.hcSource = night.source;
+  // Filling only empty fields can pair numbers from two devices; drop pairs that cannot
+  // both be true rather than feed them to the score (same rules as saveSleep).
+  if (e.timeInBed != null && e.hours != null && e.timeInBed < e.hours) e.timeInBed = null;
+  var asleepMin = Math.round((e.hours || 0) * 60);
+  if ((e.deepSleep || 0) + (e.remSleep || 0) > asleepMin) { e.deepSleep = null; e.remSleep = null; }
+  var h = Math.floor(e.hours), m = Math.round((e.hours - h) * 60);
+  if (m === 60) { h++; m = 0; }
+  e.displayStr = h + 'h' + (m > 0 ? ' ' + m + 'min' : '');
+  return e;
+}
+// Hourly step buckets → steps per Kindee day. Bucketed by the hour, not the day, so each
+// hour can be filed through localDateStr()'s 04:00 boundary like a step count typed in the
+// app; Health Connect's daily buckets split at midnight.
+function hcStepsByDay(buckets) {
+  var days = {};
+  (buckets || []).forEach(function(b){
+    var v = Number(b.value);
+    if (!(v > 0)) return;
+    var d = localDateStr(new Date(b.startDate));
+    days[d] = (days[d] || 0) + v;
+  });
+  Object.keys(days).forEach(function(d){ days[d] = Math.round(days[d]); });
+  return days;
+}
+// Health Connect's daily total wins only when it is higher: steps only ever accumulate, and
+// a higher number typed in by hand (a second phone, a treadmill) must not be wiped.
+function hcMergeSteps(stepData, hcDays) {
+  var data = Object.assign({}, stepData || {}), changed = [];
+  Object.keys(hcDays || {}).forEach(function(d){
+    if (hcDays[d] > (Number(data[d]) || 0)) { data[d] = hcDays[d]; changed.push(d); }
+  });
+  return { data: data, changed: changed.sort() };
+}
+
+// ── Native bridge glue ──
+function isNativeApp() {
+  var C = window.Capacitor;
+  return !!(C && typeof C.isNativePlatform === 'function' && C.isNativePlatform());
+}
+// The page has no bundler, so @capacitor/core's registerPlugin() is not loaded; plugin calls
+// go straight through the bridge's nativePromise(), and availability is read from the plugin
+// headers the native side injects.
+function nativePluginAvailable(name) {
+  var h = window.Capacitor && window.Capacitor.PluginHeaders;
+  return !!(h && h.some(function(p){ return p.name === name; }));
+}
+function nativeCall(plugin, method, options) {
+  if (!isNativeApp() || !nativePluginAvailable(plugin)) return Promise.reject(new Error(plugin + ' ใช้ได้เฉพาะในแอป Android'));
+  return window.Capacitor.nativePromise(plugin, method, options || {});
+}
+function hcState() { return safeJSON('gd_hc_state', {}) || {}; }
+function hcSaveState(st) { try { localStorage.setItem('gd_hc_state', JSON.stringify(st)); } catch(e){} }
+
+function hcConnect() {
+  return nativeCall('Health', 'isAvailable').then(function(av){
+    if (!av || !av.available) {
+      showToast('ยังใช้ Health Connect ไม่ได้: ' + ((av && av.reason) || 'ติดตั้ง/อัปเดต Health Connect จาก Play Store'), 'error');
+      return nativeCall('Health', 'openHealthConnectSettings').catch(function(){});
+    }
+    return nativeCall('Health', 'requestAuthorization', { read: HC_READ_TYPES, requestHistoryAccess: true }).then(function(res){
+      var granted = (res && res.readAuthorized) || [];
+      var st = hcState();
+      st.connected = granted.length > 0;
+      st.granted = granted;
+      st.history = !!(res && res.historyAccessAuthorized);
+      hcSaveState(st);
+      renderHealthConnectCard();
+      if (!granted.length) { showToast('ยังไม่ได้อนุญาตข้อมูลใดเลย — กด "ตั้งค่าสิทธิ์" เพื่อเปิดสิทธิ์', 'error'); return; }
+      return hcSyncNow({ manual: true });
+    });
+  }).catch(function(err){ showToast('เชื่อมต่อ Health Connect ไม่สำเร็จ: ' + (err && err.message || err), 'error'); });
+}
+function hcOpenSettings() {
+  nativeCall('Health', 'openHealthConnectSettings').catch(function(err){ showToast(err.message, 'error'); });
+}
+function hcSetSleepSource(v) {
+  var st = hcState(); st.sleepSource = v || null; hcSaveState(st);
+  // Re-read the window with the new choice. HC-sourced nights are refreshed; typed ones stay.
+  hcSyncNow({ manual: true, full: true });
+}
+function hcRead(type, startIso, endIso) {
+  return nativeCall('Health', 'readSamples', { dataType: type, startDate: startIso, endDate: endIso, limit: 10000, ascending: true })
+    .then(function(r){ return (r && r.samples) || []; })
+    .catch(function(){ return []; });
+}
+
+var _hcSyncing = false;
+function hcSyncNow(opts) {
+  opts = opts || {};
+  if (_hcSyncing || !isNativeApp() || !nativePluginAvailable('Health')) return Promise.resolve();
+  var st = hcState();
+  if (!st.connected) return Promise.resolve();
+  _hcSyncing = true;
+  var now = new Date();
+  var days = (st.lastSyncMs && !opts.full)
+    ? Math.min(HC_LOOKBACK_DAYS, Math.max(3, Math.ceil((now.getTime() - st.lastSyncMs) / 86400000) + 2))
+    : (st.history ? HC_HISTORY_LOOKBACK_DAYS : HC_LOOKBACK_DAYS);
+  // Start at 04:00 local so the first day's step total is not cut off mid-day; one extra
+  // evening on top for the sleep session that ended on that first morning.
+  var start = new Date(now.getFullYear(), now.getMonth(), now.getDate() - days, 4, 0, 0, 0);
+  var sleepStart = new Date(start.getTime() - 12 * 3600000);
+  var endIso = now.toISOString();
+  return nativeCall('Health', 'checkAuthorization', { read: HC_READ_TYPES }).then(function(auth){
+    var ok = {}; ((auth && auth.readAuthorized) || []).forEach(function(t){ ok[t] = true; });
+    var empty = function(){ return Promise.resolve([]); };
+    return Promise.all([
+      ok.sleep ? hcRead('sleep', sleepStart.toISOString(), endIso) : empty(),
+      ok.heartRateVariability ? hcRead('heartRateVariability', sleepStart.toISOString(), endIso) : empty(),
+      ok.restingHeartRate ? hcRead('restingHeartRate', sleepStart.toISOString(), endIso) : empty(),
+      ok.respiratoryRate ? hcRead('respiratoryRate', sleepStart.toISOString(), endIso) : empty(),
+      ok.steps ? nativeCall('Health', 'queryAggregated', { dataType: 'steps', startDate: start.toISOString(), endDate: endIso, bucket: 'hour', aggregation: 'sum' })
+        .then(function(r){ return (r && r.samples) || []; }).catch(function(){ return []; }) : empty()
+    ]).then(function(res){
+      var sources = st.sleepSources || {};
+      res[0].forEach(function(s){ var k = hcSourceKey(s); sources[k] = HC_SOURCE_LABELS[k] || s.sourceName || k; });
+      var nights = hcBuildSleepNights(res[0], st.sleepSource);
+      var sl = hcApplySleepNights(nights, { hrv: res[1], rhr: res[2], resp: res[3] });
+      var stepDays = hcApplySteps(hcStepsByDay(res[4]));
+      st = hcState();
+      st.granted = Object.keys(ok);
+      st.sleepSources = sources;
+      st.lastSyncMs = now.getTime();
+      st.lastResult = { nightsAdded: sl.added, nightsUpdated: sl.updated, stepDays: stepDays };
+      hcSaveState(st);
+      renderHealthConnectCard();
+      if (opts.manual) {
+        showToast('Health Connect: การนอน +' + sl.added + ' / อัปเดต ' + sl.updated + ' คืน · ก้าวเดิน ' + stepDays + ' วัน ✅', 'success');
+      }
+    });
+  }).catch(function(err){
+    if (opts.manual) showToast('Sync Health Connect ไม่สำเร็จ: ' + (err && err.message || err), 'error');
+  }).then(function(){ _hcSyncing = false; });
+}
+
+// Write imported nights into gd_sleep_log the way importSleepFromSheet does: store the
+// merged log first (computeConsistency and the HRV baseline read it), then re-validate and
+// re-score each touched night in date order, mark it dirty and push it to Firestore.
+function hcApplySleepNights(nights, vitals) {
+  var log = safeJSON('gd_sleep_log', []) || [];
+  var cutoff = new Date(); cutoff.setDate(cutoff.getDate() - 120);
+  var cutoffStr = localDateStr(cutoff);
+  var touched = [], added = 0, updated = 0;
+  nights.forEach(function(night){
+    if (night.date < cutoffStr) return;
+    night.hrv = hcNightVital(vitals.hrv, night, { min: 10, max: 200 });
+    night.rhr = hcNightVital(vitals.rhr, night, { min: 30, max: 120, sameDayFallback: true });
+    night.respRate = hcNightVital(vitals.resp, night, { min: 5, max: 40, decimals: 1 });
+    var idx = log.findIndex(function(s){ return s.date === night.date; });
+    var existing = idx >= 0 ? log[idx] : null;
+    var merged = hcMergeSleepNight(existing, night);
+    if (existing && JSON.stringify(existing) === JSON.stringify(merged)) return;
+    if (idx >= 0) { log[idx] = merged; updated++; } else { log.push(merged); added++; }
+    touched.push(night.date);
+  });
+  if (!touched.length) return { added: 0, updated: 0 };
+  log.sort(function(a, b){ return a.date < b.date ? -1 : 1; });
+  localStorage.setItem('gd_sleep_log', JSON.stringify(log));
+  touched.sort().forEach(function(d){
+    var e = log.find(function(s){ return s.date === d; });
+    if (e.hrv && !e.hrvBaseline && typeof computeAutoHRVBaseline === 'function') {
+      var base = computeAutoHRVBaseline(d); if (base) e.hrvBaseline = base.value;
+    }
+    if (e.bedtime && e.wakeTime) e.consistency = computeConsistency(e.bedtime, e.wakeTime, d);
+    try {
+      var calc = calculateSleepScoreFromData(e);
+      e.sleepScore = calc.sleepScore;
+      e.scoreLabel = calc.scoreLabel;
+      if (!e.recoveryScore) { e.recoveryScore = calc.score; e.recoveryEmoji = calc.emoji; }
+    } catch(err) {}
+    markSyncDirty('gd_sleep_log', d);
+  });
+  localStorage.setItem('gd_sleep_log', JSON.stringify(log));
+  if (window.FB_OK && window.FB && window.FB.saveSleepLogEntry) {
+    var stamp = Date.now();
+    log.forEach(function(e){
+      if (touched.indexOf(e.date) === -1) return;
+      window.FB.saveSleepLogEntry(e).then(function(){ clearSyncDirty('gd_sleep_log', [e.date], stamp); }).catch(function(){});
+    });
+  }
+  // Today's night also lives in S.sleepData / gd_sleep — the dashboard, getRHR and the
+  // morning-recovery flow read that without a date guard (see saveSleep).
+  var today = localDateStr();
+  if (touched.indexOf(today) !== -1) {
+    var te = log.find(function(s){ return s.date === today; });
+    var base0 = (S.sleepData && S.sleepData.date === today) ? S.sleepData : {};
+    var next = Object.assign({}, base0);
+    HC_SLEEP_FIELDS.concat(['date', 'displayStr', 'hrvBaseline', 'consistency', 'sleepScore', 'scoreLabel']).forEach(function(k){
+      if (te[k] != null) next[k] = te[k];
+    });
+    S.sleepData = next;
+    localStorage.setItem('gd_sleep', JSON.stringify(next));
+    if (window.FB_OK && window.FB && window.FB.saveSleepDoc) window.FB.saveSleepDoc(next).catch(function(){});
+    var dEl = document.getElementById('sleep-date');
+    var active = document.activeElement;
+    var editing = active && active.id && active.id.indexOf('sleep-') === 0;
+    if (dEl && dEl.value === today && !editing && typeof onSleepDateChange === 'function') onSleepDateChange(today);
+  }
+  if (typeof renderSleepTrendChart === 'function') { try { renderSleepTrendChart(); } catch(e){} }
+  return { added: added, updated: updated };
+}
+function hcApplySteps(hcDays) {
+  var r = hcMergeSteps(safeJSON('gd_steps', {}) || {}, hcDays);
+  if (!r.changed.length) return 0;
+  localStorage.setItem('gd_steps', JSON.stringify(r.data));
+  r.changed.forEach(function(d){ markSyncDirty('gd_steps', d); });
+  pushDateMapSetting('gd_steps', 'steps');
+  try { syncStepsInputToListDate(); updateFitnessUI(); updateDash(); } catch(e){}
+  return r.changed.length;
+}
+
+function renderHealthConnectCard() {
+  var statusEl = document.getElementById('hc-status');
+  var actions = document.getElementById('hc-actions');
+  if (!statusEl || !actions) return;
+  if (!isNativeApp() || !nativePluginAvailable('Health')) {
+    actions.style.display = 'none';
+    statusEl.innerHTML = 'ดึงข้อมูลการนอน, HRV, RHR, อัตราการหายใจ และก้าวเดินจาก Samsung Health / Galaxy Ring, Polar Flow, Garmin Connect ผ่าน Health Connect — <b>ใช้ได้เฉพาะในแอป Kindee บน Android</b> (เว็บเบราว์เซอร์เข้าถึง Health Connect ไม่ได้)';
+    return;
+  }
+  var st = hcState();
+  actions.style.display = 'block';
+  var connectBtn = document.getElementById('hc-connect-btn');
+  if (connectBtn) connectBtn.textContent = st.connected ? 'ขอสิทธิ์ Health Connect อีกครั้ง' : 'เชื่อมต่อ Health Connect';
+  var syncBtn = document.getElementById('hc-sync-btn');
+  if (syncBtn) syncBtn.style.display = st.connected ? '' : 'none';
+  var lines = [];
+  if (!st.connected) {
+    lines.push('ยังไม่ได้เชื่อมต่อ — ก่อนเชื่อมต่อ ให้เปิดการส่งข้อมูลเข้า Health Connect ในแอปของอุปกรณ์ก่อน (Samsung Health, Polar Flow, Garmin Connect)');
+  } else {
+    lines.push('✅ เชื่อมต่อแล้ว · อนุญาต ' + (st.granted || []).length + '/' + HC_READ_TYPES.length + ' ประเภท' + (st.history ? ' · อ่านย้อนหลังได้' : ' · ย้อนหลังได้ 30 วัน'));
+    if (st.lastSyncMs) {
+      var r = st.lastResult || {};
+      lines.push('Sync ล่าสุด ' + new Date(st.lastSyncMs).toLocaleString('th-TH', { dateStyle: 'short', timeStyle: 'short' }) +
+        ' — การนอน +' + (r.nightsAdded || 0) + '/อัปเดต ' + (r.nightsUpdated || 0) + ' คืน, ก้าว ' + (r.stepDays || 0) + ' วัน');
+    }
+  }
+  statusEl.innerHTML = lines.map(escapeHTML).join('<br>');
+  var sel = document.getElementById('hc-sleep-source');
+  if (sel) {
+    var srcs = st.sleepSources || {};
+    var html = '<option value="">อัตโนมัติ (เลือกแหล่งที่มีระยะการนอน)</option>';
+    Object.keys(srcs).forEach(function(k){
+      html += '<option value="' + escapeAttr(k) + '"' + (st.sleepSource === k ? ' selected' : '') + '>' + escapeHTML(srcs[k]) + '</option>';
+    });
+    sel.innerHTML = html;
+  }
+}
+function hcAutoSync() {
+  var st = hcState();
+  if (!st.connected) return;
+  if (st.lastSyncMs && Date.now() - st.lastSyncMs < HC_AUTO_SYNC_MIN_INTERVAL_MS) return;
+  hcSyncNow({});
+}
+if (isNativeApp()) {
+  window.addEventListener('load', function(){ setTimeout(function(){ renderHealthConnectCard(); hcAutoSync(); }, 3000); });
+  document.addEventListener('visibilitychange', function(){ if (!document.hidden) hcAutoSync(); });
+}
+
 // Bug fixes from screenshot review:
 // B1/B2: Separate trigger conditions — rule≥3days, AI requires weight≥7 AND intake≥5
 
@@ -15202,7 +15667,15 @@ try { initFitness(); }  catch(e){ console.error('initFitness failed:', e); }
 </script>
 <!-- PWA Service Worker -->
 <script>
-if ('serviceWorker' in navigator) {
+// The Android app (Capacitor) gets no service worker: the native layer injects its JS bridge
+// only into responses it serves itself, and a page answered from the SW's cache would come
+// up without it — Health Connect and native sign-in would silently disappear. Remove any
+// worker an earlier version registered there.
+if (window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform()) {
+  if (navigator.serviceWorker && navigator.serviceWorker.getRegistrations) {
+    navigator.serviceWorker.getRegistrations().then(function(regs){ regs.forEach(function(r){ r.unregister(); }); }).catch(function(){});
+  }
+} else if ('serviceWorker' in navigator) {
   // Captured BEFORE register() — sw.js calls self.skipWaiting()+clients.claim()
   // unconditionally on install, so even a brand-new visitor's very first
   // pageload gets a controllerchange event once that first SW activates.

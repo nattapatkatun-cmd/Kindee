@@ -104,6 +104,7 @@ module.exports = [
     rules: { 'no-undef': 'error' },
   },
   {
-    ignores: ['node_modules/**', 'icons/**'],
+    // android/ is the generated Capacitor shell (plus a copy of www/); nothing there is app source.
+    ignores: ['node_modules/**', 'icons/**', 'android/**'],
   },
 ];
