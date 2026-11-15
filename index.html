@@ -2452,8 +2452,28 @@ function queueFBWrite(type, op, data) {
   if (op === 'del') {
     q = q.filter(function(item){ return !(item.type===type && item.data && (item.data===data || (item.data && item.data.id===data))); });
   }
-  q.push({ type: type, op: op, data: data, ts: Date.now() });
+  var item = { type: type, op: op, data: data, ts: Date.now() };
+  q.push(item);
   localStorage.setItem('gd_pending_fb', JSON.stringify(q));
+  return item;
+}
+// Durable write: queue FIRST, send, and drop the queue entry only once Firestore confirms.
+// Firebase can be "ready" (FB_OK) while the network is not — a launch offline is allowed on
+// purpose — and an offline set()/delete() neither resolves nor rejects, and does not survive
+// a reload (no persistence). Writing directly and queueing only "when FB_OK is false" lost
+// anything saved in that state once the app was closed before the network came back.
+function fbWrite(type, op, data) {
+  var item = queueFBWrite(type, op, data);
+  if (!window.FB_OK || !window.FB) return;
+  var p = null;
+  try { p = _fbQueueOp(item); } catch(e) { console.warn('fbWrite error:', e); return; }
+  if (p && p.then) p.then(function(){ _fbDequeue(item); }, function(e){ console.warn('fbWrite failed, kept queued for retry:', e); });
+}
+function _fbDequeue(item) {
+  var key = _fbQueueKey(item);
+  var rest = safeJSON('gd_pending_fb', []).filter(function(i){ return _fbQueueKey(i) !== key; });
+  if (rest.length) localStorage.setItem('gd_pending_fb', JSON.stringify(rest));
+  else localStorage.removeItem('gd_pending_fb');
 }
 
 // Settings stored remote-wins on load (goals, profile, fitnessTarget, dietBreak) must not be
@@ -2462,20 +2482,8 @@ function queueFBWrite(type, op, data) {
 // when possible; otherwise (or if the write fails) queue it, and loadRemoteData() keeps the
 // local value while a queued write for that key is still pending.
 function fbSaveSettingOrQueue(key, value) {
-  var queueIt = function(){ queueFBWrite('setting', 'save', { id: 'setting:' + key, key: key, v: value }); };
-  if (window.FB_OK && window.FB) {
-    // A newer direct write supersedes any older queued value for this key — otherwise a
-    // later drain would replay the stale one on top of it.
-    var q = safeJSON('gd_pending_fb', []);
-    var rest = q.filter(function(item){ return !(item.type === 'setting' && item.data && item.data.key === key); });
-    if (rest.length !== q.length) localStorage.setItem('gd_pending_fb', JSON.stringify(rest));
-    try {
-      var p = window.FB.saveSetting(key, value);
-      if (p && p.catch) p.catch(queueIt);
-    } catch(e) { queueIt(); }
-  } else {
-    queueIt();
-  }
+  // queueFBWrite dedups on id, so a newer value for this key replaces any older queued one.
+  fbWrite('setting', 'save', { id: 'setting:' + key, key: key, v: value });
 }
 function hasPendingFBSetting(key) {
   return safeJSON('gd_pending_fb', []).some(function(item){
@@ -3449,6 +3457,7 @@ var NUTRITION_ESTIMATE_GUIDE =
 // Analyze photo
 function analyzePhoto(extra) {
   extra = extra || '';
+  if (!_inReanalyze) _clarifyAcc = []; _inReanalyze = false; // a fresh analysis forgets old clarifications
   var key = S.apiKeys[S.currentKeyIndex] || S.apiKeys[0] || "";
   if(!aiAvailable()){showToast('ฟีเจอร์ AI ยังไม่พร้อม — กรุณา login ก่อน','error');return;}
   if(!curImgs.length){showToast('กรุณาถ่ายหรือเลือกรูปก่อน','error');return;}
@@ -3493,6 +3502,7 @@ function analyzePhoto(extra) {
 // Analyze text
 function analyzeText(extra) {
   extra = extra || '';
+  if (!_inReanalyze) _clarifyAcc = []; _inReanalyze = false;
   menuItems.forEach(function(item){
     var ne=document.getElementById('mn_'+item.id);
     var pe=document.getElementById('mp_'+item.id);
@@ -3540,15 +3550,22 @@ function analyzeText(extra) {
   });
 }
 
+// Answers given to the AI's clarifying questions, kept across rounds: if it asks again, the
+// earlier answers must still be in the next request (only a fresh analysis clears them).
+var _clarifyAcc = [], _inReanalyze = false;
 function reanalyze() {
   var extra = document.getElementById('clarifyInput').value.trim();
   if(!extra){showToast('กรุณาใส่คำอธิบายก่อน','error');return;}
   document.getElementById('clarifyBox').style.display = 'none';
-  // Photo mode: the answer adds to the description typed with the photos, it doesn't replace it.
+  // The answer adds to the description typed with the photos (and to earlier answers); it
+  // doesn't replace them.
+  _clarifyAcc.push(extra);
+  var allExtra = _clarifyAcc.join('\n');
+  _inReanalyze = true;
   if(curMode==='photo') {
     var desc = document.getElementById('photoDesc').value.trim();
-    analyzePhoto(desc ? desc + '\n' + extra : extra);
-  } else analyzeText(extra);
+    analyzePhoto(desc ? desc + '\n' + allExtra : allExtra);
+  } else analyzeText(allExtra);
 }
 
 function normalizeMealContext(r) {
@@ -3737,7 +3754,7 @@ function saveMeal() {
   };
   S.meals.push(meal);
   localStorage.setItem('gd_meals', JSON.stringify(S.meals));
-  if(window.FB_OK) window.FB.saveMeal(meal); else queueFBWrite('meal','save',meal);
+  fbWrite('meal','save',meal);
   showToast('บันทึกมื้ออาหารสำเร็จ ✅','success');
   resetAnalyze();
   render();
@@ -3916,7 +3933,7 @@ function saveFavorite() {
   if(dup){ showToast('มีเมนูนี้ในโปรดแล้ว ⭐','info'); closeFavSaveModal(); return; }
   S.favorites.unshift(fav);
   localStorage.setItem('gd_favorites', JSON.stringify(S.favorites));
-  if(window.FB_OK) window.FB.saveFavorite(fav); else queueFBWrite('favorite','save',fav);
+  fbWrite('favorite','save',fav);
   closeFavSaveModal();
   renderFavorites();
   showToast('บันทึกเมนูโปรดสำเร็จ ⭐','success');
@@ -3987,7 +4004,7 @@ function confirmUseFavorite() {
     orig.fat = fat;
     orig.fiber = fib;
     localStorage.setItem('gd_meals', JSON.stringify(S.meals));
-    if(window.FB_OK) window.FB.saveMeal(orig); else queueFBWrite('meal','save',orig);
+    fbWrite('meal','save',orig);
     if(S.webhook) autoSync(orig);
     closeFavUseModal();
     render();
@@ -4018,7 +4035,7 @@ function confirmUseFavorite() {
   };
   S.meals.push(meal);
   localStorage.setItem('gd_meals', JSON.stringify(S.meals));
-  if(window.FB_OK) window.FB.saveMeal(meal); else queueFBWrite('meal','save',meal);
+  fbWrite('meal','save',meal);
   if(S.webhook) autoSync(meal);
   closeFavUseModal();
   render();
@@ -4029,7 +4046,7 @@ function confirmUseFavorite() {
 function deleteFavorite(id) {
   S.favorites = S.favorites.filter(function(f){ return f.id !== id; });
   localStorage.setItem('gd_favorites', JSON.stringify(S.favorites));
-  if(window.FB_OK) window.FB.delFavorite(id); else queueFBWrite('favorite','del',id);
+  fbWrite('favorite','del',id);
   renderFavorites();
   showToast('ลบเมนูโปรดแล้ว','info');
 }
@@ -6787,12 +6804,12 @@ function delMeal(id) {
   var deleted = S.meals.find(function(m){ return m.id === id; });
   S.meals = S.meals.filter(function(m){return m.id!==id;});
   localStorage.setItem('gd_meals',JSON.stringify(S.meals));
-  if(window.FB_OK) window.FB.delMeal(id); else queueFBWrite('meal','del',id);
+  fbWrite('meal','del',id);
   render();
   showUndoToast('ลบมื้ออาหารแล้ว', function(){
     S.meals = backup;
     localStorage.setItem('gd_meals',JSON.stringify(S.meals));
-    if(window.FB_OK && deleted) window.FB.saveMeal(deleted); else if(deleted) queueFBWrite('meal','save',deleted);
+    if(deleted) fbWrite('meal','save',deleted);
     render(); showToast('คืนค่าแล้ว','info');
   });
 }
@@ -8023,8 +8040,7 @@ function migrateThaiExercisesToEnglish() {
   saveCustomExercises(customs.filter(function(c){ return !moves[c.id]; }));
   // Runs at startup, usually before auth resolves — queue instead of dropping the upload.
   changed.forEach(function(e) {
-    if (window.FB_OK && window.FB) window.FB.saveStrengthEntry(e).catch(function(){});
-    else queueFBWrite('strength', 'save', e);
+    fbWrite('strength', 'save', e);
   });
   var names = ids.map(function(id){ var ex = getExById(moves[id]); return ex ? ex.name : moves[id]; });
   showToast('🔄 รวมประวัติท่าชื่อไทย '+ids.length+' ท่าเข้ากับท่าอังกฤษ: '+names.join(', '), 'info');
@@ -8789,19 +8805,9 @@ function confirmExerciseFromSheet() {
   });
   saveStrengthLog(log);
   var newRows = log.slice(log.length - validSets.length);
-  if (window.FB_OK && window.FB) {
-    replacedRows.forEach(function(e) {
-      window.FB.delStrengthEntry(e.id).catch(function(){});
-    });
-    newRows.forEach(function(entry) {
-      window.FB.saveStrengthEntry(entry).catch(function(){});
-    });
-  } else {
-    // Same offline queue as meals/weights — strength sets logged before Firebase is ready
-    // used to stay on this device only.
-    replacedRows.forEach(function(e){ queueFBWrite('strength', 'del', e.id); });
-    newRows.forEach(function(entry){ queueFBWrite('strength', 'save', entry); });
-  }
+  // Same durable queue as meals/weights: sent now, dropped from the queue once confirmed.
+  replacedRows.forEach(function(e){ fbWrite('strength', 'del', e.id); });
+  newRows.forEach(function(entry){ fbWrite('strength', 'save', entry); });
   if (S.webhook) autoSyncStrengthLog(ST.curExercise, validSets, bestE1RM, isPR, today, bestSetIdx);
   var idx = ST.sessionExercises.findIndex(function(e){ return e.exerciseId === ST.curExercise.id; });
   var entry = {exerciseId:ST.curExercise.id, sets:validSets, e1RM:bestE1RM};
@@ -9189,16 +9195,7 @@ function addWorkout() {
   // Logging a workout on a day the plan called a rest day makes it a training day, which
   // changes that day's effective goal — drop the frozen snapshot so it re-derives.
   if (typeof clearEffectiveGoalSnapshot === 'function') clearEffectiveGoalSnapshot(w.date);
-  if (window.FB_OK) {
-    try {
-      var p = window.FB.saveWorkout(w);
-      if (p && p.catch) p.catch(function(err){ console.error('saveWorkout failed:', err); });
-    } catch (err) {
-      console.error('saveWorkout threw:', err);
-    }
-  } else {
-    queueFBWrite('workout', 'save', w);
-  }
+  fbWrite('workout', 'save', w);
   if (S.webhook) autoSyncWorkout(w);
   var savedDate = w.date;
   var isBackdated = (savedDate !== localDateStr());
@@ -9241,13 +9238,13 @@ function delWorkout(id) {
   // Same reason as addWorkout: removing the day's only session can turn it back into a
   // planned rest day, so the snapshot for that date must not keep the training-day target.
   if (deleted && typeof clearEffectiveGoalSnapshot === 'function') clearEffectiveGoalSnapshot(deleted.date);
-  if (window.FB_OK) window.FB.delWorkout(id); else queueFBWrite('workout','del',id);
+  fbWrite('workout','del',id);
   updateFitnessUI();
   showUndoToast('ลบ workout แล้ว', function(){
     FT.workouts = backup;
     localStorage.setItem('gd_workouts', JSON.stringify(FT.workouts));
     if (deleted && typeof clearEffectiveGoalSnapshot === 'function') clearEffectiveGoalSnapshot(deleted.date);
-    if (window.FB_OK && deleted) window.FB.saveWorkout(deleted); else if(deleted) queueFBWrite('workout','save',deleted);
+    if(deleted) fbWrite('workout','save',deleted);
     updateFitnessUI(); showToast('คืนค่าแล้ว','info');
   });
 }
@@ -11140,8 +11137,8 @@ function renderPlanFiltered() {
           '<td style="text-align:center;padding:5px 6px;font-weight:600;color:var(--green);">'+(ex.reps||'—')+'</td>';
         var typeIcon = isCardio ? '🏃' : '🏋️';
         html += '<tr style="'+rowBg+'border-bottom:1px solid rgba(45,55,72,0.5);">'+
-          '<td style="padding:6px 6px;font-weight:500;">'+typeIcon+' '+ex.name+
-          (ex.note ? '<div style="font-size:10px;font-weight:400;color:var(--accent);margin-top:2px;">💡 '+ex.note+'</div>' : '')+'</td>'+
+          '<td style="padding:6px 6px;font-weight:500;">'+typeIcon+' '+escapeHTML(ex.name)+
+          (ex.note ? '<div style="font-size:10px;font-weight:400;color:var(--accent);margin-top:2px;">💡 '+escapeHTML(ex.note)+'</div>' : '')+'</td>'+
           setsCell+
           repsCell+
           '<td style="text-align:center;padding:5px 6px;color:var(--text3);font-size:11px;">'+ex.intensity+'</td>'+
@@ -11704,7 +11701,7 @@ function handleSaveWeight() {
   // New data point -> the cached same-day analysis (trend, Adaptive TDEE, forecast) is stale.
   // The AI Deep-Dive (gd_wt_ai_result) quotes the weight data too — clear the full set.
   clearGoalDependentCaches();
-  if (window.FB_OK && window.FB.saveWeight) window.FB.saveWeight(entry); else queueFBWrite('weight','save',entry);
+  fbWrite('weight','save',entry);
   if (S.webhook) autoSyncWeight(entry);
 
   // Optional body composition uses the same weight/date/note from this check-in.
@@ -11743,13 +11740,13 @@ function handleDeleteWeight(id) {
   // The Daily Coach's PROGRESS TREND now reads the weight log too, so its cache
   // (gd_daily_summary) and the weekly summary must be invalidated here as well.
   clearGoalDependentCaches();
-  if (window.FB_OK && window.FB.delWeight) window.FB.delWeight(id); else queueFBWrite('weight','del',id);
+  fbWrite('weight','del',id);
   _renderWeightTab();
   showUndoToast('ลบรายการแล้ว', function(){
     WT.log = backup;
     localStorage.setItem('gd_weight', JSON.stringify(WT.log));
     clearGoalDependentCaches();
-    if (window.FB_OK && window.FB.saveWeight && deleted) window.FB.saveWeight(deleted); else if(deleted) queueFBWrite('weight','save',deleted);
+    if(deleted) fbWrite('weight','save',deleted);
     _renderWeightTab(); showToast('คืนค่าแล้ว','info');
   });
 }
@@ -11880,8 +11877,16 @@ function importSleepFromSheet() {
     localStorage.setItem('gd_sleep_log', JSON.stringify(log));
     // Push every imported/merged date up to Firestore so the Sheet import
     // reaches other devices too.
+    // Mark every imported night dirty first: loadRemoteData() merges this log remote-wins and
+    // only keeps a local night that is dirty, so an import whose upload fails (or that ran
+    // before Firebase was ready) would otherwise be reverted by the older cloud copy.
+    var impStamp = Date.now();
+    log.forEach(function(entry){ if (importedDates[entry.date]) markSyncDirty('gd_sleep_log', entry.date); });
     if (window.FB_OK && window.FB && window.FB.saveSleepLogEntry) {
-      log.forEach(function(entry){ if (importedDates[entry.date]) window.FB.saveSleepLogEntry(entry).catch(function(){}); });
+      log.forEach(function(entry){
+        if (importedDates[entry.date]) window.FB.saveSleepLogEntry(entry)
+          .then(function(){ clearSyncDirty('gd_sleep_log', [entry.date], impStamp); }).catch(function(){});
+      });
     }
     showToast('นำเข้าสำเร็จ: เพิ่ม '+added+' รายการ, อัปเดต '+merged+' รายการ ✅','success');
   }).catch(function(err){ showToast('นำเข้าไม่สำเร็จ: '+err.message,'error'); });
@@ -11970,14 +11975,14 @@ function deleteBodyCompLogEntry(id){
   var deleted = logs.find(function(x){ return x.id === id; });
   logs = logs.filter(function(x){ return x.id !== id; });
   setBodyCompLogs(logs);
-  if (window.FB_OK && window.FB.delBodyComp) window.FB.delBodyComp(id); else queueFBWrite('bodycomp','del',id);
+  fbWrite('bodycomp','del',id);
   renderBodyCompSummary();
   if (typeof renderBodyCompOutlierBanner === 'function') renderBodyCompOutlierBanner();
   if (typeof renderTargetTrendChart === 'function') renderTargetTrendChart();
   clearGoalDependentCaches();
   showUndoToast('ลบ Body Composition log แล้ว', function(){
     setBodyCompLogs(backup);
-    if (window.FB_OK && window.FB.saveBodyComp && deleted) window.FB.saveBodyComp(deleted); else if(deleted) queueFBWrite('bodycomp','save',deleted);
+    if(deleted) fbWrite('bodycomp','save',deleted);
     renderBodyCompSummary();
     if (typeof renderBodyCompOutlierBanner === 'function') renderBodyCompOutlierBanner();
     if (typeof renderTargetTrendChart === 'function') renderTargetTrendChart();
@@ -12062,7 +12067,7 @@ function saveBodyCompLogFromCheckin(entry, showEmptyToast){
   logs.push(row);
   logs.sort(function(a,b){ return (a.date+String(a.id)).localeCompare(b.date+String(b.id)); });
   setBodyCompLogs(logs);
-  if (window.FB_OK) window.FB.saveBodyComp(row); else queueFBWrite('bodycomp','save',row);
+  fbWrite('bodycomp','save',row);
   if (S.webhook) { fetch('https://kindee.ojo0308.workers.dev/',{method:'POST',headers:{'Content-Type':'application/json','x-target-url':S.webhook},body:JSON.stringify({action:'addBodyComp',data:row})}).catch(function(){}); }
   renderBodyCompSummary();
   if (typeof renderBodyCompOutlierBanner === 'function') renderBodyCompOutlierBanner();
@@ -12135,7 +12140,7 @@ function updateBodyCompLogSource(id, newSource){
   row.source = newSource;
   row.confidence = BODY_SOURCE_CONF[newSource] || BODY_SOURCE_CONF.manual;
   setBodyCompLogs(logs);
-  if (window.FB_OK) window.FB.saveBodyComp(row); else queueFBWrite('bodycomp','save',row);
+  fbWrite('bodycomp','save',row);
   clearGoalDependentCaches();
   if (typeof loadFitnessTarget === 'function') loadFitnessTarget(); // re-pull latest InBody now that tags changed
   if (typeof renderTargetDashboard === 'function') renderTargetDashboard();
@@ -14664,7 +14669,14 @@ function migrateSleepScores(){
   log.forEach(function(s){
     if (!s || !s.hours) return;
     var calc = calculateSleepScoreFromData(s);
-    if (s.sleepScore !== calc.sleepScore || s.scoreLabel !== calc.scoreLabel) changed = true;
+    if (s.sleepScore !== calc.sleepScore || s.scoreLabel !== calc.scoreLabel ||
+        s.recoveryScore !== calc.score || s.recoveryEmoji !== calc.emoji) {
+      changed = true;
+      // Recomputed locally, never uploaded: without a dirty mark the remote-wins merge in
+      // loadRemoteData() puts the old engine's cloud copy straight back — and this migration
+      // is flagged done, so it would never run again.
+      markSyncDirty('gd_sleep_log', s.date);
+    }
     s.sleepScore = calc.sleepScore; s.scoreLabel = calc.scoreLabel;
     s.recoveryScore = calc.score;  s.recoveryEmoji = calc.emoji;
   });
@@ -15021,7 +15033,7 @@ function submitOnboarding() {
   WT.log.sort(function(a,b){ return (a.date+a.time).localeCompare(b.date+b.time); });
   localStorage.setItem('gd_weight', JSON.stringify(WT.log));
   clearGoalDependentCaches();
-  if (window.FB_OK && window.FB.saveWeight) window.FB.saveWeight(entry); else queueFBWrite('weight','save',entry);
+  fbWrite('weight','save',entry);
 
   // 2) Build the profile (mirror calcGoal's schema, keep training defaults)
   S.profile = {
@@ -15514,7 +15526,7 @@ function confirmChatMealLog(cardId) {
   while (S.meals.some(function(m){ return m.id === meal.id; })) meal.id++;
   S.meals.push(meal);
   localStorage.setItem('gd_meals', JSON.stringify(S.meals));
-  if (window.FB_OK) window.FB.saveMeal(meal); else queueFBWrite('meal', 'save', meal);
+  fbWrite('meal','save',meal);
   if (S.webhook) autoSync(meal);
   delete _chatPendingMeals[cardId];
   render();
