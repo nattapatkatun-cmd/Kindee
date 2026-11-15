@@ -14,7 +14,7 @@ State lives in `localStorage` under `gd_*` keys, mirrored to Firebase when signe
 ## Before you push
 
 ```bash
-npm test        # lint + 28 tests, ~3 min
+npm test        # lint + the unit and browser suites (~100 tests), ~3 min
 npm run lint    # ~1 s — run this constantly while editing
 ```
 
@@ -86,10 +86,30 @@ Net Cal is informational only.
 **Macros must reconcile.** Every stored meal satisfies `P×4 + C×4 + F×9 ≈ kcal` within 10%,
 enforced by `reconcileMealMacros()`. Any new logging path must call it.
 
-**Cached analysis.** `gd_wt_analysis`, `gd_wt_analysis_data`, `gd_daily_summary` and
-`gd_wt_ai_result` are keyed by date and must be cleared whenever the goal, the weight log,
-or the Fitness Target changes. Grep for `gd_wt_analysis` before adding a new writer of any
-of those inputs.
+**Cached analysis.** `gd_wt_analysis`, `gd_wt_analysis_data`, `gd_daily_summary`,
+`gd_weekly_summary` and `gd_wt_ai_result` are keyed by date and must be cleared whenever the
+goal, the weight log, the workout plan or the Fitness Target changes. Call
+`clearGoalDependentCaches()` — never hand-roll a `removeItem` list (several drifted out of
+step and left the AI Deep-Dive quoting old data). Only two places clear a subset on purpose:
+the `APP_LOGIC_VERSION` bump and `saveAnalyzerCalorieContext` (called *by* the weight analyzer,
+so it must not delete the analysis it just drew). A test pins the single `gd_wt_analysis` clear.
+
+**Firestore writes go through `fbWrite()`.** `FB_OK` is `true` on an *offline* launch (that is
+deliberate — see `checkUserAllowed`), and with no persistence an offline `set()` neither
+resolves nor rejects and does not survive a reload. So never write
+`if (FB_OK) FB.saveX(...) else queueFBWrite(...)`: use `fbWrite(type, op, data)` (queue first,
+drop the entry only when Firestore confirms) or `fbSaveSettingOrQueue(key, value)` for settings.
+A test fails if a direct `window.FB.save…/del…` call reappears outside the queue plumbing. A
+setting that `loadRemoteData()` loads remote-wins must also be guarded with
+`hasPendingFBSetting(key)` so a queued local edit isn't overwritten by the older cloud copy.
+`loadSetting('goals')` has no `.catch` on purpose: offline it rejects, which aborts the whole
+load and leaves `gd_meals` alone — `collection.get()` offline instead resolves *empty*, so
+catching that rejection would let an empty remote overwrite local meals.
+
+**Per-date synced collections (steps, water, sleep log, goal history).** Remote wins unless this
+device edited the date since its last upload. Anything that changes such a collection locally —
+including a recomputation like `rescoreSleepLog()` — must `markSyncDirty(kind, date)`, or the
+next load silently reverts it.
 
 **AI output is never trusted for numbers the app can compute.** The sleep score is
 recomputed and overwrites whatever the model returned. Prompts must not ask the model to

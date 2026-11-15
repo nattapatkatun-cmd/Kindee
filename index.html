@@ -2441,8 +2441,20 @@ function runLegacyMigration(db, newUid) {
 // Writes that happen while FB_OK=false are queued in localStorage and
 // replayed the next time Firebase is available.
 // ─────────────────────────────────────────────
+// Strictly increasing timestamps: the queue key is type|op|ts|id, and two writes to the same id
+// in one millisecond (loadFitnessTarget saves 'fitnessTarget' twice back to back) must not
+// share a key — confirming the first would otherwise drop the second from the queue.
+function _fbNextTs() {
+  var t = Date.now(), last = _fbNextTs.last || 0;
+  if (t <= last) t = last + 1;
+  _fbNextTs.last = t;
+  return t;
+}
 function queueFBWrite(type, op, data) {
-  var q = JSON.parse(localStorage.getItem('gd_pending_fb') || '[]');
+  // Every save now passes through here, so a corrupt queue must degrade to "empty", not throw
+  // out of the middle of saveMeal()/saveGoals() after the local write but before the toast.
+  var q = safeJSON('gd_pending_fb', []);
+  if (!Array.isArray(q)) q = [];
   // Dedup: a newer save for the same id supersedes the old one — and any pending delete
   // of it, since the queue drains in parallel and a del/save pair could land in either order.
   if (op === 'save' && data && data.id != null) {
@@ -2452,9 +2464,10 @@ function queueFBWrite(type, op, data) {
   if (op === 'del') {
     q = q.filter(function(item){ return !(item.type===type && item.data && (item.data===data || (item.data && item.data.id===data))); });
   }
-  var item = { type: type, op: op, data: data, ts: Date.now() };
+  var item = { type: type, op: op, data: data, ts: _fbNextTs() };
   q.push(item);
-  localStorage.setItem('gd_pending_fb', JSON.stringify(q));
+  try { localStorage.setItem('gd_pending_fb', JSON.stringify(q)); }
+  catch(e) { console.warn('queueFBWrite: could not persist the offline queue (storage full?):', e); }
   return item;
 }
 // Durable write: queue FIRST, send, and drop the queue entry only once Firestore confirms.
@@ -2890,8 +2903,9 @@ function loadRemoteData() {
     if (!hasPendingFBSetting('profile')) S.profile = r[2] || null;
     S.favorites = applyPendingFBQueue('favorite', r[3] || S.favorites).sort(function(a,b){ return b.id - a.id; });
     var fbBodyComps = r[4] || [];
-    if(r[5]) localStorage.setItem('gd_behaviors', JSON.stringify(r[5]));
-    if(r[6]) localStorage.setItem('gd_behavior_log', JSON.stringify(r[6]));
+    // Remote-wins, except while an edit made here is still waiting in the offline queue.
+    if(r[5] && !hasPendingFBSetting('behaviors')) localStorage.setItem('gd_behaviors', JSON.stringify(r[5]));
+    if(r[6] && !hasPendingFBSetting('behaviorLog')) localStorage.setItem('gd_behavior_log', JSON.stringify(r[6]));
     // Per-user webhook (Google Sheets sync is opt-in per account now)
     if (r[7] && !S.webhook) {
       S.webhook = r[7];
@@ -2999,6 +3013,10 @@ function loadRemoteData() {
       var mergedSl = Object.keys(bySlDate).sort().filter(function(d){ return d >= slCutoffStr; })
         .map(function(d){ return bySlDate[d]; });
       localStorage.setItem('gd_sleep_log', JSON.stringify(mergedSl));
+      // Re-score on EVERY load, not once per engine version: a night that only exists in the
+      // cloud (fresh device, or one overwritten before the dirty marks existed) still carries
+      // an older engine's score. Changed nights are marked dirty and uploaded just below.
+      if (rescoreSleepLog()) { mergedSl = safeJSON('gd_sleep_log', mergedSl); slDirty = getSyncDirty('gd_sleep_log'); }
       var slStampLoad = Date.now();
       mergedSl.forEach(function(s){
         if (!remoteSlDates[s.date] || slDirty[s.date] != null) {
@@ -3032,11 +3050,7 @@ function loadRemoteData() {
     var localPlan = safeJSON('gd_workout_plan', null);
     if (r[23] && r[23].savedAt && (!localPlan || !localPlan.savedAt || r[23].savedAt > localPlan.savedAt)) {
       localStorage.setItem('gd_workout_plan', JSON.stringify(r[23]));
-      localStorage.removeItem('gd_daily_summary');
-      localStorage.removeItem('gd_weekly_summary');
-      localStorage.removeItem('gd_wt_ai_result');
-      localStorage.removeItem('gd_wt_analysis');
-      localStorage.removeItem('gd_wt_analysis_data');
+      clearGoalDependentCaches();
       if (typeof renderTodayPlanCard === 'function') renderTodayPlanCard();
     } else if (localPlan && localPlan.savedAt && (!r[23] || !r[23].savedAt || localPlan.savedAt > r[23].savedAt)) {
       window.FB.saveSetting('workoutPlan', localPlan).catch(function(){});
@@ -7188,14 +7202,9 @@ function applyGoalValues(goal, persist) {
     S.goals = { cal:+goal.cal, pro:+goal.pro, crb:+goal.crb, fat:+goal.fat };
     localStorage.setItem('gd_goals', JSON.stringify(S.goals));
     recordGoalHistory(S.goals);
-    localStorage.removeItem('gd_daily_summary');
-    localStorage.removeItem('gd_weekly_summary');
-    localStorage.removeItem('gd_wt_ai_result');
-    // The weight-analysis card is keyed by date only, and its cached _wtAnalysisData
-    // carries userGoalCal / requiredDeficit / forecast computed against the goal that
-    // was current when it ran. Without this the AI Deep-Dive quotes the old goal.
-    localStorage.removeItem('gd_wt_analysis');
-    localStorage.removeItem('gd_wt_analysis_data');
+    // Includes the weight-analysis card (keyed by date only; its cached _wtAnalysisData carries
+    // userGoalCal / requiredDeficit / forecast from the goal that was current when it ran).
+    clearGoalDependentCaches();
     fbSaveSettingOrQueue('goals', S.goals);
     updateDash();
     if (typeof updateFitnessUI === 'function') updateFitnessUI();
@@ -7562,9 +7571,7 @@ function saveGoals() {
     localStorage.setItem('gd_profile',JSON.stringify(S.profile));
     fbSaveSettingOrQueue('profile', S.profile);
   }
-  localStorage.removeItem('gd_daily_summary'); localStorage.removeItem('gd_wt_ai_result');
-  localStorage.removeItem('gd_weekly_summary');
-  localStorage.removeItem('gd_wt_analysis'); localStorage.removeItem('gd_wt_analysis_data');
+  clearGoalDependentCaches();
   fbSaveSettingOrQueue('goals', S.goals);
   updateGoalModeHint({cal:cal,pro:pro,crb:crb,fat:fat,tdee:getOfficialCalorieContext().officialTDEE});
   showToast('บันทึกเป้าหมายแล้ว ✅','success');
@@ -10069,9 +10076,7 @@ function saveFitnessTarget() {
   // The target drives targetW / on-track / ETA / the goal-engine deficit inside the
   // weight analysis, and that card is cached per-day. Without this, changing the target
   // and refreshing kept showing the analysis built against the previous target.
-  localStorage.removeItem('gd_wt_analysis'); localStorage.removeItem('gd_wt_analysis_data');
-  localStorage.removeItem('gd_daily_summary'); localStorage.removeItem('gd_wt_ai_result');
-  localStorage.removeItem('gd_weekly_summary');
+  clearGoalDependentCaches();
   window._fitnessTarget = target; // expose for weight log module
   fbSaveSettingOrQueue('fitnessTarget', target);
   if (S.webhook) { fetch('https://kindee.ojo0308.workers.dev/',{method:'POST',headers:{'Content-Type':'application/json','x-target-url':S.webhook},body:JSON.stringify({action:'saveFitnessTarget',data:target})}).catch(function(){}); }
@@ -10099,9 +10104,7 @@ function resetTargetStartDate() {
   localStorage.setItem('gd_ft_target', JSON.stringify(t));
   // Restarting the program moves the start date and the whole baseline — same cache
   // invalidation as saveFitnessTarget, or the analysis keeps quoting the old round.
-  localStorage.removeItem('gd_wt_analysis'); localStorage.removeItem('gd_wt_analysis_data');
-  localStorage.removeItem('gd_daily_summary'); localStorage.removeItem('gd_wt_ai_result');
-  localStorage.removeItem('gd_weekly_summary');
+  clearGoalDependentCaches();
   window._fitnessTarget = t;
   fbSaveSettingOrQueue('fitnessTarget', t);
   renderTargetDashboard();
@@ -10832,11 +10835,7 @@ function loadSavedPlan() {
         updatePlanSavedLabel(remote.savedAt);
         // Newer plan can change which day is a rest day — today's effective
         // goal may shift (same cache-invalidation rule as generatePlan()).
-        localStorage.removeItem('gd_daily_summary');
-        localStorage.removeItem('gd_weekly_summary');
-        localStorage.removeItem('gd_wt_ai_result');
-        localStorage.removeItem('gd_wt_analysis');
-        localStorage.removeItem('gd_wt_analysis_data');
+        clearGoalDependentCaches();
         if (typeof renderTodayPlanCard === 'function') renderTodayPlanCard();
         if (typeof updateDash === 'function') updateDash();
       } else if (local && local.savedAt && (!remote.savedAt || local.savedAt > remote.savedAt)) {
@@ -11034,11 +11033,7 @@ function generatePlan() {
     localStorage.setItem('gd_workout_plan', JSON.stringify(savedPlan));
     if (window.FB_OK) window.FB.saveSetting('workoutPlan', savedPlan);
     // New plan can change which day is a rest day — today's effective goal may shift.
-    localStorage.removeItem('gd_daily_summary');
-    localStorage.removeItem('gd_weekly_summary');
-    localStorage.removeItem('gd_wt_ai_result');
-    localStorage.removeItem('gd_wt_analysis');
-    localStorage.removeItem('gd_wt_analysis_data');
+    clearGoalDependentCaches();
     renderPlan(plan);
     updatePlanSavedLabel(savedPlan.savedAt);
     updateDash();
@@ -11091,11 +11086,7 @@ function swapPlanDays() {
   if (window.FB_OK && window.FB) window.FB.saveSetting('workoutPlan', saved).catch(function(){});
   // The rest-day carb cut and today's effective goal depend on which day is which —
   // same cache-invalidation requirement as saveGoals()/handleSaveWeight() (see CLAUDE.md).
-  localStorage.removeItem('gd_daily_summary');
-  localStorage.removeItem('gd_weekly_summary');
-  localStorage.removeItem('gd_wt_ai_result');
-  localStorage.removeItem('gd_wt_analysis');
-  localStorage.removeItem('gd_wt_analysis_data');
+  clearGoalDependentCaches();
   renderPlan(saved.plan);
   renderTodayPlanCard();
   updatePlanSavedLabel(saved.savedAt);
@@ -13408,10 +13399,7 @@ function syncRecommendedCalToGoal(cal) {
   goal.fat = Math.max(syncFatFloor,
                       Math.min(goal.fat, Math.round((goal.cal - (goal.pro*4) - (goal.crb*4)) / 9)));
   goal.cal = Math.max(goal.cal, goal.pro*4 + goal.crb*4 + goal.fat*9);
-  applyGoalValues(goal, true);
-  localStorage.removeItem('gd_daily_summary');
-  localStorage.removeItem('gd_weekly_summary');
-  localStorage.removeItem('gd_wt_analysis'); localStorage.removeItem('gd_wt_analysis_data');
+  applyGoalValues(goal, true); // clears every goal-dependent cache itself
   showToast('✅ ตั้งเป้า '+goal.cal+' kcal และ macro ตาม '+goal.modeLabel+' แล้ว','success');
 }
 
@@ -14661,10 +14649,13 @@ function buildBehaviorSleepTip() {
 // the OLD engine while the card recomputed with the new one — two regimes on one screen.
 // Recompute every stored night once per engine version.
 var SLEEP_SCORE_ENGINE_VER = 'v2-physio-baseline-labels';
-function migrateSleepScores(){
-  if (localStorage.getItem('gd_sleep_score_ver') === SLEEP_SCORE_ENGINE_VER) return;
-  if (typeof calculateSleepScoreFromData !== 'function') return;
-  var log = []; try { log = JSON.parse(localStorage.getItem('gd_sleep_log') || '[]'); } catch(e) { return; }
+// Recompute the score fields of every stored night with the current engine. A night whose
+// stored score differs is marked dirty: the merge in loadRemoteData() is remote-wins and keeps a
+// local night only while dirty, so a locally recomputed score would otherwise be replaced by the
+// cloud copy's old-engine score. Returns true if any night changed, null if the log is unreadable.
+function rescoreSleepLog(){
+  if (typeof calculateSleepScoreFromData !== 'function') return false;
+  var log; try { log = JSON.parse(localStorage.getItem('gd_sleep_log') || '[]'); } catch(e) { return null; }
   var changed = false;
   log.forEach(function(s){
     if (!s || !s.hours) return;
@@ -14672,15 +14663,18 @@ function migrateSleepScores(){
     if (s.sleepScore !== calc.sleepScore || s.scoreLabel !== calc.scoreLabel ||
         s.recoveryScore !== calc.score || s.recoveryEmoji !== calc.emoji) {
       changed = true;
-      // Recomputed locally, never uploaded: without a dirty mark the remote-wins merge in
-      // loadRemoteData() puts the old engine's cloud copy straight back — and this migration
-      // is flagged done, so it would never run again.
       markSyncDirty('gd_sleep_log', s.date);
     }
     s.sleepScore = calc.sleepScore; s.scoreLabel = calc.scoreLabel;
     s.recoveryScore = calc.score;  s.recoveryEmoji = calc.emoji;
   });
   if (changed) { try { localStorage.setItem('gd_sleep_log', JSON.stringify(log)); } catch(e) {} }
+  return changed;
+}
+function migrateSleepScores(){
+  if (localStorage.getItem('gd_sleep_score_ver') === SLEEP_SCORE_ENGINE_VER) return;
+  if (typeof calculateSleepScoreFromData !== 'function') return;
+  if (rescoreSleepLog() === null) return;
   // S.sleepData mirrors one of those rows — keep the live copy in step too.
   if (S.sleepData && S.sleepData.hours) {
     var c = calculateSleepScoreFromData(S.sleepData);
@@ -14793,13 +14787,13 @@ function renderSleepTrendChart() {
 function _getBehaviors(){ try{ return JSON.parse(localStorage.getItem('gd_behaviors')||'[]'); }catch(e){ return []; } }
 function _saveBehaviors(b){
   localStorage.setItem('gd_behaviors',JSON.stringify(b));
-  if(window.FB_OK&&window.FB) window.FB.saveSetting('behaviors',b).catch(function(){});
+  fbSaveSettingOrQueue('behaviors', b);
   if(S.webhook){ fetch('https://kindee.ojo0308.workers.dev/',{method:'POST',headers:{'Content-Type':'application/json','x-target-url':S.webhook},body:JSON.stringify({action:'saveBehaviors',data:b})}).catch(function(){}); }
 }
 function _getBehaviorLog(){ try{ return JSON.parse(localStorage.getItem('gd_behavior_log')||'[]'); }catch(e){ return []; } }
 function _saveBehaviorLog(l){
   localStorage.setItem('gd_behavior_log',JSON.stringify(l));
-  if(window.FB_OK&&window.FB) window.FB.saveSetting('behaviorLog',l).catch(function(){});
+  fbSaveSettingOrQueue('behaviorLog', l);
 }
 
 function openBehaviorManager(){
