@@ -1519,7 +1519,7 @@ test('the allowlist check does not lock an allowed user out when offline', async
 
 // ── Durable writes: queue first, drop on confirmation ─────────────────────────
 const durableSandbox = () => load(
-  ['safeJSON', 'queueFBWrite', 'fbWrite', '_fbDequeue', '_fbQueueOp', '_fbQueueKey', 'fbSaveSettingOrQueue', 'hasPendingFBSetting'],
+  ['safeJSON', '_fbNextTs', 'queueFBWrite', 'fbWrite', '_fbDequeue', '_fbQueueOp', '_fbQueueKey', 'fbSaveSettingOrQueue', 'hasPendingFBSetting'],
   { prelude: `var STORE = {};
     var localStorage = { getItem: function(k){ return STORE[k] == null ? null : STORE[k]; },
       setItem: function(k, v){ STORE[k] = String(v); }, removeItem: function(k){ delete STORE[k]; } };
@@ -1567,7 +1567,7 @@ test('no code path writes meals/weights/etc. to Firestore without going through 
 
 // ── Sleep log: locally recomputed / imported nights must be marked dirty ──────
 test('migrateSleepScores marks every night it recomputes dirty so the cloud copy cannot revert it', () => {
-  const ctx = load(['safeJSON', 'markSyncDirty', 'migrateSleepScores'], {
+  const ctx = load(['safeJSON', 'markSyncDirty', 'rescoreSleepLog', 'migrateSleepScores'], {
     consts: ['SLEEP_SCORE_ENGINE_VER'],
     prelude: `var STORE = { gd_sleep_log: JSON.stringify([
         { date: '2026-10-01', hours: 7, sleepScore: 1, scoreLabel: 'old', recoveryScore: 1, recoveryEmoji: 'x' },
@@ -1582,4 +1582,80 @@ test('migrateSleepScores marks every night it recomputes dirty so the cloud copy
   ctx.migrateSleepScores();
   const dirty = JSON.parse(ctx.STORE.gd_dirty_gd_sleep_log || '{}');
   assert.deepStrictEqual(Object.keys(dirty), ['2026-10-01'], 'only the changed night is marked');
+});
+
+test('rescoreSleepLog runs on its own (not only once per engine version) and reports whether it changed anything', () => {
+  const mk = () => load(['safeJSON', 'markSyncDirty', 'rescoreSleepLog'], {
+    prelude: `var STORE = { gd_sleep_log: JSON.stringify([{ date: '2026-10-01', hours: 7, sleepScore: 1, scoreLabel: 'old', recoveryScore: 1, recoveryEmoji: 'x' }]) };
+      var localStorage = { getItem: function(k){ return STORE[k] == null ? null : STORE[k]; },
+        setItem: function(k, v){ STORE[k] = String(v); }, removeItem: function(k){ delete STORE[k]; } };
+      var calculateSleepScoreFromData = function(){ return { sleepScore: 80, scoreLabel: 'new', score: 3, emoji: 'y' }; };`,
+  });
+  const ctx = mk();
+  assert.strictEqual(ctx.rescoreSleepLog(), true);
+  assert.strictEqual(JSON.parse(ctx.STORE.gd_sleep_log)[0].sleepScore, 80);
+  assert.ok('2026-10-01' in JSON.parse(ctx.STORE.gd_dirty_gd_sleep_log));
+  assert.strictEqual(ctx.rescoreSleepLog(), false, 'second pass: nothing left to change, nothing re-marked');
+  ctx.STORE.gd_sleep_log = '{broken';
+  assert.strictEqual(ctx.rescoreSleepLog(), null, 'unreadable log is reported, not silently treated as done');
+});
+
+test('loadRemoteData re-scores the merged sleep log on every load', () => {
+  const { functionSource, SOURCE } = require('./helpers/extract');
+  const body = functionSource(require('fs').readFileSync(SOURCE, 'utf8'), 'loadRemoteData');
+  assert.ok(/rescoreSleepLog\(\)/.test(body), 'a cloud-only night keeps an old engine score otherwise');
+  assert.ok(/hasPendingFBSetting\('behaviors'\)/.test(body) && /hasPendingFBSetting\('behaviorLog'\)/.test(body),
+    'a queued local behaviour edit must not be overwritten by the cloud copy');
+});
+
+test('behaviours and the behaviour log are written through the durable queue', () => {
+  const ctx = load(['safeJSON', '_fbNextTs', 'queueFBWrite', 'fbWrite', '_fbDequeue', '_fbQueueOp', '_fbQueueKey',
+    'fbSaveSettingOrQueue', '_saveBehaviors', '_saveBehaviorLog'], {
+    prelude: `var STORE = {};
+      var localStorage = { getItem: function(k){ return STORE[k] == null ? null : STORE[k]; },
+        setItem: function(k, v){ STORE[k] = String(v); }, removeItem: function(k){ delete STORE[k]; } };
+      var S = { webhook: '' }; var window = { FB_OK: false, FB: null };`,
+  });
+  ctx._saveBehaviors([{ id: 1 }]);
+  ctx._saveBehaviorLog([{ d: 1 }]);
+  const keys = JSON.parse(ctx.STORE.gd_pending_fb).filter((i) => i.type === 'setting').map((i) => i.data.key).sort();
+  assert.deepStrictEqual(keys, ['behaviorLog', 'behaviors']);
+});
+
+test('two queued writes to one id in the same millisecond keep distinct queue keys', async () => {
+  const ctx = load(['safeJSON', '_fbNextTs', 'queueFBWrite', 'fbWrite', '_fbDequeue', '_fbQueueOp', '_fbQueueKey', 'fbSaveSettingOrQueue'], {
+    prelude: `var STORE = {}; var FIXED = 5000;
+      var localStorage = { getItem: function(k){ return STORE[k] == null ? null : STORE[k]; },
+        setItem: function(k, v){ STORE[k] = String(v); }, removeItem: function(k){ delete STORE[k]; } };
+      var Date = { now: function(){ return FIXED; } };
+      var PENDING = [];
+      var window = { FB_OK: true, FB: { saveSetting: function(){ return new Promise(function(res){ PENDING.push(res); }); } } };`,
+  });
+  ctx.fbSaveSettingOrQueue('fitnessTarget', { v: 1 });
+  ctx.fbSaveSettingOrQueue('fitnessTarget', { v: 2 });   // same ms, same id: replaces the first
+  ctx.PENDING[0]();                                       // the FIRST write confirms
+  await tick();
+  const left = queued(ctx);
+  assert.strictEqual(left.length, 1, 'confirming the superseded write must not drop the newer one');
+  assert.strictEqual(left[0].data.v.v, 2);
+});
+
+test('a corrupt or unwritable offline queue never throws out of a save', () => {
+  const ctx = load(['safeJSON', '_fbNextTs', 'queueFBWrite', 'fbWrite', '_fbDequeue', '_fbQueueOp', '_fbQueueKey'], {
+    prelude: `var STORE = { gd_pending_fb: '{not json' };
+      var localStorage = { getItem: function(k){ return STORE[k] == null ? null : STORE[k]; },
+        setItem: function(){ throw new Error('QuotaExceededError'); }, removeItem: function(k){ delete STORE[k]; } };
+      var window = { FB_OK: false, FB: null };`,
+  });
+  assert.doesNotThrow(() => ctx.fbWrite('meal', 'save', { id: 1 }));
+});
+
+test('every goal-dependent cache is cleared in one place', () => {
+  const src = require('fs').readFileSync(require('./helpers/extract').SOURCE, 'utf8');
+  // clearGoalDependentCaches() lists the keys in an array, so a literal removeItem of the
+  // analysis keys anywhere means a hand-rolled list has crept back in.
+  assert.strictEqual((src.match(/removeItem\('gd_wt_analysis(_data)?'\)/g) || []).length, 0,
+    'hand-rolled removeItem lists drift out of step — call clearGoalDependentCaches()');
+  assert.strictEqual((src.match(/removeItem\('gd_wt_ai_result'\)/g) || []).length, 2,
+    'only the intentional APP_LOGIC_VERSION and calorie-context partial clears may remain');
 });
