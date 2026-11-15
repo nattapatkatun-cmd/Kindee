@@ -1516,3 +1516,70 @@ test('the allowlist check does not lock an allowed user out when offline', async
   ctx.NEXT = denied;
   assert.strictEqual(await ctx.checkUserAllowed(user, ctx.db), false, 'a rules denial is still a denial');
 });
+
+// ── Durable writes: queue first, drop on confirmation ─────────────────────────
+const durableSandbox = () => load(
+  ['safeJSON', 'queueFBWrite', 'fbWrite', '_fbDequeue', '_fbQueueOp', '_fbQueueKey', 'fbSaveSettingOrQueue', 'hasPendingFBSetting'],
+  { prelude: `var STORE = {};
+    var localStorage = { getItem: function(k){ return STORE[k] == null ? null : STORE[k]; },
+      setItem: function(k, v){ STORE[k] = String(v); }, removeItem: function(k){ delete STORE[k]; } };
+    var PENDING = [];
+    var window = { FB_OK: true, FB: {
+      saveMeal: function(){ return new Promise(function(res, rej){ PENDING.push({ res: res, rej: rej }); }); },
+      saveSetting: function(){ return new Promise(function(res, rej){ PENDING.push({ res: res, rej: rej }); }); } } };` },
+);
+const queued = (ctx) => JSON.parse(ctx.STORE.gd_pending_fb || '[]');
+const tick = () => new Promise((r) => setImmediate(r));
+
+test('a write made while Firestore is unreachable stays queued until it is confirmed', async () => {
+  // FB_OK is true on an offline launch, and an offline set() never resolves — the old
+  // "FB_OK ? direct : queue" code dropped the entry from memory on the floor.
+  const ctx = durableSandbox();
+  ctx.fbWrite('meal', 'save', { id: 7, foodName: 'x' });
+  await tick();
+  assert.strictEqual(queued(ctx).length, 1, 'pending write is persisted while unconfirmed');
+  ctx.PENDING[0].res();
+  await tick();
+  assert.strictEqual(queued(ctx).length, 0, 'confirmed write leaves the queue');
+});
+
+test('a rejected write is kept for retry, and a newer settings save replaces an older queued one', async () => {
+  const ctx = durableSandbox();
+  ctx.fbWrite('meal', 'save', { id: 8 });
+  ctx.PENDING[0].rej(new Error('boom'));
+  await tick();
+  assert.strictEqual(queued(ctx).length, 1, 'failure keeps the entry');
+  ctx.fbSaveSettingOrQueue('goals', { cal: 1 });
+  ctx.fbSaveSettingOrQueue('goals', { cal: 2 });
+  const goals = queued(ctx).filter((i) => i.type === 'setting');
+  assert.strictEqual(goals.length, 1);
+  assert.strictEqual(goals[0].data.v.cal, 2, 'only the newest value is replayed');
+  assert.strictEqual(ctx.hasPendingFBSetting('goals'), true);
+});
+
+test('no code path writes meals/weights/etc. to Firestore without going through the queue', () => {
+  const src = require('fs').readFileSync(require('./helpers/extract').SOURCE, 'utf8');
+  const re = /window\.FB\.(save|del)(Meal|Favorite|Workout|Weight|BodyComp|StrengthEntry)\(/g;
+  const hits = src.split('\n').map((l, i) => [i + 1, l]).filter(([, l]) => re.test(l) && !(re.lastIndex = 0));
+  assert.deepStrictEqual(hits, [], 'use fbWrite(type, op, data) — direct calls are lost when offline');
+  assert.ok(!/window\.FB_OK\)\s*window\.FB\.\w+\(\w+\);\s*else\s*queueFBWrite/.test(src));
+});
+
+// ── Sleep log: locally recomputed / imported nights must be marked dirty ──────
+test('migrateSleepScores marks every night it recomputes dirty so the cloud copy cannot revert it', () => {
+  const ctx = load(['safeJSON', 'markSyncDirty', 'migrateSleepScores'], {
+    consts: ['SLEEP_SCORE_ENGINE_VER'],
+    prelude: `var STORE = { gd_sleep_log: JSON.stringify([
+        { date: '2026-10-01', hours: 7, sleepScore: 1, scoreLabel: 'old', recoveryScore: 1, recoveryEmoji: 'x' },
+        { date: '2026-10-02', hours: 7, sleepScore: 99, scoreLabel: 'L', recoveryScore: 5, recoveryEmoji: 'e' }]) };
+      var localStorage = { getItem: function(k){ return STORE[k] == null ? null : STORE[k]; },
+        setItem: function(k, v){ STORE[k] = String(v); }, removeItem: function(k){ delete STORE[k]; } };
+      var S = { sleepData: null };
+      var calculateSleepScoreFromData = function(s){
+        return s.date === '2026-10-02' ? { sleepScore: 99, scoreLabel: 'L', score: 5, emoji: 'e' }
+                                       : { sleepScore: 80, scoreLabel: 'new', score: 3, emoji: 'y' }; };`,
+  });
+  ctx.migrateSleepScores();
+  const dirty = JSON.parse(ctx.STORE.gd_dirty_gd_sleep_log || '{}');
+  assert.deepStrictEqual(Object.keys(dirty), ['2026-10-01'], 'only the changed night is marked');
+});
